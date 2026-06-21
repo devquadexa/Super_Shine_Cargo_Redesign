@@ -6,11 +6,13 @@ module.exports = {
   theme: {
     extend: {
       // ── Global font ──────────────────────────────────────────────
-      // Matches the login page (Tailwind `font-serif`). Setting `sans`
-      // makes this the default font for the entire system.
+      // Modern sans-serif used across the entire system. Inter (loaded
+      // in index.css) with system-font fallbacks keeps letters and
+      // numbers consistent. `serif` is mapped to the same stack so any
+      // legacy `font-serif` usage stays on the modern font.
       fontFamily: {
-        sans: ['ui-serif', 'Georgia', 'Cambria', '"Times New Roman"', 'Times', 'serif'],
-        serif: ['ui-serif', 'Georgia', 'Cambria', '"Times New Roman"', 'Times', 'serif'],
+        sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', '"Helvetica Neue"', 'Arial', 'sans-serif'],
+        serif: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', '"Helvetica Neue"', 'Arial', 'sans-serif'],
       },
       // ── Brand color theme ────────────────────────────────────────
       // The `blue` scale is remapped to the login page dark-blue theme.

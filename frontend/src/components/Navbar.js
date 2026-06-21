@@ -42,8 +42,8 @@ function Navbar({ onMenuClick }) {
       {/* Top Navigation Bar */}
       <nav className="bg-white border-b-2 border-gray-200 shadow-sm sticky top-0 z-40">
         <div className="px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
-          {/* Left Section - Menu & Sidebar Toggle */}
-          <div className="flex items-center gap-4">
+          {/* Left Section - Brand block (same width as the 16rem sidebar) */}
+          <div className="flex items-center gap-3 lg:w-64 lg:-ml-8 lg:pl-6 lg:pr-4 lg:border-r lg:border-gray-200 self-stretch">
             {/* Mobile Menu Button */}
             <button 
               className="lg:hidden p-2 rounded-lg hover:bg-gray-100 transition text-gray-600 hover:text-gray-900"
@@ -57,29 +57,37 @@ function Navbar({ onMenuClick }) {
               </svg>
             </button>
 
-            {/* Desktop Sidebar Toggle Button */}
-            {user && (
-              <button 
-                className="hidden lg:flex p-2 rounded-lg hover:bg-gray-100 transition text-gray-600 hover:text-gray-900"
-                onClick={toggleSidebar}
-                title="Toggle sidebar"
-                aria-label="Toggle sidebar"
-              >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="9 18 15 12 9 6"></polyline>
-                </svg>
-              </button>
-            )}
-
-            {/* Company Info */}
-            <div className="hidden sm:block">
-              <h1 className="text-lg font-bold text-gray-900">Super Shine Cargo</h1>
-              <p className="text-xs text-gray-600">Cargo Management System</p>
-            </div>
+            {/* Logo + Brand → Home link */}
+            <Link to="/" className="flex items-center gap-2.5 min-w-0" title="Go to Dashboard">
+              <img
+                src={`${process.env.PUBLIC_URL}/logo.png`}
+                alt="Super Shine Cargo"
+                className="h-8 w-8 object-contain shrink-0"
+              />
+              <div className="hidden sm:block">
+                <h1 className="text-base font-bold text-gray-900 leading-tight whitespace-nowrap">Super Shine Cargo</h1>
+                <p className="text-xs text-gray-600 leading-tight whitespace-nowrap">Cargo Management System</p>
+              </div>
+            </Link>
           </div>
 
           {/* Right Section - Actions & Profile */}
           <div className="flex items-center gap-6">
+            {/* Sidebar hide/show toggle (desktop) */}
+            {user && (
+              <button
+                className="hidden lg:flex p-2 rounded-lg hover:bg-gray-100 transition text-gray-600 hover:text-blue-600"
+                onClick={toggleSidebar}
+                title="Hide / show sidebar"
+                aria-label="Hide or show sidebar"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+                  <line x1="9" y1="3" x2="9" y2="21"></line>
+                </svg>
+              </button>
+            )}
+
             {/* Welcome Message - Desktop Only */}
             {user && (
               <div className="hidden md:flex flex-col items-end">

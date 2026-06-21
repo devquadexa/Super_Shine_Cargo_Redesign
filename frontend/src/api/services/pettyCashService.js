@@ -16,6 +16,13 @@ export const pettyCashService = {
     return response.data;
   },
 
+  // Grouped petty cash assignments (admin/manager) — includes assigned,
+  // settled, balance and over amounts used for cash-tracking summaries.
+  getGroupedAssignments: async () => {
+    const response = await apiClient.get('/petty-cash-assignments/grouped');
+    return response.data;
+  },
+
   updateBalance: async (balanceData) => {
     const response = await apiClient.post('/petty-cash/balance', balanceData);
     return response.data;

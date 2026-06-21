@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -16,8 +18,13 @@
 }
 
 body {
-  /* Matches the login page font (serif) across the entire system */
-  font-family: ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
+  /* Modern sans-serif system-wide. Inter loads from Google Fonts; the
+     system fallbacks (Segoe UI on Windows, San Francisco on macOS,
+     Roboto on Android) keep it modern and consistent even offline.
+     A single font means letters and numbers always match. */
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  /* Uniform-height, equal-width figures for clean tables and stats */
+  font-variant-numeric: lining-nums tabular-nums;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background: #f5f5f5;

@@ -25,6 +25,7 @@ const Icons = {
   coins:       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><circle cx="8" cy="8" r="5"/><path d="M15 6.5a5 5 0 1 1 0 11"/></svg>,
   send:        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>,
   alert:       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>,
+  users:       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
 };
 
 // Large headline metric card (financials)
@@ -75,18 +76,15 @@ function CashCard({ label, value, sub, accent = '#1E3F63', icon }) {
   );
 }
 
-// Small labelled stat used in the revenue legend
-function LegendStat({ color, label, value }) {
-  return (
-    <div>
-      <div className="flex items-center gap-2">
-        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
-        <span className="text-xs text-gray-500 font-medium">{label}</span>
-      </div>
-      <p className="text-base font-bold text-gray-800 mt-1">{value}</p>
-    </div>
-  );
-}
+// Dashboard sections that can be toggled on/off per user
+const DASHBOARD_SECTIONS = [
+  { key: 'kpi',        label: 'Revenue KPIs' },
+  { key: 'operations', label: 'Operational Stats' },
+  { key: 'invoices',   label: 'Invoice Overview' },
+  { key: 'cashflow',   label: 'Cash Flow Tracking' },
+];
+
+const DEFAULT_SECTIONS = { kpi: true, operations: true, invoices: true, cashflow: true };
 
 function Dashboard() {
   const { user } = useAuth();
@@ -101,16 +99,41 @@ function Dashboard() {
     totalBills: 0,
     unpaidBills: 0,
     paidBills: 0,
+    fullyPaidBills: 0,
+    partiallyPaidBills: 0,
+    strictUnpaidBills: 0,
     totalRevenue: 0,
     pendingRevenue: 0,
     pettyCashBalance: 0,
     userPettyCash: 0,
     mainAccountBalance: 0,
+    totalAssignedPettyCash: 0,
+    totalSettled: 0,
+    balanceReturned: 0,
+    overdueCollected: 0,
     pettyCashIssued: 0,
     uncollectedCash: 0,
     conversionRate: 0
   });
   const [accountingData, setAccountingData] = useState(null);
+
+  // Per-user dashboard customization (section visibility)
+  const prefsKey = `dashboardSections_${user?.username || user?.fullName || 'default'}`;
+  const [visibleSections, setVisibleSections] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`dashboardSections_${user?.username || user?.fullName || 'default'}`);
+      if (saved) return { ...DEFAULT_SECTIONS, ...JSON.parse(saved) };
+    } catch (e) { /* ignore */ }
+    return DEFAULT_SECTIONS;
+  });
+  const [showCustomize, setShowCustomize] = useState(false);
+
+  useEffect(() => {
+    try { localStorage.setItem(prefsKey, JSON.stringify(visibleSections)); } catch (e) { /* ignore */ }
+  }, [prefsKey, visibleSections]);
+
+  const toggleSection = (key) =>
+    setVisibleSections((prev) => ({ ...prev, [key]: !prev[key] }));
 
   const getDateRange = useCallback(() => {
     const now = new Date();
@@ -209,6 +232,33 @@ function Dashboard() {
         pettyCashData = await pettyCashService.getUserAssignedBalance();
       }
 
+      // Petty cash settlement summary (admins) — assigned / settled / balance returned / overdue collected
+      let pcSummary = { totalAssigned: 0, totalSettled: 0, balanceReturned: 0, overdueCollected: 0 };
+      if (['Super Admin', 'Admin'].includes(user?.role)) {
+        try {
+          const grouped = await pettyCashService.getGroupedAssignments();
+          const list = Array.isArray(grouped) ? grouped : [];
+          const range = getDateRange();
+          const inRange = (g) => {
+            if (timePeriod === 'all' || !range) return true;
+            const times = (g.assignments || [])
+              .map(a => new Date(a.assignedDate).getTime())
+              .filter(t => !Number.isNaN(t));
+            if (times.length === 0) return false;
+            const latest = new Date(Math.max(...times));
+            return latest >= range.startDate && latest <= range.endDate;
+          };
+          pcSummary = list.filter(inRange).reduce((acc, g) => ({
+            totalAssigned:    acc.totalAssigned    + (parseFloat(g.totalAssigned) || 0),
+            totalSettled:     acc.totalSettled     + (parseFloat(g.totalSpent)    || 0),
+            balanceReturned:  acc.balanceReturned  + (parseFloat(g.totalBalance)  || 0),
+            overdueCollected: acc.overdueCollected + (parseFloat(g.totalOver)     || 0),
+          }), pcSummary);
+        } catch (e) {
+          console.error('Error fetching petty cash assignments summary:', e);
+        }
+      }
+
       const [customers, jobs, bills] = await Promise.all([
         user?.role !== 'Waff Clerk' ? customerService.getAll() : Promise.resolve([]),
         jobService.getAll(),
@@ -228,6 +278,12 @@ function Dashboard() {
       const paidBills    = fBills.filter(b => b.paymentStatus === 'Paid' || b.paymentStatus === 'Partially Paid');
       const unpaidBills  = fBills.filter(b => b.paymentStatus === 'Unpaid' || b.paymentStatus === 'Partially Paid');
 
+      // Mutually-exclusive invoice counts (each invoice falls into exactly one bucket).
+      // These add up to the total: fullyPaid + partiallyPaid + strictUnpaid = totalBills
+      const fullyPaidBills     = fBills.filter(b => b.paymentStatus === 'Paid').length;
+      const partiallyPaidBills = fBills.filter(b => b.paymentStatus === 'Partially Paid').length;
+      const strictUnpaidBills  = fBills.filter(b => b.paymentStatus === 'Unpaid').length;
+
       const totalRevenue   = paidBills.reduce((s, b) => s + (parseFloat(b.paidAmount) || parseFloat(b.netTotal) || parseFloat(b.total) || parseFloat(b.billingAmount) || 0), 0);
       const pendingRevenue = unpaidBills.reduce((s, b) => s + (parseFloat(b.remainingAmount) || parseFloat(b.netTotal) || parseFloat(b.total) || parseFloat(b.billingAmount) || 0), 0);
       const conversionRate = fBills.length > 0 ? Math.round((paidBills.length / fBills.length) * 100) : 0;
@@ -246,11 +302,18 @@ function Dashboard() {
         totalBills:       fBills.length,
         unpaidBills:      unpaidBills.length,
         paidBills:        paidBills.length,
+        fullyPaidBills,
+        partiallyPaidBills,
+        strictUnpaidBills,
         totalRevenue,
         pendingRevenue,
         pettyCashBalance: pettyCashData.balance,
         userPettyCash:    pettyCashData.balance,
         mainAccountBalance: 0,
+        totalAssignedPettyCash: pcSummary.totalAssigned,
+        totalSettled:           pcSummary.totalSettled,
+        balanceReturned:        pcSummary.balanceReturned,
+        overdueCollected:       pcSummary.overdueCollected,
         pettyCashIssued:  pettyCashIssuedFiltered,
         uncollectedCash:  pendingRevenue,
         conversionRate
@@ -258,7 +321,7 @@ function Dashboard() {
     } catch (err) {
       console.error('Error fetching stats:', err);
     }
-  }, [user, timePeriod, filterByDate]);
+  }, [user, timePeriod, filterByDate, getDateRange]);
 
   const fetchAccountingData = useCallback(async () => {
     try {
@@ -276,13 +339,6 @@ function Dashboard() {
 
   const fmt = (amount) =>
     'LKR ' + parseFloat(amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-  const fmtShort = (amount) => {
-    const n = parseFloat(amount || 0);
-    if (n >= 1000000) return 'LKR ' + (n / 1000000).toFixed(1) + 'M';
-    if (n >= 1000) return 'LKR ' + (n / 1000).toFixed(1) + 'K';
-    return 'LKR ' + n.toFixed(2);
-  };
 
   const periods = [
     { key: 'all',    label: 'All Time' },
@@ -306,53 +362,89 @@ function Dashboard() {
   const collectedRev    = useAccounting ? accountingData.summary.totalPaid           : stats.totalRevenue;
   const outstandingRev  = useAccounting ? accountingData.summary.totalOutstanding    : stats.pendingRevenue;
   const overdueRev      = useAccounting ? accountingData.summary.totalOverdue        : 0;
-  const netProfit       = useAccounting ? accountingData.summary.totalProfit         : stats.totalRevenue;
-  const profitMargin    = totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : '0.0';
   const totalJobsAcc    = useAccounting ? accountingData.summary.totalJobs           : stats.totalJobs;
   const paidJobsCount   = useAccounting ? accountingData.summary.paidJobsCount       : stats.paidBills;
-  const unpaidJobsCount = useAccounting ? accountingData.summary.unpaidJobsCount     : stats.unpaidBills;
   const overdueCount    = useAccounting ? accountingData.summary.overdueJobsCount    : 0;
-  // Petty cash issued: use filtered stats value (calculated from jobs in period)
-  const pettyCashIssued = useAccounting ? accountingData.summary.totalPettyCashIssued : stats.pettyCashIssued;
 
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
   // Shared page header
-  const PageHeader = () => (
+  const PageHeader = ({ actions }) => (
     <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-6">
       <div>
         <h1 className="text-3xl font-bold text-[#1E3F63] tracking-tight">Dashboard</h1>
         <p className="text-sm text-gray-500 mt-1">Welcome back, {user?.fullName} — Super Shine Cargo Service</p>
       </div>
-      <span className="text-xs font-medium text-gray-400">{today}</span>
+      <div className="flex items-center gap-3">
+        {actions}
+        <span className="hidden md:inline text-xs font-medium text-gray-400">{today}</span>
+      </div>
     </div>
+  );
+
+  // Top-right controls: period dropdown + dashboard customize menu
+  const HeaderControls = () => (
+    <>
+      {/* Period dropdown */}
+      <select
+        value={timePeriod}
+        onChange={(e) => handlePeriodChange(e.target.value)}
+        className="px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm font-medium text-gray-700 outline-none focus:border-[#1E3F63] focus:ring-1 focus:ring-[#1E3F63] cursor-pointer"
+        title="Filter period"
+      >
+        {periods.map((p) => (
+          <option key={p.key} value={p.key}>{p.label}</option>
+        ))}
+      </select>
+
+      {/* Customize dashboard */}
+      <div className="relative">
+        <button
+          onClick={() => setShowCustomize((s) => !s)}
+          className="p-2 rounded-lg border border-gray-200 bg-white text-gray-600 hover:text-[#1E3F63] hover:border-[#1E3F63] transition"
+          title="Customize dashboard"
+          aria-label="Customize dashboard"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+        </button>
+
+        {showCustomize && (
+          <>
+            <div className="fixed inset-0 z-30" onClick={() => setShowCustomize(false)} />
+            <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-gray-200 z-40 p-4 text-left">
+              <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-3">Customize Dashboard</p>
+              <div className="space-y-3">
+                {DASHBOARD_SECTIONS.map((s) => (
+                  <div key={s.key} className="flex items-center justify-between">
+                    <span className="text-sm text-gray-700">{s.label}</span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={visibleSections[s.key]}
+                      onClick={() => toggleSection(s.key)}
+                      className={`relative w-10 h-5 rounded-full transition-colors shrink-0 ${visibleSections[s.key] ? 'bg-[#15803d]' : 'bg-gray-300'}`}
+                    >
+                      <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${visibleSections[s.key] ? 'translate-x-5' : ''}`} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </>
   );
 
   /* ── SUPER ADMIN / ADMIN ── */
   if (user?.role === 'Super Admin' || user?.role === 'Admin') {
-    const pct = (part) => (totalRevenue > 0 ? Math.min((part / totalRevenue) * 100, 100) : 0);
     return (
       <div className="p-5 md:p-8 w-full min-h-screen bg-[#f3f5f9]">
 
-        <PageHeader />
-
-        {/* ── Period Filter ── */}
-        <div className="flex flex-wrap items-center gap-2 mb-6">
-          <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mr-1">Period</span>
-          {periods.map(p => (
-            <button
-              key={p.key}
-              onClick={() => handlePeriodChange(p.key)}
-              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
-                timePeriod === p.key
-                  ? 'bg-[#1E3F63] text-white shadow-sm'
-                  : 'bg-white text-gray-600 border border-gray-200 hover:border-[#1E3F63] hover:text-[#1E3F63]'
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
+        <PageHeader actions={<HeaderControls />} />
 
         {timePeriod === 'custom' && (
           <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6 flex flex-wrap gap-4 items-end">
@@ -378,118 +470,88 @@ function Dashboard() {
         )}
 
         {/* ── KPI hero row ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mb-6">
-          <KpiCard label="Total Revenue"     value={fmtShort(totalRevenue)}                 sub={`${totalJobsAcc} jobs total`} accent="#1E3F63" icon={Icons.wallet} />
-          <KpiCard label="Collected Revenue" value={fmtShort(collectedRev)}                 sub={`${paidJobsCount} jobs paid`} accent="#15803d" icon={Icons.check} />
-          <KpiCard label="Outstanding"       value={fmtShort(outstandingRev + overdueRev)}  sub="Unpaid & overdue"             accent="#b45309" icon={Icons.clock} />
-          <KpiCard label="Net Profit"        value={fmtShort(netProfit)}                    sub={`${profitMargin}% margin`}    accent="#0f766e" icon={Icons.trending} />
-        </div>
+        {visibleSections.kpi && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 mb-6">
+            <KpiCard label="Total Revenue"     value={fmt(totalRevenue)}                 sub={`${totalJobsAcc} jobs total`} accent="#1E3F63" icon={Icons.wallet} />
+            <KpiCard label="Collected Revenue" value={fmt(collectedRev)}                 sub={`${paidJobsCount} jobs paid`} accent="#15803d" icon={Icons.check} />
+            <KpiCard label="Outstanding"       value={fmt(outstandingRev + overdueRev)}  sub="Unpaid & overdue"             accent="#b45309" icon={Icons.clock} />
+          </div>
+        )}
 
         {/* ── Operational status row ── */}
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-5 mb-6">
-          <OpsCard label="Total Jobs" value={stats.totalJobs}     accent="#1E3F63" icon={Icons.briefcase} />
-          <OpsCard label="Open Jobs"  value={stats.openJobs}      accent="#b45309" icon={Icons.folder} />
-          <OpsCard label="In Transit" value={stats.inTransitJobs} accent="#2f5e8f" icon={Icons.truck} />
-          <OpsCard label="Completed"  value={stats.closedJobs}    accent="#15803d" icon={Icons.checkCircle} />
-        </div>
-
-        {/* ── Revenue breakdown + Invoice status ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-6">
-
-          {/* Revenue breakdown */}
-          <div className="lg:col-span-2 bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-sm font-bold text-gray-800 uppercase tracking-wider">Revenue Breakdown</h2>
-              {timePeriod !== 'all' && (
-                <span className="text-xs font-medium text-gray-400">{periods.find(p => p.key === timePeriod)?.label}</span>
-              )}
-            </div>
-
-            <div className="flex items-baseline gap-2 mb-5">
-              <span className="text-3xl font-bold text-[#1E3F63]">{fmtShort(totalRevenue)}</span>
-              <span className="text-sm text-gray-400">total billed</span>
-            </div>
-
-            {/* Single meaningful stacked bar */}
-            <div className="flex h-3 w-full rounded-full overflow-hidden bg-gray-100 mb-5">
-              <div style={{ width: `${pct(collectedRev)}%`,   backgroundColor: '#15803d' }} title="Collected" />
-              <div style={{ width: `${pct(outstandingRev)}%`, backgroundColor: '#d4a017' }} title="Outstanding" />
-              <div style={{ width: `${pct(overdueRev)}%`,     backgroundColor: '#b91c1c' }} title="Overdue" />
-            </div>
-
-            <div className="grid grid-cols-3 gap-4">
-              <LegendStat color="#15803d" label="Collected"   value={fmtShort(collectedRev)} />
-              <LegendStat color="#d4a017" label="Outstanding" value={fmtShort(outstandingRev)} />
-              <LegendStat color="#b91c1c" label="Overdue"     value={fmtShort(overdueRev)} />
-            </div>
-
-            <div className="border-t border-gray-100 mt-5 pt-4 text-xs text-gray-400">
-              Revenue source: billing data · approx. {fmtShort(totalJobsAcc > 0 ? totalRevenue / totalJobsAcc : 0)} avg / job
-              {' · '}{unpaidJobsCount} unpaid · {overdueCount} overdue
-            </div>
+        {visibleSections.operations && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-6">
+            <OpsCard label="Total Customers" value={stats.totalCustomers} accent="#0f766e" icon={Icons.users} />
+            <OpsCard label="Total Jobs"      value={stats.totalJobs}      accent="#1E3F63" icon={Icons.briefcase} />
+            <OpsCard label="Open Jobs"       value={stats.openJobs}       accent="#b45309" icon={Icons.folder} />
           </div>
+        )}
 
-          {/* Invoice status */}
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
-            <h2 className="text-sm font-bold text-gray-800 uppercase tracking-wider mb-5">Invoice Status</h2>
-            <div className="flex items-center gap-5">
-              <div className="relative w-24 h-24 shrink-0">
-                <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
-                  <circle cx="18" cy="18" r="15.9" fill="none" stroke="#eef0f4" strokeWidth="3.5" />
-                  {stats.totalBills > 0 && (
-                    <circle cx="18" cy="18" r="15.9" fill="none" stroke="#15803d" strokeWidth="3.5"
-                      strokeDasharray={`${(stats.paidBills / stats.totalBills) * 100} ${100 - (stats.paidBills / stats.totalBills) * 100}`}
-                      strokeDashoffset="25" strokeLinecap="round" />
-                  )}
-                </svg>
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-xl font-bold text-gray-800">{stats.totalBills}</span>
-                  <span className="text-[10px] text-gray-400 uppercase tracking-wide">Invoices</span>
-                </div>
-              </div>
-              <div className="space-y-3 flex-1">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="flex items-center gap-2 text-gray-600"><span className="w-2.5 h-2.5 rounded-full bg-[#15803d]" />Paid</span>
-                  <span className="font-bold text-gray-800">{stats.paidBills}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="flex items-center gap-2 text-gray-600"><span className="w-2.5 h-2.5 rounded-full bg-[#b91c1c]" />Unpaid</span>
-                  <span className="font-bold text-gray-800">{stats.unpaidBills}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="border-t border-gray-100 mt-5 pt-5 grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-[11px] text-gray-500 uppercase tracking-wide">Customers</p>
-                <p className="text-2xl font-bold text-[#1E3F63] mt-1">{stats.totalCustomers}</p>
-              </div>
-              <div>
-                <p className="text-[11px] text-gray-500 uppercase tracking-wide">Conversion</p>
-                <p className="text-2xl font-bold text-[#15803d] mt-1">{stats.conversionRate}%</p>
-              </div>
-            </div>
+        {/* ── Invoice Overview (bar graph) ── */}
+        {visibleSections.invoices && (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 mb-6">
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-sm font-bold text-gray-800 uppercase tracking-wider">Invoice Overview</h2>
+            {timePeriod !== 'all' && (
+              <span className="text-xs font-medium text-gray-400">{periods.find(p => p.key === timePeriod)?.label}</span>
+            )}
           </div>
+          <p className="text-xs text-gray-400 mb-6">
+            {stats.fullyPaidBills} paid · {stats.partiallyPaidBills} partially paid · {stats.strictUnpaidBills} unpaid · {overdueCount} overdue
+          </p>
+
+          {(() => {
+            const bars = [
+              { label: 'Total Invoices', value: stats.totalBills,          color: '#1E3F63' },
+              { label: 'Paid',           value: stats.fullyPaidBills,      color: '#15803d' },
+              { label: 'Partially Paid', value: stats.partiallyPaidBills,  color: '#0e7490' },
+              { label: 'Unpaid',         value: stats.strictUnpaidBills,   color: '#b45309' },
+              { label: 'Overdue',        value: overdueCount,              color: '#b91c1c' },
+            ];
+            const max = Math.max(...bars.map(b => b.value), 1);
+            return (
+              <>
+                <div className="flex items-end gap-6 h-52 px-2">
+                  {bars.map(b => (
+                    <div key={b.label} className="flex-1 h-full flex flex-col items-center justify-end">
+                      <span className="text-lg font-bold text-gray-800 mb-2">{b.value}</span>
+                      <div
+                        className="w-full max-w-[84px] rounded-t-lg transition-[height] duration-700 ease-out"
+                        style={{
+                          height: `${Math.max((b.value / max) * 80, b.value > 0 ? 4 : 1)}%`,
+                          backgroundColor: b.color,
+                        }}
+                        title={`${b.label}: ${b.value}`}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-5 gap-6 border-t border-gray-100 mt-3 pt-3 px-2">
+                  {bars.map(b => (
+                    <div key={b.label} className="flex items-center justify-center gap-2 text-xs font-medium text-gray-500 text-center">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: b.color }} />
+                      {b.label}
+                    </div>
+                  ))}
+                </div>
+              </>
+            );
+          })()}
         </div>
+        )}
 
         {/* ── Cash Flow Tracking ── */}
+        {visibleSections.cashflow && (
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
           <h2 className="text-sm font-bold text-gray-800 uppercase tracking-wider mb-5">Cash Flow Tracking</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
-            <CashCard label="Main Account Balance" value={fmt(stats.mainAccountBalance)} sub="Total funds in main account" accent="#1E3F63" icon={Icons.bank} />
-            <CashCard label="Petty Cash Balance"   value={fmt(stats.pettyCashBalance)}   sub="Available petty cash"        accent="#0f766e" icon={Icons.coins} />
-            <CashCard
-              label={`Petty Cash Issued ${timePeriod !== 'all' ? '(Period)' : '(To Date)'}`}
-              value={fmt(pettyCashIssued)}
-              sub={timePeriod !== 'all' ? 'Issued in selected period' : 'Total issued to date'}
-              accent="#6d28d9" icon={Icons.send} />
-            <CashCard
-              label={`Uncollected Cash Due ${timePeriod !== 'all' ? '(Period)' : ''}`}
-              value={fmtShort(stats.uncollectedCash)}
-              sub="Sum of unpaid invoices"
-              accent="#b91c1c" icon={Icons.alert} />
+            <CashCard label="Total Assigned Petty Cash" value={fmt(stats.totalAssignedPettyCash)} sub="Issued to staff"            accent="#1E3F63" icon={Icons.send} />
+            <CashCard label="Total Settled"             value={fmt(stats.totalSettled)}           sub="Spent & accounted for"     accent="#15803d" icon={Icons.checkCircle} />
+            <CashCard label="Balance Returned"          value={fmt(stats.balanceReturned)}        sub="Unspent cash returned"     accent="#0f766e" icon={Icons.coins} />
+            <CashCard label="Overdue Collected"         value={fmt(stats.overdueCollected)}       sub="Overspend recovered"      accent="#b91c1c" icon={Icons.alert} />
           </div>
         </div>
+        )}
 
       </div>
     );
