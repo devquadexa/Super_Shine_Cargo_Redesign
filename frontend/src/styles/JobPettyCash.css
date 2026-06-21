@@ -1,0 +1,49 @@
+/* JobPettyCash.css
+   Minimal custom styles for the JobPettyCash component.
+   Layout and colour utilities are handled via Tailwind CSS inline classes.
+   This file covers structural concerns not easily expressed with Tailwind. */
+
+/* ── Section container ──────────────────────────────────────────────────────── */
+.job-petty-cash {
+  width: 100%;
+}
+
+/* ── Summary header bar ─────────────────────────────────────────────────────── */
+.job-petty-cash-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  align-items: center;
+}
+
+/* ── Assignment row ─────────────────────────────────────────────────────────── */
+.job-petty-cash-assignment-row {
+  transition: box-shadow 0.15s ease;
+}
+
+.job-petty-cash-assignment-row:hover {
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.08);
+}
+
+/* ── Modal overlay (backdrop) ───────────────────────────────────────────────── */
+.job-petty-cash-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+/* ── Modal content box ──────────────────────────────────────────────────────── */
+.job-petty-cash-modal {
+  background: #ffffff;
+  border-radius: 0.75rem;
+  max-width: 36rem;
+  width: 100%;
+  margin: 2rem auto;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+}

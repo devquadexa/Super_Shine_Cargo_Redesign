@@ -1,0 +1,36 @@
+/* App-wide layout and styles */
+
+.App {
+  min-height: 100vh;
+  background-color: #f9fafb;
+}
+
+/* Main content area */
+.main-content {
+  display: flex;
+  flex-direction: column;
+  margin-left: 0;
+  padding-top: 0;
+}
+
+/* When sidebar is visible on desktop */
+.main-content.with-sidebar {
+  margin-left: 16rem; /* 64 = w-64 */
+}
+
+/* Mobile and tablet - no sidebar margin */
+@media (max-width: 1023px) {
+  .main-content.with-sidebar {
+    margin-left: 0;
+  }
+}
+
+/* Content padding */
+.main-content > * {
+  padding: 1.5rem;
+}
+
+/* Smooth transitions */
+* {
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
