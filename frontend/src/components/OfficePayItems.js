@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { officePayItemService } from '../api/services/officePayItemService';
 
-function OfficePayItems({ jobId, onUpdate }) {
+function OfficePayItems({ jobId, onUpdate, forceOpen }) {
   const { user } = useAuth();
   const [officePayItems, setOfficePayItems] = useState([]);
-  const [showAddForm, setShowAddForm] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(forceOpen || false);
   const [showSlotsModal, setShowSlotsModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -110,10 +110,8 @@ function OfficePayItems({ jobId, onUpdate }) {
   const handleCloseForm = () => {
     setShowAddForm(false);
     setEditingId(null);
-    setFormData({
-      description: '',
-      actualCost: ''
-    });
+    setFormData({ description: '', actualCost: '' });
+    if (forceOpen && onUpdate) onUpdate();
   };
 
   const openAddPaymentModal = () => {
@@ -213,8 +211,8 @@ function OfficePayItems({ jobId, onUpdate }) {
 
   return (
     <div>
-      <div className="font-semibold text-gray-900 mb-2">Office Pay Items</div>
-      <p className="text-sm text-gray-600 mb-4">
+      <div className="font-semibold text-gray-900 mb-2 hidden">Office Pay Items</div>
+      <p className="text-sm text-gray-600 mb-4 hidden">
         Record upfront payments made by office staff (e.g., DO charges, port fees)
       </p>
 
@@ -386,15 +384,19 @@ function OfficePayItems({ jobId, onUpdate }) {
           </div>
         ) : (
           <div className="bg-white rounded-xl border-2 border-gray-200">
-            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-              <div className="text-lg font-semibold text-gray-900">Payment Records</div>
-              <button 
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium text-sm"
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <div className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Office Pay Items</div>
+              <button
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-[#1E3F63] hover:bg-[#193552] transition"
                 onClick={openAddPaymentModal}
                 disabled={loading}
-                title="Add new payment"
+                title="Add new office payment"
+                aria-label="Add office payment"
               >
-                + Add Payment
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                  <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                Add
               </button>
             </div>
             
