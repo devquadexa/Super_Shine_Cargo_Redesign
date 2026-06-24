@@ -369,7 +369,8 @@ function JobPettyCash({ job, users, onUpdate }) {
 
     try {
       await apiClient.post('/cash-balance-settlements', {
-        assignmentId: selectedAssignment.assignmentId,
+        relatedAssignments: [selectedAssignment.assignmentId],
+        jobId: job.jobId,
         settlementType: balanceAction,
         amount: amount,
         notes: balanceNotes || `${balanceAction === 'BALANCE_RETURN' ? 'Return balance' : 'Collect overdue'} for Assignment #${selectedAssignment.assignmentId}`,

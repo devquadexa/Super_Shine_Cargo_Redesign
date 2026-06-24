@@ -614,7 +614,7 @@ function AdvancePayment({ job, onUpdate, forceOpen }) {
         </div>
       )}
 
-      <div>
+      {!forceOpen && (<div>
         {loadingPayments && advancePayments.length === 0 ? (
           <div className="p-12 text-center">
             <div className="inline-block mb-4">
@@ -728,7 +728,7 @@ function AdvancePayment({ job, onUpdate, forceOpen }) {
             </div>
           </div>
         )}
-      </div>
+      </div>)}
     </div>
   );
 }
