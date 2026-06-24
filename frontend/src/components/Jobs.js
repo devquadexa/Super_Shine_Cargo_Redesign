@@ -1,4 +1,5 @@
 ﻿import React, { useState, useEffect } from 'react';
+import ReactDOM from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { jobService } from '../api/services/jobService';
 import { customerService } from '../api/services/customerService';
@@ -7,7 +8,6 @@ import { transporterService } from '../api/services/transporterService';
 import apiClient from '../api/client';
 import OfficePayItems from './OfficePayItems';
 import AdvancePayment from './AdvancePayment';
-import JobPettyCash from './JobPettyCash';
 import Pagination from './Pagination';
 
 function Jobs() {
@@ -17,8 +17,8 @@ function Jobs() {
   const [users, setUsers] = useState([]);
   const [transporters, setTransporters] = useState([]);
   const [showModal, setShowModal] = useState(false);
-  const [expandedRow, setExpandedRow] = useState(null);
   const [jobPayments, setJobPayments] = useState({});
+  const [viewJobModal, setViewJobModal] = useState(null); // job object being viewed
   const [officePayModal, setOfficePayModal] = useState(null);
   const [advancePayModal, setAdvancePayModal] = useState(null);
   const [editingOfficePayItem, setEditingOfficePayItem] = useState(null); // {officePayItemId, description, actualCost, jobId}
@@ -506,13 +506,11 @@ function Jobs() {
 
   const handlePageChange = (pageNumber) => {
     setCurrentPage(pageNumber);
-    setExpandedRow(null);
   };
 
   const handleRecordsPerPageChange = (newRecordsPerPage) => {
     setRecordsPerPage(newRecordsPerPage);
     setCurrentPage(1);
-    setExpandedRow(null);
   };
 
   return (
@@ -598,15 +596,14 @@ function Jobs() {
             </thead>
             <tbody className="divide-y divide-gray-200">
               {currentRecords.map(job => (
-                <React.Fragment key={job.jobId}>
-                  <tr className="hover:bg-gray-50 transition">
-                    <td className="px-6 py-4 text-sm font-semibold text-blue-600">
-                      {job.cusdecNumber && job.cusdecNumber.trim() ? (
-                        <span>{job.jobId || '-'} / {formatCusdecNumberForDisplay(job.cusdecNumber)}</span>
-                      ) : (
-                        <span>{job.jobId || '-'}</span>
-                      )}
-                    </td>
+                <tr key={job.jobId} className="hover:bg-gray-50 transition">
+                  <td className="px-6 py-4 text-sm font-semibold text-blue-600">
+                    {job.cusdecNumber && job.cusdecNumber.trim() ? (
+                      <span>{job.jobId || '-'} / {formatCusdecNumberForDisplay(job.cusdecNumber)}</span>
+                    ) : (
+                      <span>{job.jobId || '-'}</span>
+                    )}
+                  </td>
                     <td className="px-6 py-4 text-sm font-medium text-gray-900">{getCustomerName(job.customerId)}</td>
                     <td className="px-6 py-4 text-sm">
                       {job.shipmentCategory ? (
@@ -684,308 +681,21 @@ function Jobs() {
                         )}
                         <button
                           onClick={() => {
-                            const next = expandedRow === job.jobId ? null : job.jobId;
-                            setExpandedRow(next);
-                            if (next) fetchJobPayments(next);
+                            setViewJobModal(job);
+                            fetchJobPayments(job.jobId);
                           }}
-                          title={expandedRow === job.jobId ? 'Hide Details' : 'View Details'}
+                          title="View Details"
                           className="p-1.5 rounded-lg text-gray-600 hover:bg-gray-100 transition"
                         >
-                          {expandedRow === job.jobId ? (
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                              <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
-                              <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
-                              <line x1="1" y1="1" x2="23" y2="23"/>
-                            </svg>
-                          ) : (
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                              <circle cx="12" cy="12" r="3"/>
-                            </svg>
-                          )}
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                            <circle cx="12" cy="12" r="3"/>
+                          </svg>
                         </button>
                       </div>
                     </td>
                   </tr>
-                  {expandedRow === job.jobId && (
-                    <tr>
-                      <td colSpan={user?.role !== 'Waff Clerk' ? 7 : 6} className="p-0 border-b border-gray-200">
-                        <div className="bg-[#f8fafc] px-6 py-5">
-
-                          {/* ── Top: two info cards ── */}
-                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
-
-                            {/* Basic Information */}
-                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                              <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="#1E3F63" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0">
-                                  <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/>
-                                </svg>
-                                <span className="text-xs font-bold text-[#1E3F63] uppercase tracking-wider">Basic Information</span>
-                              </div>
-                              <table className="w-full text-sm border-collapse">
-                                <tbody>
-                                  {[
-                                    ['Job ID',        job.jobId],
-                                    ['Customer',      getCustomerName(job.customerId)],
-                                    ['Customer ID',   job.customerId],
-                                    ['Category',      job.shipmentCategory || '-'],
-                                    ['Status',        null],
-                                    ['Assigned To',   null],
-                                    ['Created Date',  job.createdDate ? new Date(job.createdDate).toLocaleDateString() : '-'],
-                                  ].map(([label, val], i) => (
-                                    <tr key={label} className={i % 2 === 0 ? 'bg-white' : 'bg-[#f8fafc]'}>
-                                      <td className="px-4 py-3 w-40 text-gray-500 font-medium whitespace-nowrap border-b border-r border-gray-100">{label}</td>
-                                      <td className="px-4 py-3 text-gray-900 font-semibold border-b border-gray-100">
-                                        {label === 'Status' ? (
-                                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                                            job.status === 'Open'              ? 'bg-yellow-100 text-yellow-800' :
-                                            job.status === 'In Progress'       ? 'bg-blue-100 text-blue-800' :
-                                            job.status === 'Pending Payment'   ? 'bg-orange-100 text-orange-800' :
-                                            job.status === 'Payment Collected' ? 'bg-green-100 text-green-800' :
-                                            job.status === 'Overdue'           ? 'bg-red-100 text-red-800' :
-                                            job.status === 'Completed'         ? 'bg-gray-100 text-gray-700' :
-                                            'bg-red-100 text-red-800'
-                                          }`}>{job.status || 'Open'}</span>
-                                        ) : label === 'Assigned To' ? (
-                                          job.assignments && job.assignments.length > 0
-                                            ? <div className="flex flex-wrap gap-1.5">
-                                                {job.assignments.map((a, idx) => (
-                                                  <span key={a.userId || idx} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#eef3f8] text-[#1E3F63] border border-[#c8d8e8]">
-                                                    {a.userName || getUserFullName(a.userId)}
-                                                  </span>
-                                                ))}
-                                              </div>
-                                            : <span className="text-gray-400">—</span>
-                                        ) : val}
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-
-                            {/* Shipment Details */}
-                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                              <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="#1E3F63" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0">
-                                  <path d="M10 17h4V5H2v12h3"/><path d="M20 17h2v-3.34a4 4 0 0 0-1.17-2.83L19 9h-5v8h1"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/>
-                                </svg>
-                                <span className="text-xs font-bold text-[#1E3F63] uppercase tracking-wider">Shipment Details</span>
-                              </div>
-                              <table className="w-full text-sm border-collapse">
-                                <tbody>
-                                  {[
-                                    ['BL Number',           job.blNumber || '-'],
-                                    ['CUSDEC Number',       formatCusdecWithDate(job.cusdecNumber, job.cusdecDate)],
-                                    ['Open Date',           job.openDate ? new Date(job.openDate).toLocaleDateString() : '-'],
-                                    ['LC/TT/DP/DA/NFE No.', job.lcNumber || '-'],
-                                    ...( !(job.shipmentCategory === 'Vehicle - Personal' || job.shipmentCategory === 'Vehicle - Company')
-                                          ? [['Container Number', job.containerNumber || '-']] : [] ),
-                                    ...( (job.shipmentCategory === 'Vehicle - Personal' || job.shipmentCategory === 'Vehicle - Company' || job.chassisNumber)
-                                          ? [['Chassis Number', job.chassisNumber || '-']] : [] ),
-                                    ['Exporter',            job.exporter || '-'],
-                                    ['Transporter',         job.transporter || '-'],
-                                    ['Transport Delivery',  job.transportDeliveryDate ? new Date(job.transportDeliveryDate).toLocaleDateString() : '-'],
-                                  ].map(([label, val], i) => (
-                                    <tr key={label} className={i % 2 === 0 ? 'bg-white' : 'bg-[#f8fafc]'}>
-                                      <td className="px-4 py-3 w-44 text-gray-500 font-medium whitespace-nowrap border-b border-r border-gray-100">{label}</td>
-                                      <td className="px-4 py-3 text-gray-900 font-semibold border-b border-gray-100">{val}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-
-                            {/* Payment Details card removed — see full-width section below */}
-                          </div>
-
-                          {/* ── Full-width Payment Details section ── */}
-                          {(() => {
-                            const pd = jobPayments[job.jobId] || { officeItems: [], advancePayments: [] };
-                            const fmtLKR = (n) => 'LKR ' + parseFloat(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
-                            const fmtDT  = (d) => { if (!d) return '-'; const p = new Date(d); return Number.isNaN(p.getTime()) ? String(d) : p.toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); };
-                            const officeTotal   = pd.officeItems.reduce((s,i) => s + parseFloat(i.actualCost||0), 0);
-                            const advanceTotal  = pd.advancePayments.reduce((s,p) => s + parseFloat(p.amount||0), 0);
-                            return (                              <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-5">
-                                {/* Header */}
-                                <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 bg-gray-50">
-                                  <div className="flex items-center gap-2">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="#1E3F63" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0">
-                                      <rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>
-                                    </svg>
-                                    <span className="text-xs font-bold text-[#1E3F63] uppercase tracking-wider">Payment Details</span>
-                                  </div>
-                                  {/* Add buttons in header */}
-                                  {['Admin','Super Admin','Manager','Office Executive'].includes(user?.role) && (
-                                    <div className="flex items-center gap-2">
-                                      <button
-                                        onClick={() => setOfficePayModal(job.jobId)}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-[#1E3F63] hover:bg-[#193552] transition"
-                                        title="Add office payment"
-                                      >
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-                                          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-                                        </svg>
-                                        Office Payment
-                                      </button>
-                                      <button
-                                        onClick={() => setAdvancePayModal(job)}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-[#15803d] bg-green-50 hover:bg-green-100 border border-green-200 transition"
-                                        title="Add advance payment"
-                                      >
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-                                          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-                                        </svg>
-                                        Advance Payment
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
-
-                                {/* Office Pay Items sub-table */}
-                                <div className="border-b border-gray-100">
-                                  <div className="px-5 py-2.5 bg-[#eef3f8] border-b border-[#c8d8e8]">
-                                    <span className="text-xs font-bold text-[#1E3F63] uppercase tracking-wider">Office Pay Items</span>
-                                  </div>
-                                  <table className="w-full text-sm border-collapse">
-                                    <thead>
-                                      <tr className="bg-gray-50 border-b border-gray-100">
-                                        <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Description</th>
-                                        <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Amount</th>
-                                        <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Paid By</th>
-                                        <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Date</th>
-                                        {['Admin','Super Admin','Manager','Office Executive'].includes(user?.role) && (
-                                          <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Actions</th>
-                                        )}
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {pd.officeItems.length === 0 ? (
-                                        <tr><td colSpan={5} className="px-5 py-3 text-gray-400 text-xs italic">No office payments yet</td></tr>
-                                      ) : pd.officeItems.map((item, i) => (
-                                        <tr key={item.officePayItemId||i} className={`border-b border-gray-50 ${i%2===0?'bg-white':'bg-[#f8fafc]'}`}>
-                                          <td className="px-5 py-3 text-gray-900 font-medium">{item.description||'-'}</td>
-                                          <td className="px-5 py-3 text-gray-900 font-semibold">{fmtLKR(item.actualCost)}</td>
-                                          <td className="px-5 py-3 text-gray-600">{item.paidByName||'-'}</td>
-                                          <td className="px-5 py-3 text-gray-600">{fmtDT(item.paymentDate)}</td>
-                                          {['Admin','Super Admin','Manager','Office Executive'].includes(user?.role) && (
-                                            <td className="px-5 py-3">
-                                              <button
-                                                onClick={() => setEditingOfficePayItem({ officePayItemId: item.officePayItemId, description: item.description || '', actualCost: String(item.actualCost || ''), jobId: job.jobId })}
-                                                className="p-1.5 rounded text-blue-600 hover:bg-blue-50 transition mr-1" title="Edit"
-                                              >
-                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-                                                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                                                </svg>
-                                              </button>
-                                              <button
-                                                onClick={async () => { if (!window.confirm('Are you sure you want to delete this office pay item?')) return; try { await apiClient.delete(`/office-pay-items/${item.officePayItemId}`); fetchJobs(); fetchJobPayments(job.jobId); } catch(err) { console.error('Delete error:', err); } }}
-                                                className="p-1.5 rounded text-red-500 hover:bg-red-50 transition" title="Delete"
-                                              >
-                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-                                                  <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                                                </svg>
-                                              </button>
-                                            </td>
-                                          )}
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                    <tfoot>
-                                      <tr className="bg-[#f0f4f8]">
-                                        <td colSpan={['Admin','Super Admin','Manager','Office Executive'].includes(user?.role) ? 4 : 3} className="px-5 py-2.5 text-right text-xs font-bold text-gray-600 uppercase tracking-wide">Total Office Payments</td>
-                                        <td className="px-5 py-2.5 text-[#1E3F63] font-bold text-sm">{fmtLKR(officeTotal)}</td>
-                                      </tr>
-                                    </tfoot>
-                                  </table>
-                                </div>
-
-                                {/* Advance Payments sub-table */}
-                                <div>
-                                  <div className="px-5 py-2.5 bg-[#f0fdf4] border-b border-[#bbf7d0]">
-                                    <span className="text-xs font-bold text-[#15803d] uppercase tracking-wider">Advance Payments</span>
-                                  </div>
-                                  <table className="w-full text-sm border-collapse">
-                                    <thead>
-                                      <tr className="bg-gray-50 border-b border-gray-100">
-                                        <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Description</th>
-                                        <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Amount</th>
-                                        <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Paid By</th>
-                                        <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Date</th>
-                                        <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Notes</th>
-                                        {['Admin','Super Admin','Manager'].includes(user?.role) && (
-                                          <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Actions</th>
-                                        )}
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {pd.advancePayments.length === 0 ? (
-                                        <tr><td colSpan={6} className="px-5 py-3 text-gray-400 text-xs italic">No advance payments yet</td></tr>
-                                      ) : pd.advancePayments.map((pmt, i) => {
-                                        const ptLabel = (pmt.paymentType||'').toLowerCase() === 'check'
-                                          ? `Advance Payment (Check #${pmt.checkNo||'-'})`
-                                          : `Advance Payment (${pmt.paymentType||'-'})`;
-                                        return (
-                                          <tr key={pmt.advancePaymentId||i} className={`border-b border-gray-50 ${i%2===0?'bg-white':'bg-[#f8fafc]'}`}>
-                                            <td className="px-5 py-3 text-gray-900 font-medium">{ptLabel}</td>
-                                            <td className="px-5 py-3 text-gray-900 font-semibold">{fmtLKR(pmt.amount)}</td>
-                                            <td className="px-5 py-3 text-gray-600">{pmt.recordedByName||pmt.recordedBy||'-'}</td>
-                                            <td className="px-5 py-3 text-gray-600">{fmtDT(pmt.paymentMadeDate)}</td>
-                                            <td className="px-5 py-3 text-gray-500 text-xs">{pmt.notes||'-'}</td>
-                                            {['Admin','Super Admin','Manager'].includes(user?.role) && (
-                                              <td className="px-5 py-3">
-                                                <button
-                                                  onClick={() => setEditingAdvancePayment({ advancePaymentId: pmt.advancePaymentId, amount: String(pmt.amount || ''), paymentMadeDate: pmt.paymentMadeDate ? new Date(pmt.paymentMadeDate).toISOString().split('T')[0] : '', paymentType: pmt.paymentType || 'cash', checkNo: pmt.checkNo || '', notes: pmt.notes || '', jobId: job.jobId })}
-                                                  className={`p-1.5 rounded mr-1 transition ${pmt.isLegacy ? 'text-gray-300 cursor-not-allowed' : 'text-blue-600 hover:bg-blue-50'}`}
-                                                  title={pmt.isLegacy ? 'Legacy records cannot be edited' : 'Edit'}
-                                                  disabled={pmt.isLegacy}
-                                                >
-                                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-                                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                                                  </svg>
-                                                </button>
-                                                <button
-                                                  onClick={async () => { if (pmt.isLegacy || !pmt.advancePaymentId) return; if (!window.confirm('Are you sure you want to delete this advance payment?')) return; try { await apiClient.delete(`/jobs/${job.jobId}/advance-payments/${pmt.advancePaymentId}`); fetchJobs(); fetchJobPayments(job.jobId); } catch(err) { console.error('Delete error:', err); } }}
-                                                  className={`p-1.5 rounded transition ${pmt.isLegacy ? 'text-gray-300 cursor-not-allowed' : 'text-red-500 hover:bg-red-50'}`}
-                                                  title={pmt.isLegacy ? 'Legacy records cannot be deleted' : 'Delete'}
-                                                  disabled={pmt.isLegacy}
-                                                >
-                                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-                                                    <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                                                  </svg>
-                                                </button>
-                                              </td>
-                                            )}
-                                          </tr>
-                                        );
-                                      })}
-                                    </tbody>
-                                    <tfoot>
-                                      <tr className="bg-[#f0f4f8]">
-                                        <td colSpan={['Admin','Super Admin','Manager'].includes(user?.role) ? 5 : 4} className="px-5 py-2.5 text-right text-xs font-bold text-gray-600 uppercase tracking-wide">Total Advance Payments</td>
-                                        <td className="px-5 py-2.5 text-[#15803d] font-bold text-sm">{fmtLKR(advanceTotal)}</td>
-                                      </tr>
-                                    </tfoot>
-                                  </table>
-                                </div>
-
-
-                              </div>
-                            );
-                          })()}
-
-                          {/* Petty Cash section */}
-                          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-                            <JobPettyCash job={job} users={users} onUpdate={fetchJobs} />
-                          </div>
-
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              ))}
+                ))}
             </tbody>
           </table>
           </div>
@@ -1007,7 +717,15 @@ function Jobs() {
       {officePayModal && (
         <OfficePayItems
           jobId={officePayModal}
-          onUpdate={() => { fetchJobs(); fetchJobPayments(officePayModal); setOfficePayModal(null); }}
+          onUpdate={() => { 
+            fetchJobs(); 
+            fetchJobPayments(officePayModal);
+            // Refresh the view modal data
+            const updatedJob = jobs.find(j => j.jobId === viewJobModal?.jobId);
+            if (updatedJob) setViewJobModal(updatedJob);
+            setOfficePayModal(null);
+            // Keep viewJobModal open
+          }}
           forceOpen
         />
       )}
@@ -1016,7 +734,15 @@ function Jobs() {
       {advancePayModal && (
         <AdvancePayment
           job={advancePayModal}
-          onUpdate={() => { fetchJobs(); fetchJobPayments(advancePayModal.jobId); setAdvancePayModal(null); }}
+          onUpdate={() => { 
+            fetchJobs(); 
+            fetchJobPayments(advancePayModal.jobId);
+            // Refresh the view modal data
+            const updatedJob = jobs.find(j => j.jobId === advancePayModal?.jobId);
+            if (updatedJob) setViewJobModal(updatedJob);
+            setAdvancePayModal(null);
+            // Keep viewJobModal open
+          }}
           forceOpen
         />
       )}
@@ -1095,222 +821,571 @@ function Jobs() {
         </div>
       )}
 
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-xl max-w-4xl w-full my-8">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200 sticky top-0 bg-white rounded-t-xl z-10">
-              <h2 className="text-2xl font-bold text-gray-900">{isEditing ? 'Edit Job' : 'Create New Job'}</h2>
-              <button onClick={() => { setShowModal(false); setIsEditing(false); setSelectedJob(null); setSelectedUsers([]); setShowUserDropdown(false); setFormStep(1); setPcAssignments([]); setPcFormRow({ userId:'', amount:'' }); }} className="text-gray-500 hover:text-gray-700 text-2xl font-bold">×</button>
+
+      {/* View Job Details Modal */}
+      {viewJobModal && ReactDOM.createPortal(
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] px-[2.5vw] py-2">
+          <div className="bg-white rounded-2xl shadow-2xl flex flex-col" style={{ width: '95vw', height: '97vh' }}>
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-10 py-5 rounded-t-2xl shrink-0" style={{ background: 'linear-gradient(135deg,#1E3F63 0%,#2f5e8f 100%)' }}>
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-white">Job Details</h2>
+                  <p className="text-blue-200 text-xs mt-0.5">View complete job information</p>
+                </div>
+              </div>
+              <button onClick={() => setViewJobModal(null)} className="w-9 h-9 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
             </div>
 
-            {/* ── Step indicator ── */}
+            {/* Body */}
+            <div className="flex-1 min-h-0 overflow-y-auto px-14 py-9">
+              {/* ── Top: two info cards ── */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
+
+                {/* Basic Information */}
+                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                  <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#1E3F63" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0">
+                      <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/>
+                    </svg>
+                    <span className="text-xs font-bold text-[#1E3F63] uppercase tracking-wider">Basic Information</span>
+                  </div>
+                  <table className="w-full text-sm border-collapse">
+                    <tbody>
+                      {[
+                        ['Job ID',        viewJobModal.jobId],
+                        ['Customer',      getCustomerName(viewJobModal.customerId)],
+                        ['Customer ID',   viewJobModal.customerId],
+                        ['Category',      viewJobModal.shipmentCategory || '-'],
+                        ['Status',        null],
+                        ['Assigned To',   null],
+                        ['Created Date',  viewJobModal.createdDate ? new Date(viewJobModal.createdDate).toLocaleDateString() : '-'],
+                      ].map(([label, val], i) => (
+                        <tr key={label} className={i % 2 === 0 ? 'bg-white' : 'bg-[#f8fafc]'}>
+                          <td className="px-4 py-3 w-40 text-gray-500 font-medium whitespace-nowrap border-b border-r border-gray-100">{label}</td>
+                          <td className="px-4 py-3 text-gray-900 font-semibold border-b border-gray-100">
+                            {label === 'Status' ? (
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                                viewJobModal.status === 'Open'              ? 'bg-yellow-100 text-yellow-800' :
+                                viewJobModal.status === 'In Progress'       ? 'bg-blue-100 text-blue-800' :
+                                viewJobModal.status === 'Pending Payment'   ? 'bg-orange-100 text-orange-800' :
+                                viewJobModal.status === 'Payment Collected' ? 'bg-green-100 text-green-800' :
+                                viewJobModal.status === 'Overdue'           ? 'bg-red-100 text-red-800' :
+                                viewJobModal.status === 'Completed'         ? 'bg-gray-100 text-gray-700' :
+                                'bg-red-100 text-red-800'
+                              }`}>{viewJobModal.status || 'Open'}</span>
+                            ) : label === 'Assigned To' ? (
+                              viewJobModal.assignments && viewJobModal.assignments.length > 0
+                                ? <div className="flex flex-wrap gap-1.5">
+                                    {viewJobModal.assignments.map((a, idx) => (
+                                      <span key={a.userId || idx} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#eef3f8] text-[#1E3F63] border border-[#c8d8e8]">
+                                        {a.userName || getUserFullName(a.userId)}
+                                      </span>
+                                    ))}
+                                  </div>
+                                : <span className="text-gray-400">—</span>
+                            ) : val}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Shipment Details */}
+                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                  <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#1E3F63" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0">
+                      <path d="M10 17h4V5H2v12h3"/><path d="M20 17h2v-3.34a4 4 0 0 0-1.17-2.83L19 9h-5v8h1"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/>
+                    </svg>
+                    <span className="text-xs font-bold text-[#1E3F63] uppercase tracking-wider">Shipment Details</span>
+                  </div>
+                  <table className="w-full text-sm border-collapse">
+                    <tbody>
+                      {[
+                        ['BL Number',           viewJobModal.blNumber || '-'],
+                        ['CUSDEC Number',       formatCusdecWithDate(viewJobModal.cusdecNumber, viewJobModal.cusdecDate)],
+                        ['Open Date',           viewJobModal.openDate ? new Date(viewJobModal.openDate).toLocaleDateString() : '-'],
+                        ['LC/TT/DP/DA/NFE No.', viewJobModal.lcNumber || '-'],
+                        ...( !(viewJobModal.shipmentCategory === 'Vehicle - Personal' || viewJobModal.shipmentCategory === 'Vehicle - Company')
+                              ? [['Container Number', viewJobModal.containerNumber || '-']] : [] ),
+                        ...( (viewJobModal.shipmentCategory === 'Vehicle - Personal' || viewJobModal.shipmentCategory === 'Vehicle - Company' || viewJobModal.chassisNumber)
+                              ? [['Chassis Number', viewJobModal.chassisNumber || '-']] : [] ),
+                        ['Exporter',            viewJobModal.exporter || '-'],
+                        ['Transporter',         viewJobModal.transporter || '-'],
+                        ['Transport Delivery',  viewJobModal.transportDeliveryDate ? new Date(viewJobModal.transportDeliveryDate).toLocaleDateString() : '-'],
+                      ].map(([label, val], i) => (
+                        <tr key={label} className={i % 2 === 0 ? 'bg-white' : 'bg-[#f8fafc]'}>
+                          <td className="px-4 py-3 w-44 text-gray-500 font-medium whitespace-nowrap border-b border-r border-gray-100">{label}</td>
+                          <td className="px-4 py-3 text-gray-900 font-semibold border-b border-gray-100">{val}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* ── Full-width Payment Details section ── */}
+              {(() => {
+                const pd = jobPayments[viewJobModal.jobId] || { officeItems: [], advancePayments: [] };
+                const fmtLKR = (n) => 'LKR ' + parseFloat(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+                const fmtDT  = (d) => { if (!d) return '-'; const p = new Date(d); return Number.isNaN(p.getTime()) ? String(d) : p.toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); };
+                const officeTotal   = pd.officeItems.reduce((s,i) => s + parseFloat(i.actualCost||0), 0);
+                const advanceTotal  = pd.advancePayments.reduce((s,p) => s + parseFloat(p.amount||0), 0);
+                return (
+                  <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-5">
+                    {/* Header */}
+                    <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-indigo-50">
+                      <div className="flex items-center gap-2">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#1E3F63" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 shrink-0">
+                          <rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>
+                        </svg>
+                        <span className="text-sm font-bold text-[#1E3F63] uppercase tracking-wider">Payment Details</span>
+                      </div>
+                      {/* Add buttons in header */}
+                      {['Admin','Super Admin','Manager','Office Executive'].includes(user?.role) && (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setOfficePayModal(viewJobModal.jobId)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-[#1E3F63] hover:bg-[#193552] transition"
+                            title="Add office payment"
+                          >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                            </svg>
+                            Office Payment
+                          </button>
+                          <button
+                            onClick={() => setAdvancePayModal(viewJobModal)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-[#15803d] bg-green-50 hover:bg-green-100 border border-green-200 transition"
+                            title="Add advance payment"
+                          >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                            </svg>
+                            Advance Payment
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Office Pay Items sub-table */}
+                    <div className="border-b border-gray-100">
+                      <div className="px-5 py-2.5 bg-blue-50 border-b border-blue-200">
+                        <span className="text-xs font-bold text-blue-700 uppercase tracking-wider">① Office Pay Items</span>
+                      </div>
+                      <table className="w-full text-sm border-collapse">
+                        <thead>
+                          <tr className="bg-gray-50 border-b border-gray-100">
+                            <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Description</th>
+                            <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Amount</th>
+                            <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Paid By</th>
+                            <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Date</th>
+                            {['Admin','Super Admin','Manager','Office Executive'].includes(user?.role) && (
+                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Actions</th>
+                            )}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pd.officeItems.length === 0 ? (
+                            <tr><td colSpan={5} className="px-5 py-3 text-gray-400 text-xs italic">No office payments yet</td></tr>
+                          ) : pd.officeItems.map((item, i) => (
+                            <tr key={item.officePayItemId||i} className={`border-b border-gray-50 ${i%2===0?'bg-white':'bg-[#f8fafc]'}`}>
+                              <td className="px-5 py-3 text-gray-900 font-medium">{item.description||'-'}</td>
+                              <td className="px-5 py-3 text-gray-900 font-semibold">{fmtLKR(item.actualCost)}</td>
+                              <td className="px-5 py-3 text-gray-600">{item.paidByName||'-'}</td>
+                              <td className="px-5 py-3 text-gray-600">{fmtDT(item.paymentDate)}</td>
+                              {['Admin','Super Admin','Manager','Office Executive'].includes(user?.role) && (
+                                <td className="px-5 py-3">
+                                  <button
+                                    onClick={() => setEditingOfficePayItem({ officePayItemId: item.officePayItemId, description: item.description || '', actualCost: String(item.actualCost || ''), jobId: viewJobModal.jobId })}
+                                    className="p-1.5 rounded text-blue-600 hover:bg-blue-50 transition mr-1" title="Edit"
+                                  >
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                    </svg>
+                                  </button>
+                                  <button
+                                    onClick={async () => { if (!window.confirm('Are you sure you want to delete this office pay item?')) return; try { await apiClient.delete(`/office-pay-items/${item.officePayItemId}`); fetchJobs(); fetchJobPayments(viewJobModal.jobId); } catch(err) { console.error('Delete error:', err); } }}
+                                    className="p-1.5 rounded text-red-500 hover:bg-red-50 transition" title="Delete"
+                                  >
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                                      <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                    </svg>
+                                  </button>
+                                </td>
+                              )}
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="bg-blue-50 border-t border-blue-200">
+                            <td colSpan={['Admin','Super Admin','Manager','Office Executive'].includes(user?.role) ? 4 : 3} className="px-5 py-2.5 text-right text-xs font-bold text-gray-600 uppercase tracking-wide">Total Office Payments</td>
+                            <td className="px-5 py-2.5 text-blue-700 font-bold text-sm">{fmtLKR(officeTotal)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+
+                    {/* Advance Payments sub-table */}
+                    <div>
+                      <div className="px-5 py-2.5 bg-green-50 border-b border-green-200">
+                        <span className="text-xs font-bold text-green-700 uppercase tracking-wider">② Advance Payments</span>
+                      </div>
+                      <table className="w-full text-sm border-collapse">
+                        <thead>
+                          <tr className="bg-gray-50 border-b border-gray-100">
+                            <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Description</th>
+                            <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Amount</th>
+                            <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Paid By</th>
+                            <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Date</th>
+                            <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Notes</th>
+                            {['Admin','Super Admin','Manager'].includes(user?.role) && (
+                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Actions</th>
+                            )}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pd.advancePayments.length === 0 ? (
+                            <tr><td colSpan={6} className="px-5 py-3 text-gray-400 text-xs italic">No advance payments yet</td></tr>
+                          ) : pd.advancePayments.map((pmt, i) => {
+                            const ptLabel = (pmt.paymentType||'').toLowerCase() === 'check'
+                              ? `Advance Payment (Check #${pmt.checkNo||'-'})`
+                              : `Advance Payment (${pmt.paymentType||'-'})`;
+                            return (
+                              <tr key={pmt.advancePaymentId||i} className={`border-b border-gray-50 ${i%2===0?'bg-white':'bg-[#f8fafc]'}`}>
+                                <td className="px-5 py-3 text-gray-900 font-medium">{ptLabel}</td>
+                                <td className="px-5 py-3 text-gray-900 font-semibold">{fmtLKR(pmt.amount)}</td>
+                                <td className="px-5 py-3 text-gray-600">{pmt.recordedByName||pmt.recordedBy||'-'}</td>
+                                <td className="px-5 py-3 text-gray-600">{fmtDT(pmt.paymentMadeDate)}</td>
+                                <td className="px-5 py-3 text-gray-500 text-xs">{pmt.notes||'-'}</td>
+                                {['Admin','Super Admin','Manager'].includes(user?.role) && (
+                                  <td className="px-5 py-3">
+                                    <button
+                                      onClick={() => setEditingAdvancePayment({ advancePaymentId: pmt.advancePaymentId, amount: String(pmt.amount || ''), paymentMadeDate: pmt.paymentMadeDate ? new Date(pmt.paymentMadeDate).toISOString().split('T')[0] : '', paymentType: pmt.paymentType || 'cash', checkNo: pmt.checkNo || '', notes: pmt.notes || '', jobId: viewJobModal.jobId })}
+                                      className={`p-1.5 rounded mr-1 transition ${pmt.isLegacy ? 'text-gray-300 cursor-not-allowed' : 'text-blue-600 hover:bg-blue-50'}`}
+                                      title={pmt.isLegacy ? 'Legacy records cannot be edited' : 'Edit'}
+                                      disabled={pmt.isLegacy}
+                                    >
+                                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                      </svg>
+                                    </button>
+                                    <button
+                                      onClick={async () => { if (pmt.isLegacy || !pmt.advancePaymentId) return; if (!window.confirm('Are you sure you want to delete this advance payment?')) return; try { await apiClient.delete(`/jobs/${viewJobModal.jobId}/advance-payments/${pmt.advancePaymentId}`); fetchJobs(); fetchJobPayments(viewJobModal.jobId); } catch(err) { console.error('Delete error:', err); } }}
+                                      className={`p-1.5 rounded transition ${pmt.isLegacy ? 'text-gray-300 cursor-not-allowed' : 'text-red-500 hover:bg-red-50'}`}
+                                      title={pmt.isLegacy ? 'Legacy records cannot be deleted' : 'Delete'}
+                                      disabled={pmt.isLegacy}
+                                    >
+                                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                                        <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                      </svg>
+                                    </button>
+                                  </td>
+                                )}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                        <tfoot>
+                          <tr className="bg-green-50 border-t border-green-200">
+                            <td colSpan={['Admin','Super Admin','Manager'].includes(user?.role) ? 5 : 4} className="px-5 py-2.5 text-right text-xs font-bold text-gray-600 uppercase tracking-wide">Total Advance Payments</td>
+                            <td className="px-5 py-2.5 text-green-700 font-bold text-sm">{fmtLKR(advanceTotal)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+
+                    {/* Petty Cash Assignments section */}
+                    <div className="border-t border-gray-100">
+                      <div className="px-5 py-2.5 bg-purple-50 border-b border-purple-200">
+                        <span className="text-xs font-bold text-purple-700 uppercase tracking-wider">③ Petty Cash Assignments</span>
+                      </div>
+                      <table className="w-full text-sm border-collapse">
+                        <thead>
+                          <tr className="bg-gray-50 border-b border-gray-100">
+                            <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase">Waff Clerk</th>
+                            <th className="px-5 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase">Assigned Amount</th>
+                            <th className="px-5 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase">Settled Amount</th>
+                            <th className="px-5 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase">Balance / Return</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {viewJobModal.assignments && viewJobModal.assignments.length > 0 ? (
+                            viewJobModal.assignments.map((a, i) => {
+                              const assignedAmount = parseFloat(a.assignedAmount || 0);
+                              const settledAmount = parseFloat(a.settledAmount || 0);
+                              const balanceAmount = assignedAmount - settledAmount;
+                              return (
+                                <tr key={a.pettyAssignmentId||i} className={`border-b border-gray-50 ${i%2===0?'bg-white':'bg-[#f8fafc]'}`}>
+                                  <td className="px-5 py-3 text-gray-900 font-medium">{a.userName || a.waff_clerk_name || getUserFullName(a.userId)}</td>
+                                  <td className="px-5 py-3 text-right text-[#1E3F63] font-bold">{assignedAmount.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+                                  <td className="px-5 py-3 text-right text-gray-600 font-medium">{settledAmount.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+                                  <td className={`px-5 py-3 text-right font-bold ${balanceAmount > 0 ? 'text-orange-600' : balanceAmount < 0 ? 'text-red-600' : 'text-gray-600'}`}>
+                                    {balanceAmount.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          ) : (
+                            <tr><td colSpan={4} className="px-5 py-3 text-gray-400 text-xs italic text-center">No petty cash assignments yet</td></tr>
+                          )}
+                        </tbody>
+                        <tfoot>
+                          <tr className="bg-purple-50 border-t-2 border-purple-200">
+                            <td className="px-5 py-2.5 text-right text-xs font-bold text-purple-700 uppercase tracking-wide">Total</td>
+                            <td className="px-5 py-2.5 text-right text-[#1E3F63] font-bold text-sm">
+                              {(viewJobModal.assignments || []).reduce((sum,a)=>sum+parseFloat(a.assignedAmount||0),0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+                            </td>
+                            <td className="px-5 py-2.5 text-right text-gray-600 font-bold text-sm">
+                              {(viewJobModal.assignments || []).reduce((sum,a)=>sum+parseFloat(a.settledAmount||0),0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+                            </td>
+                            <td className="px-5 py-2.5 text-right text-orange-600 font-bold text-sm">
+                              {((viewJobModal.assignments || []).reduce((sum,a)=>sum+parseFloat(a.assignedAmount||0),0) - (viewJobModal.assignments || []).reduce((sum,a)=>sum+parseFloat(a.settledAmount||0),0)).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })()}
+
+
+
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end px-10 py-5 border-t border-gray-200 bg-gray-50 rounded-b-2xl shrink-0 gap-3">
+              <button type="button" onClick={() => setViewJobModal(null)} className="px-5 py-2.5 rounded-lg text-sm font-semibold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">Close</button>
+            </div>
+
+          </div>
+        </div>
+      , document.body)}
+
+      {showModal && ReactDOM.createPortal(
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] px-[2.5vw] py-2">
+          <div className="bg-white rounded-2xl shadow-2xl flex flex-col" style={{ width: '95vw', height: '97vh' }}>
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-10 py-5 rounded-t-2xl shrink-0" style={{ background: 'linear-gradient(135deg,#1E3F63 0%,#2f5e8f 100%)' }}>
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-white">{isEditing ? 'Edit Job' : 'Create New Job'}</h2>
+                  <p className="text-blue-200 text-xs mt-0.5">Super Shine Cargo Service</p>
+                </div>
+              </div>
+              <button onClick={() => { setShowModal(false); setIsEditing(false); setSelectedJob(null); setSelectedUsers([]); setShowUserDropdown(false); setFormStep(1); setPcAssignments([]); setPcFormRow({ userId:'', amount:'' }); }} className="w-9 h-9 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+
+            {/* Step indicator */}
             {!isEditing && (
-              <div className="flex items-center gap-4 px-6 py-3 bg-gray-50 border-b border-gray-200">
+              <div className="flex items-center px-10 py-4 bg-gray-50 border-b border-gray-200 shrink-0">
                 {[{n:1,label:'Job Details'},{n:2,label:'Petty Cash'}].map((s,i) => (
                   <React.Fragment key={s.n}>
-                    <div className="flex items-center gap-2">
-                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${formStep>s.n?'bg-green-600 text-white':formStep===s.n?'bg-blue-600 text-white':'bg-gray-200 text-gray-500'}`}>
-                        {formStep>s.n?'✓':s.n}
+                    <div className="flex items-center gap-2.5">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-all ${formStep>s.n?'bg-[#15803d] border-[#15803d] text-white':formStep===s.n?'bg-[#1E3F63] border-[#1E3F63] text-white':'bg-white border-gray-300 text-gray-400'}`}>
+                        {formStep>s.n?<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M20 6 9 17l-5-5"/></svg>:s.n}
                       </div>
-                      <span className={`text-sm font-medium ${formStep===s.n?'text-gray-900':formStep>s.n?'text-green-600':'text-gray-400'}`}>{s.label}</span>
+                      <span className={`text-sm font-semibold ${formStep===s.n?'text-[#1E3F63]':formStep>s.n?'text-[#15803d]':'text-gray-400'}`}>{s.label}</span>
                     </div>
-                    {i<1&&<div className={`flex-1 h-0.5 rounded ${formStep>s.n?'bg-green-600':'bg-gray-200'}`}/>}
+                    {i<1&&<div className={`flex-1 h-0.5 mx-4 rounded ${formStep>s.n?'bg-[#15803d]':'bg-gray-200'}`}/>}
                   </React.Fragment>
                 ))}
               </div>
             )}
 
-            <form onSubmit={isEditing ? handleUpdate : handleSubmit} className="p-6 space-y-6 max-h-96 overflow-y-auto">
-              {message && (
-                <div className={`p-3 rounded-lg text-sm border-l-4 ${message.includes('Error')||message.includes('Please')?'bg-red-50 border-red-500 text-red-700':'bg-green-50 border-green-500 text-green-700'}`}>{message}</div>
-              )}
+            {/* Body */}
+            <div className="flex-1 min-h-0 overflow-y-auto px-14 py-9">
+              {message && <div className={`mb-6 p-3 rounded-lg text-sm border-l-4 ${message.includes('Error')||message.includes('Please')?'bg-red-50 border-red-500 text-red-700':'bg-green-50 border-green-500 text-green-700'}`}>{message}</div>}
               {(() => {
-                /* ── STEP 1: Job Details (Basic + Shipment combined) ── */
+                const inp = "w-full px-4 py-3 border border-gray-300 rounded-xl text-sm text-gray-800 placeholder-gray-400 outline-none focus:border-[#1E3F63] focus:ring-2 focus:ring-[#1E3F63]/20 transition bg-white";
+                const lbl = "block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2";
+                const req = <span className="text-red-500 ml-0.5">*</span>;
+                const SectionTitle = ({color, title}) => (
+                  <div className="flex items-center gap-2.5 mb-7">
+                    <div className="w-1 h-6 rounded-full" style={{background:color}}/>
+                    <h3 className="text-sm font-bold uppercase tracking-widest text-[#1E3F63]">{title}</h3>
+                  </div>
+                );
+
                 if (isEditing || formStep === 1) return (
-                  <>
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Basic Information</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Customer <span className="text-red-600">*</span></label>
-                          <select name="customerId" value={formData.customerId} onChange={handleChange} required disabled={isEditing} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
-                            <option value="">Select Customer</option>
-                            {customers.map(c=><option key={c.customerId} value={c.customerId}>{c.customerId} — {c.name}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Open Date <span className="text-red-600">*</span></label>
-                          <input type="date" name="openDate" value={formData.openDate} onChange={handleChange} required className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"/>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Assign To Users</label>
-                          <div className="relative multi-select-dropdown">
-                            <button type="button" onClick={toggleUserDropdown} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none flex items-center justify-between text-left">
-                              <span className={selectedUsers.length===0?'text-gray-400':'text-gray-800'}>{getSelectedUserNames()}</span>
-                              <svg className={`w-4 h-4 text-gray-400 transition-transform shrink-0 ${showUserDropdown?'rotate-180':''}`} viewBox="0 0 12 12" fill="none"><path d="M2 4L6 8L10 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                            </button>
-                            {showUserDropdown && (
-                              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-52 overflow-y-auto">
-                                {users.length===0?<div className="px-4 py-3 text-gray-400 text-sm">No users available</div>:users.map(u=>(
-                                  <label key={u.userId} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 cursor-pointer transition">
-                                    <input type="checkbox" checked={selectedUsers.includes(u.userId)} onChange={e=>handleUserSelection(u.userId,e.target.checked)} className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"/>
-                                    <span className="text-sm text-gray-700">{u.fullName}</span>
-                                  </label>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                          {selectedUsers.length>0&&(
-                            <div className="flex flex-wrap gap-1.5 mt-2">
-                              {selectedUsers.map(uid=>{const u=users.find(x=>x.userId===uid);return u?(<span key={uid} className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-1 rounded-full">{u.fullName}<button type="button" onClick={()=>handleUserSelection(uid,false)} className="text-blue-600 hover:text-blue-800 ml-0.5">×</button></span>):null;})}
+                  <div>
+                    <SectionTitle color="#1E3F63" title="Basic Information" />
+                    <div className="grid grid-cols-3 gap-10 mb-10">
+                      <div>
+                        <label className={lbl}>Customer {req}</label>
+                        <select name="customerId" value={formData.customerId} onChange={handleChange} required disabled={isEditing} className={inp}>
+                          <option value="">Select Customer</option>
+                          {customers.map(c=><option key={c.customerId} value={c.customerId}>{c.customerId} — {c.name}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className={lbl}>Open Date {req}</label>
+                        <input type="date" name="openDate" value={formData.openDate} onChange={handleChange} required className={inp}/>
+                      </div>
+                      <div>
+                        <label className={lbl}>Assign To Users</label>
+                        <div className="relative multi-select-dropdown">
+                          <button type="button" onClick={toggleUserDropdown} className={`${inp} flex items-center justify-between text-left`}>
+                            <span className={selectedUsers.length===0?'text-gray-400':'text-gray-800'}>{getSelectedUserNames()}</span>
+                            <svg className={`w-4 h-4 text-gray-400 transition-transform shrink-0 ${showUserDropdown?'rotate-180':''}`} viewBox="0 0 12 12" fill="none"><path d="M2 4L6 8L10 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                          </button>
+                          {showUserDropdown && (
+                            <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl z-50 max-h-52 overflow-y-auto">
+                              {users.length===0?<div className="px-4 py-3 text-gray-400 text-sm">No users available</div>:users.map(u=>(
+                                <label key={u.userId} className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#eef3f8] cursor-pointer transition">
+                                  <input type="checkbox" checked={selectedUsers.includes(u.userId)} onChange={e=>handleUserSelection(u.userId,e.target.checked)} className="accent-[#1E3F63] w-4 h-4 cursor-pointer"/>
+                                  <span className="text-sm text-gray-700">{u.fullName}</span>
+                                </label>
+                              ))}
                             </div>
                           )}
                         </div>
+                        {selectedUsers.length>0&&(
+                          <div className="flex flex-wrap gap-1.5 mt-2">
+                            {selectedUsers.map(uid=>{const u=users.find(x=>x.userId===uid);return u?(<span key={uid} className="inline-flex items-center gap-1 bg-[#eef3f8] text-[#1E3F63] text-xs font-semibold px-2.5 py-1 rounded-full border border-[#c8d8e8]">{u.fullName}<button type="button" onClick={()=>handleUserSelection(uid,false)} className="ml-0.5 text-[#1E3F63]/60 hover:text-[#1E3F63]"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></span>):null;})}
+                          </div>
+                        )}
                       </div>
                     </div>
 
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Shipment Details</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Shipment Category <span className="text-red-600">*</span></label>
-                          <select name="shipmentCategory" value={formData.shipmentCategory} onChange={handleChange} required className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
-                            <option value="">Select Category</option>
-                            <option value="LCL">LCL — Loose Cargo Load</option>
-                            <option value="FCL">FCL — Full Container Load</option>
-                            <option value="Air Freight">Air Freight</option>
-                            <option value="BOI">BOI — Board of Investment</option>
-                            <option value="Vehicle - Personal">Vehicle — Personal</option>
-                            <option value="Vehicle - Company">Vehicle — Company</option>
-                            <option value="TIEP">TIEP — Temp Importation</option>
-                            {formData.shipmentCategory&&!['LCL','FCL','Air Freight','BOI','Vehicle - Personal','Vehicle - Company','TIEP'].includes(formData.shipmentCategory)&&<option value={formData.shipmentCategory}>{formData.shipmentCategory}</option>}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">BL Number</label>
-                          <input type="text" name="blNumber" value={formData.blNumber} onChange={handleChange} placeholder="Bill of Lading Number" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"/>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">CUSDEC Number</label>
-                          <input type="text" name="cusdecNumber" value={formData.cusdecNumber} onChange={handleChange} placeholder="Customs Declaration Number" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"/>
-                        </div>
+                    <div className="border-t border-gray-100 mb-10"/>
+
+                    <SectionTitle color="#2f5e8f" title="Shipment Details" />
+                    <div className="grid grid-cols-3 gap-10">
+                      <div>
+                        <label className={lbl}>Shipment Category {req}</label>
+                        <select name="shipmentCategory" value={formData.shipmentCategory} onChange={handleChange} required className={inp}>
+                          <option value="">Select Category</option>
+                          <option value="LCL">LCL — Loose Cargo Load</option>
+                          <option value="FCL">FCL — Full Container Load</option>
+                          <option value="Air Freight">Air Freight</option>
+                          <option value="BOI">BOI — Board of Investment</option>
+                          <option value="Vehicle - Personal">Vehicle — Personal</option>
+                          <option value="Vehicle - Company">Vehicle — Company</option>
+                          <option value="TIEP">TIEP — Temp Importation</option>
+                          {formData.shipmentCategory&&!['LCL','FCL','Air Freight','BOI','Vehicle - Personal','Vehicle - Company','TIEP'].includes(formData.shipmentCategory)&&<option value={formData.shipmentCategory}>{formData.shipmentCategory}</option>}
+                        </select>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">CUSDEC Date</label>
-                          <input type="date" name="cusdecDate" value={formData.cusdecDate} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"/>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">TT / LC / DA / DP / NFE No.</label>
-                          <input type="text" name="lcNumber" value={formData.lcNumber} onChange={handleChange} placeholder="Finance reference number" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"/>
-                        </div>
-                        {!(formData.shipmentCategory==='Vehicle - Personal'||formData.shipmentCategory==='Vehicle - Company')
-                          ? <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">Container Number</label>
-                              <input type="text" name="containerNumber" value={formData.containerNumber} onChange={handleChange} placeholder="Container Number" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"/>
-                            </div>
-                          : <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">Chassis Number</label>
-                              <input type="text" name="chassisNumber" value={formData.chassisNumber} onChange={handleChange} placeholder="Vehicle chassis number" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"/>
-                            </div>
-                        }
+                      <div><label className={lbl}>BL Number</label><input type="text" name="blNumber" value={formData.blNumber} onChange={handleChange} placeholder="Bill of Lading Number" className={inp}/></div>
+                      <div><label className={lbl}>CUSDEC Number</label><input type="text" name="cusdecNumber" value={formData.cusdecNumber} onChange={handleChange} placeholder="Customs Declaration Number" className={inp}/></div>
+                      <div><label className={lbl}>CUSDEC Date</label><input type="date" name="cusdecDate" value={formData.cusdecDate} onChange={handleChange} className={inp}/></div>
+                      <div><label className={lbl}>TT / LC / DA / DP / NFE No.</label><input type="text" name="lcNumber" value={formData.lcNumber} onChange={handleChange} placeholder="Finance reference number" className={inp}/></div>
+                      {!(formData.shipmentCategory==='Vehicle - Personal'||formData.shipmentCategory==='Vehicle - Company')
+                        ?<div><label className={lbl}>Container Number</label><input type="text" name="containerNumber" value={formData.containerNumber} onChange={handleChange} placeholder="Container Number" className={inp}/></div>
+                        :<div><label className={lbl}>Chassis Number</label><input type="text" name="chassisNumber" value={formData.chassisNumber} onChange={handleChange} placeholder="Vehicle chassis number" className={inp}/></div>}
+                      <div><label className={lbl}>Exporter</label><input type="text" name="exporter" value={formData.exporter} onChange={handleChange} placeholder="Exporter company / name" className={inp}/></div>
+                      <div><label className={lbl}>Transporter</label>
+                        <select name="transporter" value={formData.transporter} onChange={handleChange} className={inp}>
+                          <option value="">Select Transporter</option>
+                          {transporters.map(t=><option key={t.transporterId} value={t.name}>{t.name}</option>)}
+                          {formData.transporter&&!transporters.some(t=>t.name===formData.transporter)&&<option value={formData.transporter}>{formData.transporter}</option>}
+                        </select>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Exporter</label>
-                          <input type="text" name="exporter" value={formData.exporter} onChange={handleChange} placeholder="Exporter company / name" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"/>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Transporter</label>
-                          <select name="transporter" value={formData.transporter} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
-                            <option value="">Select Transporter</option>
-                            {transporters.map(t=><option key={t.transporterId} value={t.name}>{t.name}</option>)}
-                            {formData.transporter&&!transporters.some(t=>t.name===formData.transporter)&&<option value={formData.transporter}>{formData.transporter}</option>}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Transport Delivery Date</label>
-                          <input type="date" name="transportDeliveryDate" value={formData.transportDeliveryDate} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"/>
-                        </div>
-                      </div>
+                      <div><label className={lbl}>Transport Delivery Date</label><input type="date" name="transportDeliveryDate" value={formData.transportDeliveryDate} onChange={handleChange} className={inp}/></div>
                     </div>
-                  </>
+                  </div>
                 );
 
-                /* ── STEP 2: Petty Cash (optional) ── */
                 if (formStep === 2) return (
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Petty Cash Assignment</h3>
-                    <p className="text-sm text-gray-500 mb-4">Optional — assign petty cash to staff now or skip and do it later.</p>
-
-                    {/* Add assignment row */}
+                    <div className="flex items-start justify-between mb-7">
+                      <div>
+                        <div className="flex items-center gap-2.5 mb-1">
+                          <div className="w-1 h-6 rounded-full bg-[#0f766e]"/>
+                          <h3 className="text-sm font-bold uppercase tracking-widest text-[#1E3F63]">Petty Cash Assignment</h3>
+                        </div>
+                        <p className="text-sm text-gray-500 ml-4">Optional — assign petty cash to staff now or skip and do it later.</p>
+                      </div>
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">Optional</span>
+                    </div>
                     {['Admin','Super Admin','Manager'].includes(user?.role) && (
-                      <div className="p-4 border border-gray-300 rounded-lg mb-4">
-                        <h4 className="font-medium text-gray-900 mb-3">Add Assignment</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="bg-[#f8fafc] border border-gray-200 rounded-xl p-7 mb-7">
+                        <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-5">Add Assignment</p>
+                        <div className="grid grid-cols-3 gap-10 items-end">
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Assign To</label>
-                            <select value={pcFormRow.userId} onChange={e=>setPcFormRow(r=>({...r,userId:e.target.value}))} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
+                            <label className={lbl}>Assign To</label>
+                            <select value={pcFormRow.userId} onChange={e=>setPcFormRow(r=>({...r,userId:e.target.value}))} className={inp}>
                               <option value="">Select Staff Member</option>
-                              {users.filter(u => selectedUsers.includes(u.userId)).map(u=><option key={u.userId} value={u.userId}>{u.fullName} ({u.role})</option>)}
+                              {users.filter(u => u.role === 'Waff Clerk' && selectedUsers.includes(u.userId)).map(u=><option key={u.userId} value={u.userId}>{u.fullName} ({u.role})</option>)}
                             </select>
                           </div>
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Amount (LKR)</label>
-                            <input type="number" min="0" step="0.01" placeholder="0.00" value={pcFormRow.amount} onChange={e=>setPcFormRow(r=>({...r,amount:e.target.value}))} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"/>
+                            <label className={lbl}>Amount (LKR)</label>
+                            <input type="number" min="0" step="0.01" placeholder="0.00" value={pcFormRow.amount} onChange={e=>setPcFormRow(r=>({...r,amount:e.target.value}))} className={inp}/>
                           </div>
-                          <div className="flex items-end">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (!pcFormRow.userId || !pcFormRow.amount || parseFloat(pcFormRow.amount)<=0) return;
-                                setPcAssignments(a=>[...a,{userId:pcFormRow.userId,amount:pcFormRow.amount,userName:users.find(u=>u.userId===pcFormRow.userId)?.fullName||pcFormRow.userId}]);
-                                setPcFormRow({userId:'',amount:''});
-                              }}
-                              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium text-sm"
-                            >
-                              + Add
+                          <div>
+                            <button type="button" onClick={()=>{if(!pcFormRow.userId||!pcFormRow.amount||parseFloat(pcFormRow.amount)<=0)return;setPcAssignments(a=>[...a,{userId:pcFormRow.userId,amount:pcFormRow.amount,userName:users.find(u=>u.userId===pcFormRow.userId)?.fullName||pcFormRow.userId}]);setPcFormRow({userId:'',amount:''});}} className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold text-white bg-[#1E3F63] hover:bg-[#193552] transition">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add
                             </button>
                           </div>
                         </div>
                       </div>
                     )}
-
-                    {/* Assignments list */}
-                    {pcAssignments.length > 0 ? (
-                      <div className="border border-gray-200 rounded-lg overflow-hidden">
+                    {pcAssignments.length>0?(
+                      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                        <div className="px-5 py-3 bg-gray-50 border-b border-gray-200">
+                          <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Assigned Staff</span>
+                        </div>
                         <table className="w-full text-sm">
-                          <thead className="bg-gray-50 border-b border-gray-200">
-                            <tr>
-                              <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Staff Member</th>
-                              <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">Amount</th>
-                              <th className="px-4 py-2 text-sm font-semibold text-gray-700">Remove</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-200">
-                            {pcAssignments.map((a,i)=>(
-                              <tr key={i} className="hover:bg-gray-50">
-                                <td className="px-4 py-3 text-gray-900 font-medium">{a.userName}</td>
-                                <td className="px-4 py-3 text-gray-900">LKR {parseFloat(a.amount).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
-                                <td className="px-4 py-3 text-center">
-                                  <button type="button" onClick={()=>setPcAssignments(arr=>arr.filter((_,j)=>j!==i))} className="text-red-600 hover:text-red-700 text-sm font-medium">Remove</button>
-                                </td>
-                              </tr>
-                            ))}
+                          <thead><tr className="bg-gray-50 border-b border-gray-200">
+                            <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Waff Clerk Name</th>
+                            <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Assigned Amount</th>
+                            <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Settled Amount</th>
+                            <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Balance / Return</th>
+                            <th className="px-6 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Actions</th>
+                          </tr></thead>
+                          <tbody>
+                            {pcAssignments.map((a,i)=>{
+                              const assignedAmount = parseFloat(a.amount || 0);
+                              const settledAmount = 0; // Will be updated after job creation
+                              const balanceAmount = assignedAmount - settledAmount;
+                              return (
+                                <tr key={i} className={`border-b border-gray-50 ${i%2===0?'bg-white':'bg-[#f8fafc]'}`}>
+                                  <td className="px-6 py-3 text-gray-900 font-medium">{a.userName}</td>
+                                  <td className="px-6 py-3 text-right text-[#1E3F63] font-bold">{assignedAmount.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+                                  <td className="px-6 py-3 text-right text-gray-600 font-medium">{settledAmount.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+                                  <td className={`px-6 py-3 text-right font-bold ${balanceAmount > 0 ? 'text-orange-600' : balanceAmount < 0 ? 'text-red-600' : 'text-gray-600'}`}>
+                                    {balanceAmount.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+                                  </td>
+                                  <td className="px-6 py-3 text-center"><button type="button" onClick={()=>setPcAssignments(arr=>arr.filter((_,j)=>j!==i))} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 hover:bg-red-50 transition">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                                      <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                    </svg>
+                                    Remove
+                                  </button></td>
+                                </tr>
+                              );
+                            })}
                           </tbody>
                           <tfoot>
-                            <tr className="bg-gray-50 border-t border-gray-200">
-                              <td className="px-4 py-2 text-right text-sm font-bold text-gray-700">Total</td>
-                              <td className="px-4 py-2 text-sm font-bold text-gray-900">LKR {pcAssignments.reduce((s,a)=>s+parseFloat(a.amount||0),0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+                            <tr className="bg-[#f0f4f8] border-t-2 border-gray-300">
+                              <td className="px-6 py-3 text-right font-bold text-gray-600 uppercase text-xs tracking-wide">Total</td>
+                              <td className="px-6 py-3 text-right text-[#1E3F63] font-bold text-sm">{pcAssignments.reduce((sum,a)=>sum+parseFloat(a.amount||0),0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+                              <td className="px-6 py-3 text-right text-gray-600 font-bold text-sm">0.00</td>
+                              <td className="px-6 py-3 text-right text-orange-600 font-bold text-sm">{pcAssignments.reduce((sum,a)=>sum+parseFloat(a.amount||0),0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
                               <td/>
                             </tr>
                           </tfoot>
                         </table>
                       </div>
-                    ) : (
-                      <div className="p-8 text-center border-2 border-dashed border-gray-200 rounded-lg">
-                        <p className="text-gray-500 text-sm">No petty cash assignments added yet.</p>
-                        <p className="text-gray-400 text-xs mt-1">You can skip this step and add assignments later.</p>
+                    ):(
+                      <div className="border-2 border-dashed border-gray-200 rounded-xl p-12 text-center">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-12 h-12 text-gray-300 mx-auto mb-3"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                        <p className="text-sm text-gray-500">No assignments yet. Add one above or skip to create the job.</p>
                       </div>
                     )}
                   </div>
@@ -1318,26 +1393,23 @@ function Jobs() {
 
                 return null;
               })()}
-            </form>
-
-            <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 bg-gray-50 rounded-b-xl">
-              {!isEditing && formStep === 2 && (
-                <button type="button" onClick={()=>setFormStep(1)} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition font-medium">Back</button>
-              )}
-              <button type="button" onClick={()=>{setShowModal(false);setIsEditing(false);setSelectedJob(null);setSelectedUsers([]);setShowUserDropdown(false);setFormStep(1);setPcAssignments([]);setPcFormRow({userId:'',amount:''}); }} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition font-medium">Cancel</button>
-              {!isEditing && formStep === 1 && (
-                <button type="button" onClick={()=>{if(!formData.customerId){setMessage('Please select a customer.');setTimeout(()=>setMessage(''),3000);return;}if(!formData.openDate){setMessage('Please select an open date.');setTimeout(()=>setMessage(''),3000);return;}if(!formData.shipmentCategory){setMessage('Please select a shipment category.');setTimeout(()=>setMessage(''),3000);return;}setFormStep(2);}} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium">Next</button>
-              )}
-              {!isEditing && formStep === 2 && (
-                <button type="button" onClick={handleSubmit} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium">Create Job</button>
-              )}
-              {isEditing && (
-                <button type="button" onClick={handleUpdate} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium">Update</button>
-              )}
             </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between px-10 py-5 border-t border-gray-200 bg-gray-50 rounded-b-2xl shrink-0">
+              {!isEditing?<span className="text-xs text-gray-400">Step {formStep} of 2</span>:<span/>}
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={()=>{setShowModal(false);setIsEditing(false);setSelectedJob(null);setSelectedUsers([]);setShowUserDropdown(false);setFormStep(1);setPcAssignments([]);setPcFormRow({userId:'',amount:''}); }} className="px-5 py-2.5 rounded-lg text-sm font-semibold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">Cancel</button>
+                {!isEditing&&formStep===2&&<button type="button" onClick={()=>setFormStep(1)} className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-[#1E3F63] bg-[#eef3f8] hover:bg-[#dce8f4] border border-[#c8d8e8] transition"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><polyline points="15 18 9 12 15 6"/></svg>Back</button>}
+                {!isEditing&&formStep===2&&<button type="button" onClick={handleSubmit} className="px-4 py-2.5 rounded-lg text-sm font-semibold text-[#0f766e] bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition">Skip &amp; Create Job</button>}
+                {!isEditing&&formStep===1&&<button type="button" onClick={()=>{if(!formData.customerId){setMessage('Please select a customer.');setTimeout(()=>setMessage(''),3000);return;}if(!formData.openDate){setMessage('Please select an open date.');setTimeout(()=>setMessage(''),3000);return;}if(!formData.shipmentCategory){setMessage('Please select a shipment category.');setTimeout(()=>setMessage(''),3000);return;}setFormStep(2);}} className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-white bg-[#1E3F63] hover:bg-[#193552] transition shadow-sm">Next<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><polyline points="9 18 15 12 9 6"/></svg></button>}
+                {(isEditing||formStep===2)&&<button type="button" onClick={isEditing?handleUpdate:handleSubmit} className="flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold text-white bg-[#1E3F63] hover:bg-[#193552] transition shadow-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M20 6 9 17l-5-5"/></svg>{isEditing?'Save Changes':'Create Job'}</button>}
+              </div>
+            </div>
+
           </div>
         </div>
-      )}
+      , document.body)}
     </div>
   );
 }

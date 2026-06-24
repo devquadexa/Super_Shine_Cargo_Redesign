@@ -1586,18 +1586,24 @@ function PettyCash() {
   );
 
   return (
-    <div className="p-6">
-      <div className="flex items-start justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Petty Cash Management</h1>
-          <p className="text-gray-600 mt-1">{user?.role === 'Waff Clerk' ? 'Your assigned petty cash' : 'Manage petty cash assignments'}</p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-50 p-6">
+      <div className="max-w-7xl mx-auto">
+        {/* Header Section */}
+        <div className="mb-8">
+          <div className="bg-gradient-to-r from-blue-600 via-blue-500 to-indigo-600 rounded-xl p-8 shadow-lg text-white">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-4xl font-bold mb-2">Petty Cash Management</h1>
+                <p className="text-blue-100">{user?.role === 'Waff Clerk' ? 'Your assigned petty cash allocations and settlements' : 'Manage petty cash assignments, settlements, and staff balances'}</p>
+              </div>
+              {(user?.role === 'Admin' || user?.role === 'Super Admin' || user?.role === 'Manager') && (
+                <button onClick={() => setShowAssignModal(true)} className="bg-white hover:bg-blue-50 text-blue-600 font-semibold py-3 px-6 rounded-lg transition shadow-md hover:shadow-lg">
+                  + Assign Petty Cash
+                </button>
+              )}
+            </div>
+          </div>
         </div>
-        {(user?.role === 'Admin' || user?.role === 'Super Admin' || user?.role === 'Manager') && (
-          <button onClick={() => setShowAssignModal(true)} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition">
-            + Assign Petty Cash
-          </button>
-        )}
-      </div>
 
       {/* User Balances Summary for Admin/Super Admin — carousel */}
       {(user?.role === 'Admin' || user?.role === 'Super Admin') && (() => {
@@ -1627,25 +1633,24 @@ function PettyCash() {
         const visible = balanceList.slice(userCarouselIndex, userCarouselIndex + CARDS_PER_VIEW);
 
         return (
-          <div className="bg-white rounded-xl border-2 border-gray-200 shadow-sm overflow-hidden mb-6">
-            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-              <h2 className="text-xl font-bold text-gray-900">User Petty Cash Summary</h2>
-              <span className="text-xs text-gray-600">
-                {balanceList.length > 0 
-                  ? `Showing ${userCarouselIndex + 1}–${Math.min(userCarouselIndex + CARDS_PER_VIEW, balanceList.length)} of ${balanceList.length} users`
-                  : 'No Waff Clerks available'}
-              </span>
+          <div className="bg-white rounded-xl shadow-md overflow-hidden mb-8">
+            <div className="bg-gradient-to-r from-blue-500 to-blue-600 p-6 text-white">
+              <h2 className="text-2xl font-bold">Staff Petty Cash Summary</h2>
+              <p className="text-blue-100 text-sm mt-1">Overview of all Waff Clerks' petty cash allocations and balances</p>
             </div>
-
+            
             {/* Month and Year Filter */}
-            <div className="flex gap-4 mb-6 items-center p-4 bg-gray-50">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Month</label>
-                <select 
-                  value={userSummaryFilterMonth} 
-                  onChange={(e) => setUserSummaryFilterMonth(parseInt(e.target.value))}
-                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
-                >
+            <div className="p-6 border-b border-gray-200 bg-gray-50">
+              <div className="flex gap-6 items-end">
+                <div className="flex-1">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Month</label>
+                  <select 
+                    value={userSummaryFilterMonth} 
+                    onChange={(e) => setUserSummaryFilterMonth(parseInt(e.target.value))}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-medium"
+                  >
+                    <option value={1}>January</option>
+                    <option value={2}>February</option>
                   <option value={1}>January</option>
                   <option value={2}>February</option>
                   <option value={3}>March</option>
@@ -1657,130 +1662,134 @@ function PettyCash() {
                   <option value={9}>September</option>
                   <option value={10}>October</option>
                   <option value={11}>November</option>
-                  <option value={12}>December</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Year</label>
-                <select 
-                  value={userSummaryFilterYear} 
-                  onChange={(e) => setUserSummaryFilterYear(parseInt(e.target.value))}
-                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
-                >
-                  {[2024, 2025, 2026].map(year => (
-                    <option key={year} value={year}>{year}</option>
-                  ))}
-                </select>
+                    <option value={12}>December</option>
+                  </select>
+                </div>
+                <div className="flex-1">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Year</label>
+                  <select 
+                    value={userSummaryFilterYear} 
+                    onChange={(e) => setUserSummaryFilterYear(parseInt(e.target.value))}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-medium"
+                  >
+                    {[2024, 2025, 2026].map(year => (
+                      <option key={year} value={year}>{year}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
 
             {balanceList.length > 0 ? (
-              <>
-                <div className="relative px-6 py-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {visible.map(([userId, balance]) => (
-                      <div key={userId} className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg border border-blue-200 p-4">
-                        <div className="flex items-center gap-3 mb-4">
-                          <div className="w-10 h-10 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-sm">{balance.userName.charAt(0).toUpperCase()}</div>
-                          <div>
-                            <h4 className="font-semibold text-sm text-gray-900">{balance.userName}</h4>
-                            <p className="text-xs text-gray-600">{userId}</p>
-                          </div>
+              <div className="p-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  {visible.map(([userId, balance]) => (
+                    <div key={userId} className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-200 p-6 hover:shadow-lg transition">
+                      <div className="flex items-center gap-3 mb-4 pb-4 border-b border-blue-200">
+                        <div className="w-12 h-12 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg flex items-center justify-center font-bold text-lg">{balance.userName.charAt(0).toUpperCase()}</div>
+                        <div>
+                          <h4 className="font-bold text-gray-900 text-sm">{balance.userName}</h4>
+                          <p className="text-xs text-gray-600">{userId}</p>
                         </div>
-                        <div className="space-y-2 text-xs">
-                          <div className="flex justify-between">
-                            <span className="text-gray-600">Total Assigned:</span>
-                            <span className="font-semibold text-gray-900">LKR {formatAmount(balance.totalAssigned)}</span>
+                      </div>
+                      <div className="space-y-3 text-sm">
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-700 font-medium">Total Assigned:</span>
+                          <span className="font-bold text-gray-900">LKR {formatAmount(balance.totalAssigned)}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-700 font-medium">Total Spent:</span>
+                          <span className="font-bold text-gray-900">LKR {formatAmount(balance.totalSpent)}</span>
+                        </div>
+                        <div className="bg-white rounded-lg p-3 border border-blue-200">
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-gray-700 font-medium">Active</span>
+                            <span className="inline-block bg-blue-600 text-white px-3 py-1 rounded-full text-xs font-bold">{balance.activeAssignments}</span>
                           </div>
-                          <div className="flex justify-between">
-                            <span className="text-gray-600">Total Spent:</span>
-                            <span className="font-semibold text-gray-900">LKR {formatAmount(balance.totalSpent)}</span>
-                          </div>
-                          <div className="border-t border-blue-200 pt-2">
-                            <div className="flex justify-between">
-                              <span className="text-gray-600">Active:</span>
-                              <span className="inline-block bg-blue-200 text-blue-800 px-2 py-0.5 rounded text-xs font-medium">{balance.activeAssignments}</span>
-                            </div>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-gray-600">Settled:</span>
-                            <span className="inline-block bg-green-200 text-green-800 px-2 py-0.5 rounded text-xs font-medium">{balance.settledAssignments}</span>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-700 font-medium">Settled</span>
+                            <span className="inline-block bg-green-600 text-white px-3 py-1 rounded-full text-xs font-bold">{balance.settledAssignments}</span>
                           </div>
                         </div>
                       </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Carousel Navigation */}
+                <div className="flex items-center justify-between p-6 bg-gray-50 border-t border-gray-200">
+                  <button
+                    className={`p-2 rounded-lg transition ${canPrev ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                    onClick={() => canPrev && setUserCarouselIndex(i => i - 1)}
+                    title="Previous"
+                    disabled={!canPrev}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <polyline points="15 18 9 12 15 6"/>
+                    </svg>
+                  </button>
+                  <div className="flex gap-2">
+                    {Array.from({length: maxIndex + 1}).map((_, i) => (
+                      <button
+                        key={i}
+                        className={`w-3 h-3 rounded-full transition ${i === userCarouselIndex ? 'bg-blue-600' : 'bg-gray-300 hover:bg-gray-400'}`}
+                        onClick={() => setUserCarouselIndex(i)}
+                        title={`Go to page ${i + 1}`}
+                      />
                     ))}
                   </div>
-
-                  {/* Carousel arrows — always visible */}
-                  <div className="flex items-center justify-between mt-4">
-                    <button
-                      className={`p-2 rounded-lg transition ${canPrev ? 'bg-gray-100 hover:bg-gray-200 text-gray-700' : 'bg-gray-50 text-gray-300 cursor-not-allowed'}`}
-                      onClick={() => canPrev && setUserCarouselIndex(i => i - 1)}
-                      title="Previous"
-                      disabled={!canPrev}
-                    >
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                        <polyline points="15 18 9 12 15 6"/>
-                      </svg>
-                    </button>
-                    <div className="flex gap-1">
-                      {Array.from({length: maxIndex + 1}).map((_, i) => (
-                        <button
-                          key={i}
-                          className={`w-2 h-2 rounded-full transition ${i === userCarouselIndex ? 'bg-blue-600' : 'bg-gray-300 hover:bg-gray-400'}`}
-                          onClick={() => setUserCarouselIndex(i)}
-                          title={`Go to page ${i + 1}`}
-                        />
-                      ))}
-                    </div>
-                    <button
-                      className={`p-2 rounded-lg transition ${canNext ? 'bg-gray-100 hover:bg-gray-200 text-gray-700' : 'bg-gray-50 text-gray-300 cursor-not-allowed'}`}
-                      onClick={() => canNext && setUserCarouselIndex(i => i + 1)}
-                      title="Next"
-                      disabled={!canNext}
-                    >
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                        <polyline points="9 18 15 12 9 6"/>
-                      </svg>
-                    </button>
-                  </div>
+                  <button
+                    className={`p-2 rounded-lg transition ${canNext ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                    onClick={() => canNext && setUserCarouselIndex(i => i + 1)}
+                    title="Next"
+                    disabled={!canNext}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <polyline points="9 18 15 12 9 6"/>
+                    </svg>
+                  </button>
                 </div>
-              </>
+              </div>
             ) : (
-              <div className="p-6 text-center text-gray-600">
-                <p>No Waff Clerks available</p>
+              <div className="p-12 text-center text-gray-600">
+                <svg className="mx-auto mb-4 text-gray-300" width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+                <p className="text-lg font-medium text-gray-600">No Waff Clerks available</p>
               </div>
             )}
           </div>
         );
       })()}
 
-      {/* User's Own Balance Summary */}
+      {/* Message Alert */}
       {message && (
-        <div className={`mb-6 p-4 rounded-lg border-l-4 ${message.includes('Error') ? 'bg-red-50 border-red-500 text-red-700' : 'bg-green-50 border-green-500 text-green-700'}`}>
-          {message}
+        <div className={`mb-8 p-4 rounded-lg border-l-4 ${message.includes('❌') || message.includes('Error') ? 'bg-red-50 border-red-500 text-red-700' : 'bg-green-50 border-green-500 text-green-700'}`}>
+          <p className="font-medium">{message}</p>
         </div>
       )}
 
       {/* Cash Withdrawals Section */}
       {(user?.role === 'Admin' || user?.role === 'Super Admin') && (
-        <div className="bg-white rounded-xl border-2 border-gray-200 shadow-sm overflow-hidden mb-6">
-          <div className="p-6 border-b border-gray-200 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition" onClick={() => setWithdrawalsCollapsed(c => !c)}>
-            <h2 className="text-xl font-bold text-gray-900">
-              Cash Withdrawals / Deposits ({getFilteredCashWithdrawals().length})
-            </h2>
+        <div className="bg-white rounded-xl shadow-md overflow-hidden mb-8">
+          <div className="bg-gradient-to-r from-purple-500 to-purple-600 p-6 text-white flex items-center justify-between cursor-pointer hover:shadow-lg transition" onClick={() => setWithdrawalsCollapsed(c => !c)}>
+            <div className="flex-1">
+              <h2 className="text-2xl font-bold">Cash Withdrawals / Deposits</h2>
+              <p className="text-purple-100 text-sm mt-1">{getFilteredCashWithdrawals().length} transaction{getFilteredCashWithdrawals().length !== 1 ? 's' : ''} recorded</p>
+            </div>
             <div className="flex gap-3 items-center">
               <button 
                 onClick={(e) => {
                   e.stopPropagation();
                   setShowWithdrawalModal(true);
                 }} 
-                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition text-sm"
+                className="bg-white hover:bg-purple-50 text-purple-600 font-semibold py-2 px-4 rounded-lg transition text-sm"
               >
-                + Record Withdrawal / Deposit
+                + Record Transaction
               </button>
               <svg
-                className={`w-5 h-5 text-gray-600 transition transform ${withdrawalsCollapsed ? '-rotate-180' : ''}`}
+                className={`w-6 h-6 transition transform ${withdrawalsCollapsed ? '-rotate-180' : ''}`}
                 viewBox="0 0 24 24"
                 fill="none" 
                 stroke="currentColor" 
@@ -1792,15 +1801,15 @@ function PettyCash() {
           </div>
 
           {!withdrawalsCollapsed && (
-            <div className="p-6">
+            <div className="p-8">
               {/* Month and Year Filters */}
-              <div className="flex gap-4 mb-6 items-center">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Month</label>
+              <div className="flex gap-6 mb-8 items-end">
+                <div className="flex-1">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Month</label>
                   <select 
                     value={withdrawalFilterMonth} 
                     onChange={(e) => setWithdrawalFilterMonth(parseInt(e.target.value))}
-                    className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-medium"
                   >
                     <option value={1}>January</option>
                     <option value={2}>February</option>
@@ -1816,12 +1825,12 @@ function PettyCash() {
                     <option value={12}>December</option>
                   </select>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Year</label>
+                <div className="flex-1">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Year</label>
                   <select 
                     value={withdrawalFilterYear} 
                     onChange={(e) => setWithdrawalFilterYear(parseInt(e.target.value))}
-                    className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-medium"
                   >
                     {[2024, 2025, 2026, 2027].map(year => (
                       <option key={year} value={year}>{year}</option>
@@ -1831,38 +1840,42 @@ function PettyCash() {
               </div>
 
               {getFilteredCashWithdrawals().length === 0 ? (
-                <p className="text-center text-gray-600 py-8">
-                  No cash withdrawals recorded for this period
-                </p>
+                <div className="text-center py-12">
+                  <svg className="mx-auto mb-4 text-gray-300" width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+                    <path d="M12 1v22M4.22 4.22l15.56 15.56M19.78 4.22L4.22 19.78"></path>
+                  </svg>
+                  <p className="text-gray-600 font-medium">No cash transactions recorded for this period</p>
+                </div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead className="bg-gray-50 border-b border-gray-200">
-                      <tr>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700 w-40">Withdrawal ID</th>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700 w-24">Type</th>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700 w-32">Date</th>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700 min-w-fit">Bank Name</th>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700 w-32">Amount</th>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700 w-40">Recorded By</th>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Notes</th>
+                    <thead>
+                      <tr className="bg-gray-100 border-b-2 border-gray-300">
+                        <th className="px-4 py-4 text-left font-bold text-gray-700 w-40">Transaction ID</th>
+                        <th className="px-4 py-4 text-left font-bold text-gray-700 w-24">Type</th>
+                        <th className="px-4 py-4 text-left font-bold text-gray-700 w-32">Date</th>
+                        <th className="px-4 py-4 text-left font-bold text-gray-700 min-w-fit">Bank / Source</th>
+                        <th className="px-4 py-4 text-left font-bold text-gray-700 w-32">Amount</th>
+                        <th className="px-4 py-4 text-left font-bold text-gray-700 w-40">Recorded By</th>
+                        <th className="px-4 py-4 text-left font-bold text-gray-700 flex-1">Notes</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
-                      {getFilteredCashWithdrawals().map((withdrawal) => (
-                        <tr key={withdrawal.withdrawalId} className="hover:bg-gray-50 transition">
-                          <td className="px-4 py-3 text-sm font-semibold text-blue-600">{withdrawal.withdrawalId}</td>
-                          <td className="px-4 py-3 text-sm">
-                            <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${withdrawal.transactionType === 'withdrawal' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
-                              {withdrawal.transactionType === 'withdrawal' ? 'Withdrawal' : 'Deposit'}
+                      {getFilteredCashWithdrawals().map((withdrawal, idx) => (
+                        <tr key={withdrawal.withdrawalId} className={`hover:bg-blue-50 transition ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                          <td className="px-4 py-4 text-sm font-bold text-blue-600">{withdrawal.withdrawalId}</td>
+                          <td className="px-4 py-4 text-sm">
+                            <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold ${withdrawal.transactionType === 'withdrawal' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
+                              <span className={`w-2 h-2 rounded-full ${withdrawal.transactionType === 'withdrawal' ? 'bg-red-600' : 'bg-green-600'}`}></span>
+                              {withdrawal.transactionType === 'withdrawal' ? 'Out' : 'In'}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{new Date(withdrawal.withdrawalDate).toLocaleDateString()}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">{withdrawal.bankName}</td>
-                          <td className="px-4 py-3 text-sm font-semibold text-gray-900">LKR {formatAmount(withdrawal.amount)}</td>
-                          <td className="px-4 py-3 text-sm text-gray-700">{withdrawal.createdByName || withdrawal.createdBy}</td>
-                          <td className="px-4 py-3 text-sm" style={{ color: withdrawal.notes ? '#374151' : '#9ca3af' }}>
-                            {withdrawal.notes || 'No notes'}
+                          <td className="px-4 py-4 text-sm text-gray-700 font-medium">{new Date(withdrawal.withdrawalDate).toLocaleDateString()}</td>
+                          <td className="px-4 py-4 text-sm text-gray-700">{withdrawal.bankName}</td>
+                          <td className="px-4 py-4 text-sm font-bold text-gray-900">LKR {formatAmount(withdrawal.amount)}</td>
+                          <td className="px-4 py-4 text-sm text-gray-700">{withdrawal.createdByName || withdrawal.createdBy}</td>
+                          <td className="px-4 py-4 text-sm" style={{ color: withdrawal.notes ? '#374151' : '#9ca3af' }}>
+                            {withdrawal.notes || '—'}
                           </td>
                         </tr>
                       ))}
@@ -1880,18 +1893,23 @@ function PettyCash() {
         <ManagementSettlementSection user={user} />
       )}
 
-      <div className="bg-white rounded-xl border-2 border-gray-200 shadow-sm overflow-hidden mb-6">
-        <div className="p-6 border-b border-gray-200 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition" onClick={() => setAssignmentsCollapsed(c => !c)}>
-          <h2 className="text-xl font-bold text-gray-900">
-            Petty Cash Assignments 
-            {(searchTerm || statusFilter !== 'all') ? (
-              <span> ({getFilteredCount()} of {assignments.length})</span>
-            ) : (
-              <span> ({assignments.length})</span>
-            )}
-          </h2>
+      {/* Petty Cash Assignments Section */}
+      <div className="bg-white rounded-xl shadow-md overflow-hidden mb-8">
+        <div className="bg-gradient-to-r from-indigo-500 to-indigo-600 p-6 text-white flex items-center justify-between cursor-pointer hover:shadow-lg transition" onClick={() => setAssignmentsCollapsed(c => !c)}>
+          <div className="flex-1">
+            <h2 className="text-2xl font-bold">
+              Petty Cash Assignments
+            </h2>
+            <p className="text-indigo-100 text-sm mt-1">
+              {(searchTerm || statusFilter !== 'all') ? (
+                <span>{getFilteredCount()} of {assignments.length} assignments</span>
+              ) : (
+                <span>{assignments.length} total assignment{assignments.length !== 1 ? 's' : ''}</span>
+              )}
+            </p>
+          </div>
           <svg
-            className={`w-5 h-5 text-gray-600 transition transform ${assignmentsCollapsed ? '-rotate-180' : ''}`}
+            className={`w-6 h-6 transition transform ${assignmentsCollapsed ? '-rotate-180' : ''}`}
             viewBox="0 0 24 24"
             fill="none" stroke="currentColor" strokeWidth="2.5"
           >
@@ -1900,22 +1918,22 @@ function PettyCash() {
         </div>
         
         {/* Search and Filter Bar */}
-        {!assignmentsCollapsed && <div className="p-4 bg-gray-50 border-b border-gray-200 flex gap-4 items-center">
-          <div className="relative flex-1">
-            <svg className="absolute left-3 top-2.5 text-gray-400" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        {!assignmentsCollapsed && <div className="p-6 bg-gray-50 border-b border-gray-200 flex gap-4 items-center flex-wrap">
+          <div className="relative flex-1 min-w-64">
+            <svg className="absolute left-3 top-3 text-gray-400" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="11" cy="11" r="8"></circle>
               <path d="m21 21-4.35-4.35"></path>
             </svg>
             <input
               type="text"
-              placeholder="Search by ID, customer, or name..."
+              placeholder="Search by job, customer, or name..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
             />
             {searchTerm && (
               <button 
-                className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600 transition" 
+                className="absolute right-3 top-3 text-gray-400 hover:text-gray-600 transition" 
                 onClick={() => setSearchTerm('')}
                 title="Clear search"
               >
@@ -1930,7 +1948,7 @@ function PettyCash() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-medium min-w-56"
           >
             <option value="all">All Statuses</option>
             <option value="Assigned">Assigned</option>
@@ -1952,26 +1970,28 @@ function PettyCash() {
         
         {!assignmentsCollapsed && (assignments.length === 0 ? (
           <div className="p-12 text-center">
-            <svg className="mx-auto mb-4 text-gray-400" width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <line x1="12" y1="1" x2="12" y2="23"></line>
-              <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+            <svg className="mx-auto mb-4 text-gray-300" width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="3" y1="9" x2="21" y2="9"></line>
+              <line x1="9" y1="3" x2="9" y2="21"></line>
             </svg>
-            <p className="text-gray-600">{user?.role === 'Waff Clerk' ? 'No petty cash assigned to you yet' : 'No petty cash assignments yet'}</p>
+            <p className="text-gray-600 font-medium text-lg">{user?.role === 'Waff Clerk' ? 'No petty cash assigned to you yet' : 'No petty cash assignments yet'}</p>
+            <p className="text-gray-500 text-sm mt-1">Assignments will appear here once created</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Assignment ID</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Job ID / CUSDEC Number</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700 min-w-56">Customer</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Assigned To</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Status</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Total Assigned</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Total Settled</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Assigned Date</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Actions</th>
+              <thead>
+                <tr className="bg-gray-100 border-b-2 border-gray-300">
+                  <th className="px-4 py-4 text-left font-bold text-gray-700">ID</th>
+                  <th className="px-4 py-4 text-left font-bold text-gray-700">Job / CUSDEC</th>
+                  <th className="px-4 py-4 text-left font-bold text-gray-700 min-w-56">Customer</th>
+                  <th className="px-4 py-4 text-left font-bold text-gray-700">Assigned To</th>
+                  <th className="px-4 py-4 text-left font-bold text-gray-700">Status</th>
+                  <th className="px-4 py-4 text-left font-bold text-gray-700">Assigned</th>
+                  <th className="px-4 py-4 text-left font-bold text-gray-700">Settled</th>
+                  <th className="px-4 py-4 text-left font-bold text-gray-700">Date</th>
+                  <th className="px-4 py-4 text-left font-bold text-gray-700">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -2191,34 +2211,32 @@ function PettyCash() {
                     return (
                       <React.Fragment key={groupId}>
                         {/* Group Header Row */}
-                        <tr className="border-b border-gray-200 hover:bg-gray-50 transition">
-                          <td data-label="Assignment ID" className="px-4 py-3">
+                        <tr className={`border-b border-gray-200 hover:bg-blue-50 transition ${Array.from(groupMap.entries()).findIndex(([k]) => k === groupId) % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                          <td className="px-4 py-4 font-bold text-blue-600">
                             {isMulti ? (
-                              <strong className="text-gray-900 font-semibold">#{first.assignmentId}</strong>
+                              <span>#{first.assignmentId}</span>
                             ) : (
-                              <strong className="text-gray-900 font-semibold">#{first.assignmentId}</strong>
+                              <span>#{first.assignmentId}</span>
                             )}
                           </td>
-                          <td className="px-4 py-3" data-label="Job ID / CUSDEC">
+                          <td className="px-4 py-4 text-gray-900 font-medium" >
                             {job && job.cusdecNumber ? (
-                              <span className="text-gray-900">{first.jobId} / {job.cusdecNumber}</span>
+                              <span>{first.jobId} / {job.cusdecNumber}</span>
                             ) : (
-                              <span className="text-gray-900">{first.jobId}</span>
+                              <span>{first.jobId}</span>
                             )}
                           </td>
-                          <td className="px-4 py-3" data-label="Customer"><span className="text-gray-900">{job ? getCustomerName(job.customerId) : '-'}</span></td>
-                          <td className="px-4 py-3" data-label="Assigned To">
-                            <span className="text-gray-900">{first.assignedToName || first.assignedTo || '-'}</span>
-                          </td>
-                          <td className="px-4 py-3" data-label="Status">
-                            <span className={`status-badge ${getStatusBadgeClass(groupStatus)}`}>
+                          <td className="px-4 py-4 text-gray-900">{job ? getCustomerName(job.customerId) : '—'}</td>
+                          <td className="px-4 py-4 text-gray-900">{first.assignedToName || first.assignedTo || '—'}</td>
+                          <td className="px-4 py-4">
+                            <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold ${getStatusBadgeClass(groupStatus)}`}>
                               {getStatusDisplay(groupStatus)}
                             </span>
                           </td>
-                          <td className="px-4 py-3" data-label="Total Assigned"><strong className="text-gray-900">LKR {formatAmount(totalAssigned)}</strong></td>
-                          <td className="px-4 py-3" data-label="Total Settled"><strong className="text-gray-900">LKR {formatAmount(totalSpent)}</strong></td>
-                          <td className="px-4 py-3" data-label="Assigned Date"><span className="text-gray-900">{new Date(first.assignedDate).toLocaleDateString()}</span></td>
-                          <td className="px-4 py-3" data-label="Actions">
+                          <td className="px-4 py-4 font-bold text-gray-900">LKR {formatAmount(totalAssigned)}</td>
+                          <td className="px-4 py-4 font-bold text-gray-900">LKR {formatAmount(totalSpent)}</td>
+                          <td className="px-4 py-4 text-gray-700">{new Date(first.assignedDate).toLocaleDateString()}</td>
+                          <td className="px-4 py-4">
                             <div className="flex items-center gap-2">
                               {/* Unified action logic for both single and grouped assignments */}
                               {/* Show settle button if user is assigned to this petty cash (Waff Clerk or Manager) */}
@@ -2231,7 +2249,7 @@ function PettyCash() {
                                     groupAssignments: groupAssignments
                                   };
                                   openSettleModal(settlementAssignment);
-                                }} title="Settle petty cash" className="inline-flex items-center gap-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition">
+                                }} title="Settle petty cash" className="inline-flex items-center gap-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg transition">
                                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                                   Settle
                                 </button>
@@ -2511,6 +2529,7 @@ function PettyCash() {
           </div>
         ))}
 
+        {/* Pagination */}
         {!assignmentsCollapsed && assignments.length > 0 && (() => {
           // Calculate total groups for pagination
           const filteredAssignments = assignments.filter(assignment => {
@@ -2548,36 +2567,41 @@ function PettyCash() {
           const totalPages = Math.ceil(totalGroups / recordsPerPage);
 
           return totalGroups > 0 ? (
-            <Pagination
-              currentPage={currentPage}
-              totalPages={totalPages}
-              totalRecords={totalGroups}
-              recordsPerPage={recordsPerPage}
-              onPageChange={(pageNumber) => {
-                setCurrentPage(pageNumber);
-                setExpandedRows(new Set());
-              }}
-              onRecordsPerPageChange={(newRecordsPerPage) => {
-                setRecordsPerPage(newRecordsPerPage);
-                setCurrentPage(1);
-                setExpandedRows(new Set());
-              }}
-            />
+            <div className="border-t border-gray-200 bg-gray-50 px-6 py-4">
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalRecords={totalGroups}
+                recordsPerPage={recordsPerPage}
+                onPageChange={(pageNumber) => {
+                  setCurrentPage(pageNumber);
+                  setExpandedRows(new Set());
+                }}
+                onRecordsPerPageChange={(newRecordsPerPage) => {
+                  setRecordsPerPage(newRecordsPerPage);
+                  setCurrentPage(1);
+                  setExpandedRows(new Set());
+                }}
+              />
+            </div>
           ) : null;
         })()}
       </div>
       {/* Assign Petty Cash Modal */}
       {showAssignModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-xl max-w-2xl w-full my-8">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200 sticky top-0 bg-white">
-              <h2 className="text-2xl font-bold text-gray-900">Assign Petty Cash</h2>
-              <button onClick={() => setShowAssignModal(false)} className="text-gray-500 hover:text-gray-700 text-2xl font-bold">×</button>
+          <div className="bg-white rounded-xl max-w-2xl w-full my-8 shadow-2xl">
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-6 flex items-center justify-between sticky top-0">
+              <div>
+                <h2 className="text-2xl font-bold">Assign Petty Cash</h2>
+                <p className="text-blue-100 text-sm mt-1">Create a new petty cash allocation for a staff member</p>
+              </div>
+              <button onClick={() => setShowAssignModal(false)} className="text-white hover:text-blue-100 text-3xl font-light">×</button>
             </div>
 
-            <form onSubmit={handleAssignSubmit} className="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
+            <form onSubmit={handleAssignSubmit} className="p-8 space-y-6 max-h-[70vh] overflow-y-auto">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Select Job <span className="text-red-600">*</span></label>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Select Job <span className="text-red-600">*</span></label>
                 <select
                   value={assignFormData.jobId}
                   onChange={(e) => setAssignFormData({ 
@@ -2586,9 +2610,9 @@ function PettyCash() {
                     assignedTo: '' // Reset user selection when job changes
                   })}
                   required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 font-medium"
                 >
-                  <option value="">-- Select Job --</option>
+                  <option value="">-- Select a Job --</option>
                   {getAvailableJobs().map(job => (
                     <option key={job.jobId} value={job.jobId}>
                       {job.jobId} - {getCustomerName(job.customerId)} - {job.shipmentCategory}
@@ -2598,14 +2622,14 @@ function PettyCash() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Assign To <span className="text-red-600">*</span></label>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Assign To <span className="text-red-600">*</span></label>
                 <select
                   value={assignFormData.assignedTo}
                   onChange={(e) => setAssignFormData({ ...assignFormData, assignedTo: e.target.value })}
                   required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 font-medium"
                 >
-                  <option value="">-- Select User --</option>
+                  <option value="">-- Select Staff Member --</option>
                   {getAvailableUsersForJob(assignFormData.jobId).map(u => (
                     <option key={u.userId} value={u.userId}>
                       {u.fullName}
@@ -2613,12 +2637,12 @@ function PettyCash() {
                   ))}
                 </select>
                 {assignFormData.jobId && getAvailableUsersForJob(assignFormData.jobId).length === 0 && (
-                  <p className="text-yellow-600 text-sm mt-1">No users are assigned to this job.</p>
+                  <p className="text-amber-600 text-sm mt-2">No staff members are assigned to this job yet.</p>
                 )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Amount (LKR) <span className="text-red-600">*</span></label>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Amount (LKR) <span className="text-red-600">*</span></label>
                 <input
                   type="text"
                   inputMode="decimal"
@@ -2633,30 +2657,30 @@ function PettyCash() {
                   }}
                   placeholder="0.00"
                   required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 font-medium"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Notes</label>
                 <textarea
                   value={assignFormData.notes}
                   onChange={(e) => setAssignFormData({ ...assignFormData, notes: e.target.value })}
-                  placeholder="Optional notes..."
+                  placeholder="Add any relevant notes about this assignment..."
                   rows="3"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 resize-none"
                 />
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-6 border-t border-gray-200">
-                <button type="button" onClick={() => setShowAssignModal(false)} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition font-medium">
+                <button type="button" onClick={() => setShowAssignModal(false)} className="px-6 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition font-bold">
                   Cancel
                 </button>
                 <button 
                   type="submit" 
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium"
+                  className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-bold"
                 >
-                  Assign Petty Cash
+                  ✓ Assign Petty Cash
                 </button>
               </div>
             </form>
@@ -2667,43 +2691,46 @@ function PettyCash() {
       {/* Settlement Modal */}
       {showSettleModal && selectedAssignment && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-xl max-w-4xl w-full my-8">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200 sticky top-0 bg-white">
-              <h2 className="text-2xl font-bold text-gray-900">{(selectedAssignment.status === 'Settled' || selectedAssignment.status === 'Pending Approval' || selectedAssignment.status === 'Settled/Approved' || selectedAssignment.status === 'Settled/Rejected' || selectedAssignment.status === 'Balance Returned' || selectedAssignment.status === 'Overdue Collected' || selectedAssignment.status === 'Full Petty Cash Returned') ? 'Settlement Details' : 'Settle Petty Cash'}</h2>
-              <button className="text-gray-500 hover:text-gray-700 text-2xl font-bold" onClick={() => {
+          <div className="bg-white rounded-xl max-w-4xl w-full my-8 shadow-2xl">
+            <div className="bg-gradient-to-r from-green-600 to-emerald-600 text-white p-6 flex items-center justify-between sticky top-0">
+              <div>
+                <h2 className="text-2xl font-bold">{(selectedAssignment.status === 'Settled' || selectedAssignment.status === 'Pending Approval' || selectedAssignment.status === 'Settled/Approved' || selectedAssignment.status === 'Settled/Rejected' || selectedAssignment.status === 'Balance Returned' || selectedAssignment.status === 'Overdue Collected' || selectedAssignment.status === 'Full Petty Cash Returned') ? 'Settlement Details' : 'Settle Petty Cash'}</h2>
+                <p className="text-green-100 text-sm mt-1">Record expenses and complete the settlement for this assignment</p>
+              </div>
+              <button className="text-white hover:text-green-100 text-3xl font-light" onClick={() => {
                 setShowSettleModal(false);
                 setSelectedAssignment(null);
                 setSettlementItems([]);
               }}>×</button>
             </div>
 
-            <div className="p-6 max-h-[70vh] overflow-y-auto space-y-6">
+            <div className="p-8 max-h-[70vh] overflow-y-auto space-y-6">
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-gray-50 p-4 rounded-lg">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-xl border-2 border-blue-200">
               <div>
-                <span className="block text-xs font-medium text-gray-600 mb-1">Job ID:</span>
-                <span className="text-sm font-semibold text-gray-900">{selectedAssignment.jobId}</span>
+                <span className="block text-xs font-bold text-gray-600 mb-2">Job ID</span>
+                <span className="text-base font-bold text-gray-900">{selectedAssignment.jobId}</span>
               </div>
               <div>
-                <span className="block text-xs font-medium text-gray-600 mb-1">Assigned Amount:</span>
-                <span className="text-sm font-semibold text-gray-900">LKR {formatAmount(selectedAssignment.assignedAmount)}</span>
+                <span className="block text-xs font-bold text-gray-600 mb-2">Assigned Amount</span>
+                <span className="text-base font-bold text-gray-900">LKR {formatAmount(selectedAssignment.assignedAmount)}</span>
               </div>
               {(selectedAssignment.status === 'Settled' || selectedAssignment.status === 'Pending Approval' || selectedAssignment.status === 'Balance Returned' || selectedAssignment.status === 'Overdue Collected') && (
                 <div>
-                  <span className="block text-xs font-medium text-gray-600 mb-1">Actual Spent:</span>
-                  <span className="text-sm font-semibold text-gray-900">LKR {formatAmount(selectedAssignment.actualSpent)}</span>
+                  <span className="block text-xs font-bold text-gray-600 mb-2">Actual Spent</span>
+                  <span className="text-base font-bold text-gray-900">LKR {formatAmount(selectedAssignment.actualSpent)}</span>
                 </div>
               )}
               {selectedAssignment.balanceAmount > 0 && (
                 <div>
-                  <span className="block text-xs font-medium text-gray-600 mb-1">Balance to Return:</span>
-                  <span className="text-sm font-semibold text-green-600">LKR {formatAmount(selectedAssignment.balanceAmount)}</span>
+                  <span className="block text-xs font-bold text-gray-600 mb-2">Balance to Return</span>
+                  <span className="text-base font-bold text-green-600">LKR {formatAmount(selectedAssignment.balanceAmount)}</span>
                 </div>
               )}
               {selectedAssignment.overAmount > 0 && (
                 <div>
-                  <span className="block text-xs font-medium text-gray-600 mb-1">Over Amount:</span>
-                  <span className="text-sm font-semibold text-red-600">LKR {formatAmount(selectedAssignment.overAmount)}</span>
+                  <span className="block text-xs font-bold text-gray-600 mb-2">Over Amount</span>
+                  <span className="text-base font-bold text-red-600">LKR {formatAmount(selectedAssignment.overAmount)}</span>
                 </div>
               )}
             </div>
@@ -3277,6 +3304,7 @@ function PettyCash() {
         onClose={() => setShowWithdrawalModal(false)}
         onSubmit={handleWithdrawalSubmit}
       />
+      </div>
     </div>
   );
 }
