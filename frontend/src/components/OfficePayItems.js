@@ -361,6 +361,7 @@ function OfficePayItems({ jobId, onUpdate, forceOpen }) {
         </div>
       )}
 
+      {!forceOpen && (
       <div>
         {loading && officePayItems.length === 0 ? (
           <div className="p-12 text-center">
@@ -463,6 +464,7 @@ function OfficePayItems({ jobId, onUpdate, forceOpen }) {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

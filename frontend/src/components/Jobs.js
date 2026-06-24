@@ -21,6 +21,8 @@ function Jobs() {
   const [jobPayments, setJobPayments] = useState({});
   const [officePayModal, setOfficePayModal] = useState(null);
   const [advancePayModal, setAdvancePayModal] = useState(null);
+  const [editingOfficePayItem, setEditingOfficePayItem] = useState(null); // {officePayItemId, description, actualCost, jobId}
+  const [editingAdvancePayment, setEditingAdvancePayment] = useState(null); // {advancePaymentId, amount, paymentMadeDate, paymentType, checkNo, notes, jobId}
   const [formStep, setFormStep] = useState(1); // 1 = Job Details, 2 = Petty Cash
   // Petty cash assignments to create after job is saved (optional, array of {userId, amount})
   const [pcAssignments, setPcAssignments] = useState([]);
@@ -870,7 +872,7 @@ function Jobs() {
                                           {['Admin','Super Admin','Manager','Office Executive'].includes(user?.role) && (
                                             <td className="px-5 py-3">
                                               <button
-                                                onClick={() => { const el = document.getElementById(`officepay-edit-btn-${item.officePayItemId}`); if (el) el.click(); }}
+                                                onClick={() => setEditingOfficePayItem({ officePayItemId: item.officePayItemId, description: item.description || '', actualCost: String(item.actualCost || ''), jobId: job.jobId })}
                                                 className="p-1.5 rounded text-blue-600 hover:bg-blue-50 transition mr-1" title="Edit"
                                               >
                                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
@@ -878,7 +880,7 @@ function Jobs() {
                                                 </svg>
                                               </button>
                                               <button
-                                                onClick={() => { const el = document.getElementById(`officepay-del-btn-${item.officePayItemId}`); if (el) el.click(); }}
+                                                onClick={async () => { if (!window.confirm('Are you sure you want to delete this office pay item?')) return; try { await apiClient.delete(`/office-pay-items/${item.officePayItemId}`); fetchJobs(); fetchJobPayments(job.jobId); } catch(err) { console.error('Delete error:', err); } }}
                                                 className="p-1.5 rounded text-red-500 hover:bg-red-50 transition" title="Delete"
                                               >
                                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
@@ -934,7 +936,7 @@ function Jobs() {
                                             {['Admin','Super Admin','Manager'].includes(user?.role) && (
                                               <td className="px-5 py-3">
                                                 <button
-                                                  onClick={() => { const el = document.getElementById(`advpay-edit-btn-${pmt.advancePaymentId}`); if (el) el.click(); }}
+                                                  onClick={() => setEditingAdvancePayment({ advancePaymentId: pmt.advancePaymentId, amount: String(pmt.amount || ''), paymentMadeDate: pmt.paymentMadeDate ? new Date(pmt.paymentMadeDate).toISOString().split('T')[0] : '', paymentType: pmt.paymentType || 'cash', checkNo: pmt.checkNo || '', notes: pmt.notes || '', jobId: job.jobId })}
                                                   className={`p-1.5 rounded mr-1 transition ${pmt.isLegacy ? 'text-gray-300 cursor-not-allowed' : 'text-blue-600 hover:bg-blue-50'}`}
                                                   title={pmt.isLegacy ? 'Legacy records cannot be edited' : 'Edit'}
                                                   disabled={pmt.isLegacy}
@@ -944,7 +946,7 @@ function Jobs() {
                                                   </svg>
                                                 </button>
                                                 <button
-                                                  onClick={() => { const el = document.getElementById(`advpay-del-btn-${pmt.advancePaymentId}`); if (el) el.click(); }}
+                                                  onClick={async () => { if (pmt.isLegacy || !pmt.advancePaymentId) return; if (!window.confirm('Are you sure you want to delete this advance payment?')) return; try { await apiClient.delete(`/jobs/${job.jobId}/advance-payments/${pmt.advancePaymentId}`); fetchJobs(); fetchJobPayments(job.jobId); } catch(err) { console.error('Delete error:', err); } }}
                                                   className={`p-1.5 rounded transition ${pmt.isLegacy ? 'text-gray-300 cursor-not-allowed' : 'text-red-500 hover:bg-red-50'}`}
                                                   title={pmt.isLegacy ? 'Legacy records cannot be deleted' : 'Delete'}
                                                   disabled={pmt.isLegacy}
@@ -968,21 +970,7 @@ function Jobs() {
                                   </table>
                                 </div>
 
-                                {/* Modal components rendered at the end of the payment card — controlled by lifted state */}
-                                {officePayModal === job.jobId && (
-                                  <OfficePayItems
-                                    jobId={job.jobId}
-                                    onUpdate={() => { fetchJobs(); fetchJobPayments(job.jobId); setOfficePayModal(null); }}
-                                    forceOpen
-                                  />
-                                )}
-                                {advancePayModal?.jobId === job.jobId && (
-                                  <AdvancePayment
-                                    job={advancePayModal}
-                                    onUpdate={() => { fetchJobs(); fetchJobPayments(job.jobId); setAdvancePayModal(null); }}
-                                    forceOpen
-                                  />
-                                )}
+
                               </div>
                             );
                           })()}
@@ -1014,6 +1002,98 @@ function Jobs() {
           />
         )}
       </div>
+
+      {/* Office Pay Items modal — rendered outside the table */}
+      {officePayModal && (
+        <OfficePayItems
+          jobId={officePayModal}
+          onUpdate={() => { fetchJobs(); fetchJobPayments(officePayModal); setOfficePayModal(null); }}
+          forceOpen
+        />
+      )}
+
+      {/* Advance Payment modal — rendered outside the table */}
+      {advancePayModal && (
+        <AdvancePayment
+          job={advancePayModal}
+          onUpdate={() => { fetchJobs(); fetchJobPayments(advancePayModal.jobId); setAdvancePayModal(null); }}
+          forceOpen
+        />
+      )}
+
+      {/* Edit Office Pay Item modal */}
+      {editingOfficePayItem && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-2xl w-full">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h3 className="text-lg font-bold text-gray-900">Edit Office Payment</h3>
+              <button onClick={() => setEditingOfficePayItem(null)} className="text-gray-500 hover:text-gray-700 text-2xl font-bold">×</button>
+            </div>
+            <form onSubmit={async (e) => { e.preventDefault(); try { await apiClient.put(`/office-pay-items/${editingOfficePayItem.officePayItemId}`, { description: editingOfficePayItem.description, actualCost: parseFloat(editingOfficePayItem.actualCost) }); fetchJobs(); fetchJobPayments(editingOfficePayItem.jobId); setEditingOfficePayItem(null); } catch(err) { console.error('Update error:', err); } }} className="p-6 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Description <span className="text-red-600">*</span></label>
+                  <input type="text" value={editingOfficePayItem.description} onChange={(e) => setEditingOfficePayItem(prev => ({...prev, description: e.target.value}))} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" required />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Amount Paid (LKR) <span className="text-red-600">*</span></label>
+                  <input type="number" step="0.01" min="0" value={editingOfficePayItem.actualCost} onChange={(e) => setEditingOfficePayItem(prev => ({...prev, actualCost: e.target.value}))} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" required />
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-3 pt-4">
+                <button type="button" onClick={() => setEditingOfficePayItem(null)} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition font-medium">Cancel</button>
+                <button type="submit" className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium">Update Payment</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Advance Payment modal */}
+      {editingAdvancePayment && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-2xl w-full">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h3 className="text-lg font-bold text-gray-900">Edit Advance Payment</h3>
+              <button onClick={() => setEditingAdvancePayment(null)} className="text-gray-500 hover:text-gray-700 text-2xl font-bold">×</button>
+            </div>
+            <form onSubmit={async (e) => { e.preventDefault(); try { await apiClient.put(`/jobs/${editingAdvancePayment.jobId}/advance-payments/${editingAdvancePayment.advancePaymentId}`, { amount: parseFloat(editingAdvancePayment.amount), paymentMadeDate: editingAdvancePayment.paymentMadeDate, paymentType: editingAdvancePayment.paymentType, checkNo: editingAdvancePayment.checkNo, notes: editingAdvancePayment.notes }); fetchJobs(); fetchJobPayments(editingAdvancePayment.jobId); setEditingAdvancePayment(null); } catch(err) { console.error('Update error:', err); } }} className="p-6 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Amount (LKR) <span className="text-red-600">*</span></label>
+                  <input type="number" step="0.01" min="0" value={editingAdvancePayment.amount} onChange={(e) => setEditingAdvancePayment(prev => ({...prev, amount: e.target.value}))} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" required />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Payment Made Date <span className="text-red-600">*</span></label>
+                  <input type="date" value={editingAdvancePayment.paymentMadeDate} onChange={(e) => setEditingAdvancePayment(prev => ({...prev, paymentMadeDate: e.target.value}))} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" required />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Payment Type <span className="text-red-600">*</span></label>
+                  <select value={editingAdvancePayment.paymentType} onChange={(e) => setEditingAdvancePayment(prev => ({...prev, paymentType: e.target.value}))} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
+                    <option value="cash">Cash</option>
+                    <option value="check">Check</option>
+                    <option value="bank_transfer">Bank Transfer</option>
+                  </select>
+                </div>
+                {editingAdvancePayment.paymentType === 'check' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Check No.</label>
+                    <input type="text" value={editingAdvancePayment.checkNo} onChange={(e) => setEditingAdvancePayment(prev => ({...prev, checkNo: e.target.value}))} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
+                  </div>
+                )}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                  <input type="text" value={editingAdvancePayment.notes} onChange={(e) => setEditingAdvancePayment(prev => ({...prev, notes: e.target.value}))} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-3 pt-4">
+                <button type="button" onClick={() => setEditingAdvancePayment(null)} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition font-medium">Cancel</button>
+                <button type="submit" className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium">Update Payment</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
