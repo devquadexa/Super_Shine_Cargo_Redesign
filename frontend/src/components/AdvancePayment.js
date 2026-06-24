@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import API_BASE from '../api/config';
 
-function AdvancePayment({ job, onUpdate }) {
+function AdvancePayment({ job, onUpdate, forceOpen }) {
   const { user } = useAuth();
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditing, setIsEditing] = useState(forceOpen || false);
   const [showSlotsModal, setShowSlotsModal] = useState(false);
   const [editingPaymentId, setEditingPaymentId] = useState(null);
   const [advancePayments, setAdvancePayments] = useState([]);
@@ -258,6 +258,7 @@ function AdvancePayment({ job, onUpdate }) {
   const handleCancel = () => {
     resetAddForm();
     setIsEditing(false);
+    if (forceOpen && onUpdate) onUpdate(); // unmount when used as forceOpen modal
   };
 
   const openAddPaymentModal = () => {
@@ -344,8 +345,8 @@ function AdvancePayment({ job, onUpdate }) {
 
   return (
     <div>
-      <div className="font-semibold text-gray-900 mb-2">Advance Payments</div>
-      <p className="text-sm text-gray-600 mb-4">
+      <div className="font-semibold text-gray-900 mb-2 hidden">Advance Payments</div>
+      <p className="text-sm text-gray-600 mb-4 hidden">
         Record and track advance payments received for this job
       </p>
 
@@ -638,16 +639,20 @@ function AdvancePayment({ job, onUpdate }) {
           </div>
         ) : (
           <div className="bg-white rounded-xl border-2 border-gray-200">
-            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-              <div className="text-lg font-semibold text-gray-900">Payment Records</div>
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <div className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Advance Payments</div>
               {canEdit && (
                 <button
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium text-sm"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-[#15803d] bg-green-50 hover:bg-green-100 border border-green-200 transition"
                   onClick={openAddPaymentModal}
                   disabled={loadingPayments}
-                  title={advancePayments.length > 0 || totalAdvanceAmount > 0 ? 'Add another advance payment' : 'Add payment'}
+                  title="Add advance payment"
+                  aria-label="Add advance payment"
                 >
-                  + Add Payment
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                  </svg>
+                  Add
                 </button>
               )}
             </div>
