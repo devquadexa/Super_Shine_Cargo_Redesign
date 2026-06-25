@@ -8,6 +8,7 @@ import { transporterService } from '../api/services/transporterService';
 import apiClient from '../api/client';
 import OfficePayItems from './OfficePayItems';
 import AdvancePayment from './AdvancePayment';
+import JobPettyCash from './JobPettyCash';
 import Pagination from './Pagination';
 
 function Jobs() {
@@ -63,6 +64,18 @@ function Jobs() {
   }, [user]);
 
   useEffect(() => {
+    if (viewJobModal) {
+      console.log('=== VIEW JOB MODAL DEBUG ===');
+      console.log('viewJobModal:', viewJobModal);
+      console.log('viewJobModal.assignments:', viewJobModal.assignments);
+      console.log('viewJobModal.assignments length:', viewJobModal.assignments?.length);
+      if (viewJobModal.assignments && viewJobModal.assignments.length > 0) {
+        console.log('First assignment:', viewJobModal.assignments[0]);
+      }
+    }
+  }, [viewJobModal]);
+
+  useEffect(() => {
     // Close dropdown when clicking outside
     const handleClickOutside = (event) => {
       if (showUserDropdown && !event.target.closest('.multi-select-dropdown')) {
@@ -92,14 +105,12 @@ function Jobs() {
       const data = await jobService.getAll();
       console.log('Fetched jobs data:', data);
       console.log('First job details:', JSON.stringify(data[0], null, 2));
-      console.log('First job billTotalAmount:', data[0]?.billTotalAmount);
-      console.log('First job billPaidAmount:', data[0]?.billPaidAmount);
+      console.log('First job assignments:', data[0]?.assignments);
       // Ensure all jobs have a status
       const jobsWithStatus = data.map(job => ({
         ...job,
-        status: job.status || 'Open',
-        // Map assignedUsers to assignments for consistency
-        assignments: job.assignedUsers || []
+        status: job.status || 'Open'
+        // Don't override assignments - keep what came from backend
       }));
       console.log('Jobs with status:', jobsWithStatus);
       console.log('First job after mapping:', JSON.stringify(jobsWithStatus[0], null, 2));
@@ -713,7 +724,15 @@ function Jobs() {
         )}
       </div>
 
-      {/* Office Pay Items modal — rendered outside the table */}
+      
+
+
+      {/* View Job Details Modal */}
+      {viewJobModal && ReactDOM.createPortal(
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] px-[2.5vw] py-2">
+          <div className="bg-white rounded-2xl shadow-2xl flex flex-col" style={{ width: '95vw', height: '97vh' }}>
+
+{/* Office Pay Items modal — rendered outside the table */}
       {officePayModal && (
         <OfficePayItems
           jobId={officePayModal}
@@ -820,12 +839,6 @@ function Jobs() {
           </div>
         </div>
       )}
-
-
-      {/* View Job Details Modal */}
-      {viewJobModal && ReactDOM.createPortal(
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] px-[2.5vw] py-2">
-          <div className="bg-white rounded-2xl shadow-2xl flex flex-col" style={{ width: '95vw', height: '97vh' }}>
 
             {/* Header */}
             <div className="flex items-center justify-between px-10 py-5 rounded-t-2xl shrink-0" style={{ background: 'linear-gradient(135deg,#1E3F63 0%,#2f5e8f 100%)' }}>
@@ -1114,6 +1127,7 @@ function Jobs() {
                             <th className="px-5 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase">Assigned Amount</th>
                             <th className="px-5 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase">Settled Amount</th>
                             <th className="px-5 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase">Balance / Return</th>
+                            <th className="px-5 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase">Status</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1130,11 +1144,24 @@ function Jobs() {
                                   <td className={`px-5 py-3 text-right font-bold ${balanceAmount > 0 ? 'text-orange-600' : balanceAmount < 0 ? 'text-red-600' : 'text-gray-600'}`}>
                                     {balanceAmount.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
                                   </td>
+                                  <td className="px-5 py-3 text-center">
+                                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
+                                      a.status === 'Assigned' ? 'bg-blue-100 text-blue-800' :
+                                      a.status === 'Settled' ? 'bg-green-100 text-green-800' :
+                                      a.status === 'Settled / Balance Returned' ? 'bg-green-100 text-green-800' :
+                                      a.status === 'Settled / Over Due Collected' ? 'bg-green-100 text-green-800' :
+                                      a.status === 'Full Petty Cash Returned' ? 'bg-gray-100 text-gray-800' :
+                                      a.status === 'Closed' ? 'bg-gray-100 text-gray-800' :
+                                      'bg-yellow-100 text-yellow-800'
+                                    }`}>
+                                      {a.status || 'Assigned'}
+                                    </span>
+                                  </td>
                                 </tr>
                               );
                             })
                           ) : (
-                            <tr><td colSpan={4} className="px-5 py-3 text-gray-400 text-xs italic text-center">No petty cash assignments yet</td></tr>
+                            <tr><td colSpan={5} className="px-5 py-3 text-gray-400 text-xs italic text-center">No petty cash assignments yet</td></tr>
                           )}
                         </tbody>
                         <tfoot>
@@ -1149,6 +1176,7 @@ function Jobs() {
                             <td className="px-5 py-2.5 text-right text-orange-600 font-bold text-sm">
                               {((viewJobModal.assignments || []).reduce((sum,a)=>sum+parseFloat(a.assignedAmount||0),0) - (viewJobModal.assignments || []).reduce((sum,a)=>sum+parseFloat(a.settledAmount||0),0)).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
                             </td>
+                            <td></td>
                           </tr>
                         </tfoot>
                       </table>
