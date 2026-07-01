@@ -9,6 +9,7 @@ import apiClient from '../api/client';
 import OfficePayItems from './OfficePayItems';
 import AdvancePayment from './AdvancePayment';
 import JobPettyCash from './JobPettyCash';
+import JobInvoicingModal from './JobInvoicingModal';
 import Pagination from './Pagination';
 
 function Jobs() {
@@ -22,6 +23,7 @@ function Jobs() {
   const [viewJobModal, setViewJobModal] = useState(null); // job object being viewed
   const [officePayModal, setOfficePayModal] = useState(null);
   const [advancePayModal, setAdvancePayModal] = useState(null);
+  const [invoicingModalJob, setInvoicingModalJob] = useState(null); // for JobInvoicingModal
   const [editingOfficePayItem, setEditingOfficePayItem] = useState(null); // {officePayItemId, description, actualCost, jobId}
   const [editingAdvancePayment, setEditingAdvancePayment] = useState(null); // {advancePaymentId, amount, paymentMadeDate, paymentType, checkNo, notes, jobId}
   const [formStep, setFormStep] = useState(1); // 1 = Job Details, 2 = Petty Cash
@@ -679,16 +681,28 @@ function Jobs() {
                     <td className="px-6 py-4 text-sm">
                       <div className="flex items-center gap-2">
                         {(user?.role === 'Admin' || user?.role === 'Super Admin' || user?.role === 'Manager' || user?.role === 'Office Executive') && (
-                          <button
-                            onClick={() => openEditModal(job)}
-                            title="Edit Job"
-                            className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 transition"
-                          >
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                            </svg>
-                          </button>
+                          <>
+                            <button
+                              onClick={() => setInvoicingModalJob(job)}
+                              title="Manage Invoicing"
+                              className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 transition"
+                            >
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                                <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+                                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => openEditModal(job)}
+                              title="Edit Job"
+                              className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 transition"
+                            >
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                              </svg>
+                            </button>
+                          </>
                         )}
                         <button
                           onClick={() => {
@@ -1438,6 +1452,24 @@ function Jobs() {
           </div>
         </div>
       , document.body)}
+
+      {/* Job Invoicing Modal - Rendered outside ViewJobModal portal */}
+      {invoicingModalJob && (
+        <JobInvoicingModal
+          job={invoicingModalJob}
+          isOpen={true}
+          onClose={() => {
+            setInvoicingModalJob(null);
+            // Refresh jobs after invoicing operations
+            fetchJobs();
+          }}
+          onInvoiceCreated={(newBill) => {
+            console.log('Invoice created:', newBill);
+            fetchJobs();
+            fetchJobPayments(invoicingModalJob.jobId);
+          }}
+        />
+      )}
     </div>
   );
 }
