@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import ChangePassword from './ChangePassword';
 import NotificationBell from './NotificationBell';
 
-function Navbar({ onMenuClick }) {
+function Navbar({ onMenuClick, systemName = 'Super Shine Cargo', systemSubtitle = 'Cargo Management System' }) {
   const { user, logout } = useAuth();
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
@@ -61,12 +61,12 @@ function Navbar({ onMenuClick }) {
             <Link to="/" className="flex items-center gap-2.5 min-w-0" title="Go to Dashboard">
               <img
                 src={`${process.env.PUBLIC_URL}/logo.png`}
-                alt="Super Shine Cargo"
+                alt={systemName}
                 className="h-8 w-8 object-contain shrink-0"
               />
               <div className="hidden sm:block">
-                <h1 className="text-base font-bold text-gray-900 leading-tight whitespace-nowrap">Super Shine Cargo</h1>
-                <p className="text-xs text-gray-600 leading-tight whitespace-nowrap">Cargo Management System</p>
+                <h1 className="text-base font-bold text-gray-900 leading-tight whitespace-nowrap">{systemName}</h1>
+                <p className="text-xs text-gray-600 leading-tight whitespace-nowrap">{systemSubtitle}</p>
               </div>
             </Link>
           </div>
