@@ -5,7 +5,10 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js"
+    "dev": "nodemon src/index.js",
+    "migrate": "node scripts/migrate.js",
+    "provision-tenant": "node scripts/provision-tenant.js",
+    "test:migrations": "node scripts/lib/migrationRunner.test.js"
   },
   "keywords": [
     "cargo",

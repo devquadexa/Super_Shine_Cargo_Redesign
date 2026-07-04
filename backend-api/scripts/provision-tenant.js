@@ -1,8 +1,9 @@
 /**
- * Tenant provisioning (phase 4 starter).
+ * Tenant provisioning.
  *
- * Creates a new tenant database, deploys the schema + all stored procedures,
- * seeds a super-admin user, and registers the tenant in the catalog.
+ * Creates a new tenant database, runs all migrations (schema + stored
+ * procedures) via the shared migration runner, seeds a super-admin user, and
+ * registers the tenant in the catalog.
  *
  * Usage:
  *   node scripts/provision-tenant.js \
@@ -11,15 +12,14 @@
  *     --admin-user admin --admin-password 'ChangeMe123!'
  *
  * Requires the same DB_* env as the app, plus CATALOG_DB_* for the catalog.
- * NOTE: a clean table-schema SQL file is required (TENANT_SCHEMA_SQL). The
- * committed export.sql is an SSMS dump with machine-specific paths and is NOT
- * suitable here — extract a portable schema.sql as part of adopting this.
+ * The catalog database itself must already be migrated:
+ *   node scripts/migrate.js --catalog
  */
 require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
-const fs = require('fs');
-const path = require('path');
 const sql = require('mssql');
 const bcrypt = require('bcryptjs');
+const runner = require('./lib/migrationRunner');
+const manifest = require('./migrationManifest');
 
 function parseArgs(argv) {
   const args = {};
@@ -47,36 +47,6 @@ function baseConfig(database) {
   };
 }
 
-// mssql cannot execute a script containing multiple `GO` batch separators in a
-// single request, so split on GO and run each batch sequentially.
-async function runSqlFile(pool, filePath) {
-  if (!fs.existsSync(filePath)) {
-    console.warn(`   (skip, not found) ${filePath}`);
-    return;
-  }
-  const raw = fs.readFileSync(filePath, 'utf8');
-  const batches = raw.split(/^\s*GO\s*$/gim).map(b => b.trim()).filter(Boolean);
-  for (const batch of batches) {
-    await pool.request().batch(batch);
-  }
-  console.log(`   applied ${path.basename(filePath)} (${batches.length} batches)`);
-}
-
-async function deployProcedures(pool) {
-  const backendRoot = path.join(__dirname, '..');
-  const procFiles = fs.readdirSync(backendRoot).filter(f => /^usp_.*\.sql$/.test(f));
-  for (const f of procFiles) {
-    await runSqlFile(pool, path.join(backendRoot, f));
-  }
-  // Runtime migrations kept under src/config
-  const configDir = path.join(backendRoot, 'src', 'config');
-  if (fs.existsSync(configDir)) {
-    for (const f of fs.readdirSync(configDir).filter(f => /\.sql$/.test(f) && f !== 'catalog-schema.sql')) {
-      await runSqlFile(pool, path.join(configDir, f));
-    }
-  }
-}
-
 async function main() {
   const args = parseArgs(process.argv);
   const required = ['slug', 'name', 'db', 'admin-user', 'admin-password'];
@@ -91,22 +61,18 @@ async function main() {
 
   // 1) Create the tenant database (connect to master).
   console.log(`\n1) Creating database [${dbName}] ...`);
-  let master = await new sql.ConnectionPool(baseConfig('master')).connect();
-  await master.request().query(
-    `IF DB_ID('${dbName}') IS NULL CREATE DATABASE [${dbName}];`
-  );
+  const master = await new sql.ConnectionPool(baseConfig('master')).connect();
+  await master.request().query(`IF DB_ID('${dbName}') IS NULL CREATE DATABASE [${dbName}];`);
   await master.close();
 
-  // 2) Deploy schema + procedures into the tenant DB.
-  console.log(`\n2) Deploying schema + procedures into [${dbName}] ...`);
+  // 2) Run all migrations (schema + stored procedures) into the tenant DB.
+  console.log(`\n2) Running migrations into [${dbName}] ...`);
   const tenantPool = await new sql.ConnectionPool(baseConfig(dbName)).connect();
-  const schemaFile = process.env.TENANT_SCHEMA_SQL;
-  if (schemaFile) {
-    await runSqlFile(tenantPool, path.resolve(schemaFile));
-  } else {
-    console.warn('   TENANT_SCHEMA_SQL not set — tables must already exist or be created separately.');
-  }
-  await deployProcedures(tenantPool);
+  await runner.run(tenantPool, {
+    versioned: manifest.tenantVersioned,
+    repeatable: manifest.tenantRepeatable,
+    label: `tenant:${args.slug}`,
+  });
 
   // 3) Seed the super-admin user.
   console.log(`\n3) Seeding super-admin '${args['admin-user']}' ...`);
