@@ -1,6 +1,11 @@
 /**
  * Auth Controller
  */
+const tenantContext = require('../../infrastructure/tenancy/tenantContext');
+const catalog = require('../../infrastructure/tenancy/catalog');
+
+const MULTI_TENANT = process.env.MULTI_TENANT === 'true';
+
 class AuthController {
   constructor(container) {
     this.authenticateUser = container.get('authenticateUser');
@@ -10,10 +15,37 @@ class AuthController {
   async login(req, res) {
     try {
       const { username, password } = req.body;
-      const result = await this.authenticateUser.execute(username, password);
+
+      let tenantId = null;
+      if (MULTI_TENANT) {
+        // Prefer the tenant resolved from subdomain / header / login slug.
+        let tenant = req.tenant || tenantContext.getTenant();
+
+        // Fallback: resolve tenant from the username directory when no slug or
+        // subdomain was supplied (single-tenant-per-user is the common case).
+        if (!tenant) {
+          const matches = await catalog.findTenantsForUsername(username);
+          if (matches.length === 1) {
+            tenant = matches[0];
+            tenantContext.setTenant(tenant);
+          } else if (matches.length > 1) {
+            return res.status(409).json({
+              message: 'This username exists in multiple workspaces. Please specify a tenant.',
+              tenants: matches.map(t => ({ slug: t.slug, name: t.name })),
+            });
+          }
+        }
+
+        if (!tenant) {
+          return res.status(400).json({ message: 'Unable to determine tenant for this login.' });
+        }
+        tenantId = tenant.tenantId;
+      }
+
+      const result = await this.authenticateUser.execute(username, password, tenantId);
       res.json(result);
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('Login error:', error.message);
       res.status(401).json({ message: error.message });
     }
   }
