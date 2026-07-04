@@ -65,6 +65,7 @@ const tenantRepeatable = fs
 
 const catalogVersioned = [
   'migrations/catalog/V001__catalog_schema.sql',
+  'migrations/catalog/V002__tenant_branding.sql', // per-tenant branding + feature flags
 ].map(rel => p(rel));
 
 module.exports = { ROOT, tenantVersioned, tenantRepeatable, catalogVersioned };

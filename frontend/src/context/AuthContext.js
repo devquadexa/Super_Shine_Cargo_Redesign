@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { authService } from '../api/services/authService';
+import { useTenant } from './TenantContext';
 
 const AuthContext = createContext();
 
@@ -15,6 +16,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
+  const { setTenantFromLogin } = useTenant();
 
   useEffect(() => {
     if (token) {
@@ -37,10 +39,11 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (username, password) => {
     const response = await authService.login(username, password);
-    const { token, user } = response;
+    const { token, user, tenant } = response;
     localStorage.setItem('token', token);
     setToken(token);
     setUser(user);
+    if (tenant) setTenantFromLogin(tenant);
     return user;
   };
 

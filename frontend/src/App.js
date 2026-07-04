@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { TenantProvider } from './context/TenantContext';
 import './App.css';
 import Login from './components/Login';
 import Customers from './components/Customers';
@@ -168,9 +169,11 @@ function AppContent() {
 
 function App() {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <TenantProvider>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </TenantProvider>
   );
 }
 

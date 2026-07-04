@@ -17,6 +17,7 @@ class AuthController {
       const { username, password } = req.body;
 
       let tenantId = null;
+      let loginTenant = null;
       if (MULTI_TENANT) {
         // Prefer the tenant resolved from subdomain / header / login slug.
         let tenant = req.tenant || tenantContext.getTenant();
@@ -40,9 +41,13 @@ class AuthController {
           return res.status(400).json({ message: 'Unable to determine tenant for this login.' });
         }
         tenantId = tenant.tenantId;
+        loginTenant = tenant;
       }
 
       const result = await this.authenticateUser.execute(username, password, tenantId);
+      if (MULTI_TENANT && loginTenant) {
+        result.tenant = catalog.toPublicTenant(loginTenant);
+      }
       res.json(result);
     } catch (error) {
       console.error('Login error:', error.message);

@@ -36,6 +36,16 @@ async function getCatalogConnection() {
   return catalogPool;
 }
 
+function parseFeatures(raw) {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 function mapRow(row) {
   if (!row) return null;
   return {
@@ -49,6 +59,31 @@ function mapRow(row) {
     dbUser: row.DbUser,
     dbPassword: row.DbPassword,
     plan: row.Plan,
+    // Branding + feature flags (may be null on tenants provisioned before V002).
+    displayName: row.DisplayName,
+    tagline: row.Tagline,
+    logoUrl: row.LogoUrl,
+    primaryColor: row.PrimaryColor,
+    accentColor: row.AccentColor,
+    features: parseFeatures(row.Features),
+  };
+}
+
+/**
+ * Public, credential-free view of a tenant: only what the browser may see
+ * before login (branding + feature flags). NEVER includes DB connection info.
+ */
+function toPublicTenant(tenant) {
+  if (!tenant) return null;
+  return {
+    slug: tenant.slug,
+    name: tenant.name,
+    displayName: tenant.displayName || tenant.name,
+    tagline: tenant.tagline || null,
+    logoUrl: tenant.logoUrl || null,
+    primaryColor: tenant.primaryColor || null,
+    accentColor: tenant.accentColor || null,
+    features: tenant.features || {},
   };
 }
 
@@ -131,5 +166,6 @@ module.exports = {
   getTenantById,
   findTenantsForUsername,
   listActiveTenants,
+  toPublicTenant,
   clearCache,
 };

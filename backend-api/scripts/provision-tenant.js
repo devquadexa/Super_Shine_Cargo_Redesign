@@ -12,6 +12,12 @@
  *     --admin-user admin --admin-password 'ChangeMe123!' \
  *     --admin-email admin@acme.example
  *
+ * Optional branding / feature flags (Phase 6, Model A):
+ *     --display-name "Acme Cargo" --tagline "Ship smarter" \
+ *     --logo-url https://cdn/acme.png \
+ *     --primary-color '#0a5' --accent-color '#083' \
+ *     --features '{"transporters":true,"oldInvoices":false}'
+ *
  * Requires the same DB_* env as the app, plus CATALOG_DB_* for the catalog.
  * The catalog database itself must already be migrated:
  *   node scripts/migrate.js --catalog
@@ -102,15 +108,29 @@ async function main() {
   console.log('\n4) Registering tenant in catalog ...');
   const catalogDb = process.env.CATALOG_DB_DATABASE || 'SuperShineCargoCatalog';
   const catalogPool = await new sql.ConnectionPool(baseConfig(catalogDb)).connect();
+  // Optional per-tenant branding + feature flags (Phase 6, Model A).
+  let features = null;
+  if (args.features) {
+    try { features = JSON.stringify(JSON.parse(args.features)); }
+    catch { console.error('--features must be valid JSON'); process.exit(1); }
+  }
   await catalogPool.request()
     .input('TenantId', sql.VarChar(50), tenantId)
     .input('Slug', sql.VarChar(100), args.slug)
     .input('Name', sql.VarChar(255), args.name)
     .input('DbName', sql.VarChar(128), dbName)
+    .input('DisplayName', sql.VarChar(255), args['display-name'] || args.name)
+    .input('Tagline', sql.VarChar(255), args.tagline || null)
+    .input('LogoUrl', sql.VarChar(500), args['logo-url'] || null)
+    .input('PrimaryColor', sql.VarChar(20), args['primary-color'] || null)
+    .input('AccentColor', sql.VarChar(20), args['accent-color'] || null)
+    .input('Features', sql.NVarChar(sql.MAX), features)
     .query(`
       IF NOT EXISTS (SELECT 1 FROM Tenants WHERE TenantId = @TenantId)
-        INSERT INTO Tenants (TenantId, Slug, Name, DbName, Status)
-        VALUES (@TenantId, @Slug, @Name, @DbName, 'active');
+        INSERT INTO Tenants (TenantId, Slug, Name, DbName, Status,
+                             DisplayName, Tagline, LogoUrl, PrimaryColor, AccentColor, Features)
+        VALUES (@TenantId, @Slug, @Name, @DbName, 'active',
+                @DisplayName, @Tagline, @LogoUrl, @PrimaryColor, @AccentColor, @Features);
     `);
   await catalogPool.request()
     .input('Username', sql.VarChar(100), args['admin-user'])

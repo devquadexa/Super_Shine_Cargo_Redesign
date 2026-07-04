@@ -28,6 +28,7 @@ const otherExpenseRoutes = require('./presentation/routes/otherExpense');
 const invoiceReviewRoutes = require('./presentation/routes/invoiceReviewRoutes');
 const notificationRoutes = require('./presentation/routes/notifications');
 const testNotificationRoutes = require('./presentation/routes/testNotification');
+const tenantContextRoutes = require('./presentation/routes/tenantContext');
 const { getConnection, MULTI_TENANT } = require('./config/database');
 const container = require('./infrastructure/di/container');
 const { startOverdueChecker } = require('./infrastructure/scheduler/overdueChecker');
@@ -62,6 +63,7 @@ startupCheck
     console.log('Server will continue but database operations will fail');
   });
 
+app.use('/api/tenant', tenantContextRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/password-reset', passwordResetRoutes(container));
 app.use('/api/customers', customerRoutes);
