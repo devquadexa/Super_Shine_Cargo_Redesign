@@ -16,7 +16,9 @@ const p = (...rel) => path.join(ROOT, ...rel);
 
 // Applied once each, in this exact order.
 const tenantVersioned = [
-  'migrations/tenant/V001__baseline_schema.sql', // portable baseline (tables/views/indexes/constraints)
+  'migrations/tenant/V001__baseline_schema.sql', // portable baseline (schema only: tables/views/indexes/constraints)
+  'migrations/tenant/V002__reconcile_schema_drift.sql', // columns added in prod after the export dump was taken
+  'migrations/tenant/V003__seed_reference_data.sql', // non-PII lookups (districts/cities/categories/pay-item templates)
 
   // Payments feature + its incremental fixes (historical order).
   'create-payments-table.sql',
@@ -24,8 +26,6 @@ const tenantVersioned = [
   'update-payments-schema.sql',
   'fix-payment-status-constraint.sql',
   'add-partial-payment-columns.sql',
-  'src/config/ADD_BANK_FIELD_TO_PAYMENTS.sql',
-  'src/config/ADD_CHEQUE_FIELDS_TO_PAYMENTS.sql',
 
   // Other feature tables.
   'create-transporter-payments-table.sql',
@@ -36,8 +36,10 @@ const tenantVersioned = [
   'PASSWORD_RESET_DATABASE_SCRIPTS.sql',
   'add-password-reset-columns.sql',
 
-  // Old invoices.
+  // Old invoices (OldInvoicePayments must exist before the bank/cheque alters).
   'src/config/CREATE_OLD_INVOICES_TABLE.sql',
+  'src/config/ADD_BANK_FIELD_TO_PAYMENTS.sql',
+  'src/config/ADD_CHEQUE_FIELDS_TO_PAYMENTS.sql',
   'fix-null-invoice-dates.sql',
 
   // Cash balance settlement + bills.

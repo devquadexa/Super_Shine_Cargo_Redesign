@@ -9,7 +9,8 @@
  *   node scripts/provision-tenant.js \
  *     --slug acme --name "Acme Cargo" \
  *     --db SuperShineCargo_acme \
- *     --admin-user admin --admin-password 'ChangeMe123!'
+ *     --admin-user admin --admin-password 'ChangeMe123!' \
+ *     --admin-email admin@acme.example
  *
  * Requires the same DB_* env as the app, plus CATALOG_DB_* for the catalog.
  * The catalog database itself must already be migrated:
@@ -49,8 +50,11 @@ function baseConfig(database) {
 
 async function main() {
   const args = parseArgs(process.argv);
+  // Users.Email is NOT NULL, so an admin email is required (accept --admin-email or --email).
+  const adminEmail = args['admin-email'] || args.email;
   const required = ['slug', 'name', 'db', 'admin-user', 'admin-password'];
   const missing = required.filter(k => !args[k]);
+  if (!adminEmail) missing.push('admin-email');
   if (missing.length) {
     console.error(`Missing required args: ${missing.map(m => '--' + m).join(', ')}`);
     process.exit(1);
@@ -85,7 +89,7 @@ async function main() {
     .input('Password', sql.VarChar(255), hashed)
     .input('FullName', sql.VarChar(255), args.name + ' Admin')
     .input('Role', sql.VarChar(50), 'Super Admin')
-    .input('Email', sql.VarChar(255), args.email || null)
+    .input('Email', sql.VarChar(255), adminEmail)
     .input('CreatedDate', sql.DateTime, new Date())
     .input('IsActive', sql.Bit, true)
     .input('IsTemporaryPassword', sql.Bit, true)

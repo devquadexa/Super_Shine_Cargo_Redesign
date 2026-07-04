@@ -69,6 +69,23 @@ async function migrateTarget(config, sources, label) {
   }
 }
 
+// Create a database if it does not already exist (bootstrap step for the
+// control-plane catalog DB, which the migration runner assumes exists).
+async function ensureDatabase(config, dbName) {
+  const master = await new sql.ConnectionPool({ ...config, database: 'master' }).connect();
+  try {
+    const res = await master.request()
+      .input('name', sql.NVarChar, dbName)
+      .query('SELECT database_id FROM sys.databases WHERE name = @name');
+    if (res.recordset.length === 0) {
+      await master.request().query(`CREATE DATABASE [${dbName.replace(/]/g, ']]')}]`);
+      console.log(`  created database [${dbName}]`);
+    }
+  } finally {
+    await master.close();
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv);
   if (!args.single && !args.catalog && !args.allTenants && args.tenants.length === 0) {
@@ -79,8 +96,10 @@ async function main() {
   const tenantSources = { versioned: manifest.tenantVersioned, repeatable: manifest.tenantRepeatable };
 
   if (args.catalog) {
+    const catalogDb = process.env.CATALOG_DB_DATABASE || 'SuperShineCargoCatalog';
+    await ensureDatabase(singleConfig(), catalogDb);
     await migrateTarget(
-      { ...singleConfig(), database: process.env.CATALOG_DB_DATABASE || 'SuperShineCargoCatalog' },
+      { ...singleConfig(), database: catalogDb },
       { versioned: manifest.catalogVersioned },
       'catalog'
     );

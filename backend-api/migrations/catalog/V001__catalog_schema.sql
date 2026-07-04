@@ -28,7 +28,7 @@ BEGIN
         DbUser        VARCHAR(128) NULL,
         DbPassword    VARCHAR(255) NULL,
 
-        Plan          VARCHAR(50)  NULL,
+        [Plan]        VARCHAR(50)  NULL,
         CreatedDate   DATETIME     NOT NULL DEFAULT GETDATE()
     );
 

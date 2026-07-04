@@ -5,11 +5,23 @@ Versioned + repeatable SQL migrations applied by `scripts/migrate.js` (runner in
 
 ## Layout
 - `catalog/` — control-plane (tenant registry) database schema.
-- `tenant/V001__baseline_schema.sql` — portable baseline for a tenant business
-  DB: tables, views, indexes, constraints, defaults, FKs and the `sp_*`
-  programmables. Extracted from `export.sql` with the non-portable SSMS preamble
-  removed (CREATE DATABASE + machine paths, `ALTER DATABASE SET…`, `CREATE USER`
-  / `ALTER ROLE`, `USE` statements).
+- `tenant/V001__baseline_schema.sql` — portable, **schema-only** baseline for a
+  tenant business DB: tables, views, indexes, constraints, defaults, FKs and the
+  `sp_*` programmables. Extracted from `export.sql` with the non-portable SSMS
+  preamble removed (CREATE DATABASE + machine paths, `ALTER DATABASE SET…`,
+  `CREATE USER` / `ALTER ROLE`, `USE` statements) **and all `INSERT` data
+  removed** — the export was a live DB dump, so it carried real customer/job/
+  bill/user rows that must never seed a new tenant.
+- `tenant/V002__reconcile_schema_drift.sql` — adds columns that were introduced
+  in production (via ad-hoc `ALTER`s that were never committed) *after* the
+  export was taken, and which the stored procedures require: `Jobs.CUSDECDate` /
+  `chassisNumber` / `transportDeliveryDate`, `OfficePayItems.hasBill`, and
+  `Transporters.lorryNumber` / `transporterType` / `driverName` / `size`. Each
+  `ALTER` is `COL_LENGTH`-guarded so it is idempotent. Without this, creating the
+  procs on a fresh DB fails with `Invalid column name`.
+- `tenant/V003__seed_reference_data.sql` — non-PII lookup seed a fresh tenant
+  needs: `Districts`, `Cities`, `Categories`, `PayItemTemplates` (the only data
+  kept from the export; ordered so `Districts` precedes `Cities` for the FK).
 - `tenant/repeatable/` — reserved for repeatable migrations. Currently the stored
   procedures are referenced in place from the backend-api root (`usp_*.sql`) via
   the manifest; they are re-applied whenever their content changes.
@@ -33,6 +45,13 @@ The manifest replays the historical incremental scripts (payments, notifications
 transporter payments, invoice reviews, password reset, old invoices, cash-balance
 settlement, petty-cash grouping) in dependency order on top of the baseline. They
 are guarded with `IF [NOT] EXISTS`, so re-running is safe.
+
+## Verified end-to-end
+Provisioning two tenants from a clean server (`migrate --catalog`, which now
+bootstraps the catalog DB, then `provision-tenant` for each) installs all 208
+stored procedures with **zero** production rows (only the reference lookups +
+the seeded admin), and a tenant-isolation test confirms one tenant's token
+cannot read another's data.
 
 ## ⚠️ Deliberately EXCLUDED scripts (need manual reconciliation)
 These existing scripts are **not** in the manifest because they are unsafe to
