@@ -83,6 +83,17 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
     };
   };
 
+  const checkAllItemsHaveBillingAmounts = () => {
+    // Check if all items have both actualCost AND billingAmount filled
+    const allFilled = payItems.every(item => {
+      const hasActualCost = item.actualCost && parseFloat(item.actualCost) > 0;
+      const hasBillingAmount = item.billingAmount && parseFloat(item.billingAmount) > 0;
+      return hasActualCost && hasBillingAmount;
+    });
+    setAllItemsHaveBillingAmounts(allFilled);
+    return allFilled;
+  };
+
   const handleAddPayItem = () => {
     const newPayItems = [...payItems, getBlankPayItem()];
     setPayItems(newPayItems);
@@ -127,6 +138,7 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
   const [expandedBillId, setExpandedBillId] = useState(null);
   const [editingItemIdx, setEditingItemIdx] = useState(null); // Track which item is being edited
   const [payItemsSaved, setPayItemsSaved] = useState(false);
+  const [allItemsHaveBillingAmounts, setAllItemsHaveBillingAmounts] = useState(false); // Track if all items have billing amounts
   
   // Payment modal states
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -193,12 +205,12 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
             paidByName: item.paidByName || item.paidBy || 'Office',
             hasBill: true,
             source: item.source || 'Unknown',
-            isReadOnly: false // Allow editing even if items were previously saved
+            isReadOnly: false
           });
         });
         setPayItemsSaved(true); // Mark as saved since loaded from job.payItems
       } else {
-        // 2. Second priority: Load from office pay items only if no job.payItems
+        // 2. Load from office pay items
         try {
           const officePayItemsResponse = await fetch(`${API_BASE}/api/office-pay-items/job/${job.jobId}`, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
@@ -224,48 +236,52 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
         } catch (error) {
           console.error('Error loading office pay items:', error);
         }
-      }
-      
-      // 3. Load Petty Cash Settlement Items only if status is Settled AND no other items loaded
-      if (allPayItems.length === 0 && job?.pettyCashStatus === 'Settled') {
-        setLoadingSettlement(true);
-        try {
-          const response = await fetch(`${API_BASE}/api/petty-cash-assignments/job/${job.jobId}/all`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-          });
-          
-          if (response.ok) {
-            const assignments = await response.json();
-            if (Array.isArray(assignments)) {
-              assignments.forEach(assignment => {
-                if (assignment.settlementItems && Array.isArray(assignment.settlementItems)) {
-                  assignment.settlementItems.forEach(item => {
-                    allPayItems.push({
-                      name: item.itemName,
-                      actualCost: item.actualCost,
-                      billingAmount: '',
-                      sameAmount: false,
-                      paidBy: item.paidBy || assignment.assignedTo,
-                      paidByName: item.paidByName || assignment.assignedToName,
-                      isCustomItem: item.isCustomItem,
-                      hasBill: item.hasBill === true || item.hasBill === 1,
-                      isPettyCashItem: true,
-                      isReadOnly: false
+        
+        // 3. Load Petty Cash Settlement Items (if settled)
+        if (job?.pettyCashStatus === 'Settled') {
+          setLoadingSettlement(true);
+          try {
+            const response = await fetch(`${API_BASE}/api/petty-cash-assignments/job/${job.jobId}/all`, {
+              headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            });
+            
+            if (response.ok) {
+              const assignments = await response.json();
+              if (Array.isArray(assignments)) {
+                assignments.forEach(assignment => {
+                  if (assignment.settlementItems && Array.isArray(assignment.settlementItems)) {
+                    assignment.settlementItems.forEach(item => {
+                      allPayItems.push({
+                        name: item.itemName,
+                        actualCost: item.actualCost,
+                        billingAmount: '',
+                        sameAmount: false,
+                        paidBy: item.paidBy || assignment.assignedTo,
+                        paidByName: item.paidByName || assignment.assignedToName,
+                        isCustomItem: item.isCustomItem,
+                        hasBill: item.hasBill === true || item.hasBill === 1,
+                        isPettyCashItem: true,
+                        isReadOnly: false
+                      });
                     });
-                  });
-                }
-              });
+                  }
+                });
+              }
             }
+          } catch (error) {
+            console.error('Error loading settlement:', error);
+          } finally {
+            setLoadingSettlement(false);
           }
-        } catch (error) {
-          console.error('Error loading settlement:', error);
-        } finally {
-          setLoadingSettlement(false);
         }
       }
       
       setPayItems(allPayItems);
       setShowPayItemsRow(allPayItems.length > 0);
+      // Check if all loaded items have billing amounts
+      if (allPayItems.length > 0) {
+        setTimeout(() => checkAllItemsHaveBillingAmounts(), 0);
+      }
     } catch (error) {
       console.error('Error loading pay items:', error);
       setMessage('Error loading pay items');
@@ -276,17 +292,14 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
     const newPayItems = [...payItems];
     newPayItems[index][field] = value;
     
+    // Auto-fill billing amount if "same amount" is checked
     if (field === 'sameAmount' && value) {
       newPayItems[index].billingAmount = newPayItems[index].actualCost;
     }
     
+    // Auto-fill billing amount when actual cost changes and "same amount" is checked
     if (field === 'actualCost' && newPayItems[index].sameAmount) {
       newPayItems[index].billingAmount = value;
-    }
-    
-    // Remove isNewItem flag once user starts editing
-    if (newPayItems[index].isNewItem && (field === 'name' || field === 'actualCost' || field === 'billingAmount')) {
-      newPayItems[index].isNewItem = false;
     }
     
     setPayItems(newPayItems);
@@ -411,8 +424,8 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
       return;
     }
 
-    // Validate pay items
-    if (!job.payItems || job.payItems.length === 0) {
+    // Validate pay items - use local state (payItems) since job prop may not be updated yet
+    if (!payItems || payItems.length === 0) {
       setMessage('No pay items found. Please add pay items first.');
       setTimeout(() => setMessage(''), 3000);
       return;
@@ -587,16 +600,6 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
     const rawAdvancePaymentDate = bill.advancePaymentDate || bill.paymentMadeDate || job.advancePaymentDate || job.paymentMadeDate;
     const advancePaymentDateText = formatDate(rawAdvancePaymentDate);
     const advancePaymentLabel = `Advance payment (${advancePaymentDateText})`;
-    const grossTotal = parseFloat(bill.grossTotal || bill.billingAmount || 0);
-    const netTotal = grossTotal - advancePayment; // Always calculate, don't use bill.netTotal
-    
-    console.log('generateBillHTML - calculated values:', {
-      advancePayment,
-      grossTotal,
-      netTotal,
-      hasAdvance: advancePayment > 0,
-      calculation: `${grossTotal} - ${advancePayment} = ${netTotal}`
-    });
     
     // Handle pay items - they might be a string that needs parsing
     let payItemsArray = [];
@@ -613,6 +616,13 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
         payItemsArray = [];
       }
     }
+
+    // Calculate gross total from pay items if bill doesn't have it
+    const calculatedGrossTotal = payItemsArray.reduce((sum, item) => {
+      return sum + (parseFloat(item.billingAmount || item.amount || 0) || 0);
+    }, 0);
+    const grossTotal = parseFloat(bill.grossTotal || bill.billingAmount || 0) || calculatedGrossTotal;
+    const netTotal = grossTotal - advancePayment;
 
     const printablePayItems = payItemsArray.map((item, index) => {
       let description = item.description || item.name || 'Service Charge';
@@ -745,8 +755,8 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
           }
           .detail-label {
             font-weight: bold;
-            width: 145px;
-            min-width: 145px;
+            width: 185px;
+            min-width: 185px;
             white-space: nowrap;
             word-break: keep-all;
             color: var(--theme-primary);
@@ -1100,6 +1110,9 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
       setMessage(`✅ Item saved successfully!`);
       setTimeout(() => setMessage(''), 3000);
       await loadJobBills();
+      
+      // Check if all items now have billing amounts
+      setTimeout(() => checkAllItemsHaveBillingAmounts(), 100);
     } catch (error) {
       console.error('Error saving item:', error);
       setMessage('Error saving item');
@@ -1141,6 +1154,9 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
       
       setTimeout(() => setMessage(''), 3000);
       await loadJobBills();
+      
+      // Check if all remaining items have billing amounts
+      setTimeout(() => checkAllItemsHaveBillingAmounts(), 100);
     } catch (error) {
       console.error('Error deleting item:', error);
       setMessage('Error deleting item');
@@ -1227,9 +1243,9 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
                                   type="text"
                                   value={item.name}
                                   onChange={(e) => handlePayItemChange(idx, 'name', e.target.value)}
-                                  disabled={editingItemIdx !== idx && !item.isNewItem}
-                                  placeholder={item.isNewItem ? "Enter item name" : ""}
-                                  className={`w-full px-2 py-1 border rounded ${(editingItemIdx !== idx && !item.isNewItem) ? 'bg-gray-100 cursor-not-allowed border-gray-200' : 'bg-white'}`}
+                                  disabled={payItemsSaved && editingItemIdx !== idx}
+                                  placeholder="Enter item name"
+                                  className={`w-full px-2 py-1 border rounded ${payItemsSaved && editingItemIdx !== idx ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
                                 />
                               </td>
                               <td className="px-4 py-2 text-right">
@@ -1237,9 +1253,9 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
                                   type="number"
                                   value={item.actualCost}
                                   onChange={(e) => handlePayItemChange(idx, 'actualCost', e.target.value)}
-                                  disabled={editingItemIdx !== idx && !item.isNewItem}
-                                  placeholder={item.isNewItem ? "0" : ""}
-                                  className={`w-24 px-2 py-1 border rounded ${(editingItemIdx !== idx && !item.isNewItem) ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
+                                  disabled={payItemsSaved && editingItemIdx !== idx}
+                                  placeholder="0"
+                                  className={`w-24 px-2 py-1 border rounded ${payItemsSaved && editingItemIdx !== idx ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
                                 />
                               </td>
                               <td className="px-4 py-2 text-right">
@@ -1247,9 +1263,9 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
                                   type="number"
                                   value={item.billingAmount}
                                   onChange={(e) => handlePayItemChange(idx, 'billingAmount', e.target.value)}
-                                  disabled={editingItemIdx !== idx && !item.isNewItem}
-                                  placeholder={item.isNewItem ? "0" : ""}
-                                  className={`w-24 px-2 py-1 border rounded ${(editingItemIdx !== idx && !item.isNewItem) ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
+                                  disabled={payItemsSaved && editingItemIdx !== idx}
+                                  placeholder="Enter billing amount"
+                                  className={`w-24 px-2 py-1 border rounded ${payItemsSaved && editingItemIdx !== idx ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
                                 />
                               </td>
                               <td className="px-4 py-2 text-center">
@@ -1257,13 +1273,12 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
                                   type="checkbox"
                                   checked={item.sameAmount}
                                   onChange={(e) => handlePayItemChange(idx, 'sameAmount', e.target.checked)}
-                                  disabled={editingItemIdx !== idx && !item.isNewItem}
-                                  className="w-4 h-4"
+                                  className="w-4 h-4 cursor-pointer"
                                 />
                               </td>
                               <td className="px-4 py-2 text-center">
                                 <div className="flex gap-2 justify-center">
-                                  {editingItemIdx === idx || item.isNewItem ? (
+                                  {editingItemIdx === idx ? (
                                     <>
                                       <button
                                         onClick={() => handleSaveItemEdit(idx)}
@@ -1273,22 +1288,24 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
                                         ✓
                                       </button>
                                       <button
-                                        onClick={() => {
-                                          if (item.isNewItem) {
-                                            const updatedItems = payItems.filter((_, i) => i !== idx);
-                                            setPayItems(updatedItems);
-                                            setEditingItemIdx(null);
-                                          } else {
-                                            setEditingItemIdx(null);
-                                          }
-                                        }}
-                                        title={item.isNewItem ? "Cancel and remove item" : "Cancel editing"}
+                                        onClick={() => setEditingItemIdx(null)}
+                                        title="Cancel editing"
                                         className="px-3 py-1 bg-gray-500 hover:bg-gray-600 text-white rounded transition text-sm font-medium"
                                       >
                                         ✕
                                       </button>
                                     </>
-                                  ) : (
+                                  ) : item.isNewItem ? (
+                                    <>
+                                      <button
+                                        onClick={() => handleDeleteItem(idx)}
+                                        title="Delete this item"
+                                        className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white rounded transition text-sm"
+                                      >
+                                        🗑️
+                                      </button>
+                                    </>
+                                  ) : payItemsSaved ? (
                                     <>
                                       <button
                                         onClick={() => setEditingItemIdx(idx)}
@@ -1305,7 +1322,7 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
                                         🗑️
                                       </button>
                                     </>
-                                  )}
+                                  ) : null}
                                 </div>
                               </td>
                             </tr>
@@ -1317,41 +1334,64 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
                     {/* Totals Summary */}
                     {payItems.length > 0 && (() => {
                       const { totalActualCost, totalBillingAmount, profit } = calculateTotals();
+                      const totalBillingFilled = totalBillingAmount > 0;
+                      
                       return (
-                        <div className="mt-6 bg-white border border-gray-300 rounded-lg p-4">
-                          <div className="grid grid-cols-3 gap-4 text-center">
-                            <div className="border-r border-gray-300 pr-4">
-                              <p className="text-sm text-gray-600 font-medium mb-1">Total Actual Cost</p>
-                              <p className="text-2xl font-bold text-blue-600">
-                                LKR {formatAmount(totalActualCost)}
-                              </p>
-                            </div>
-                            <div className="border-r border-gray-300 pr-4">
-                              <p className="text-sm text-gray-600 font-medium mb-1">Total Billing Amount</p>
-                              <p className="text-2xl font-bold text-green-600">
-                                LKR {formatAmount(totalBillingAmount)}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-sm text-gray-600 font-medium mb-1">Profit</p>
-                              <p className={`text-2xl font-bold ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                LKR {formatAmount(profit)}
-                              </p>
+                        <>
+                          <div className="mt-6 bg-white border border-gray-300 rounded-lg p-4">
+                            <div className="grid grid-cols-3 gap-4 text-center">
+                              <div className="border-r border-gray-300 pr-4">
+                                <p className="text-sm text-gray-600 font-medium mb-1">Total Actual Cost</p>
+                                <p className="text-2xl font-bold text-blue-600">
+                                  LKR {formatAmount(totalActualCost)}
+                                </p>
+                              </div>
+                              <div className="border-r border-gray-300 pr-4">
+                                <p className="text-sm text-gray-600 font-medium mb-1">Total Billing Amount</p>
+                                <p className="text-2xl font-bold text-green-600">
+                                  LKR {formatAmount(totalBillingAmount)}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-sm text-gray-600 font-medium mb-1">Profit</p>
+                                <p className={`text-2xl font-bold ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                  LKR {formatAmount(profit)}
+                                </p>
+                              </div>
                             </div>
                           </div>
-                        </div>
+                          
+                          {/* Show Save Button if items are not saved yet */}
+                          {!payItemsSaved && (
+                            <div className="mt-4">
+                              {!totalBillingFilled && (
+                                <p className="text-sm text-orange-700 bg-orange-50 border border-orange-200 rounded-lg p-3 mb-3">
+                                  ⚠️ Please fill in billing amounts for all items to proceed
+                                </p>
+                              )}
+                              <button
+                                onClick={savePayItems}
+                                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition"
+                              >
+                                💾 Save Pay Items with Billing Amounts
+                              </button>
+                            </div>
+                          )}
+                          
+                          {/* Show Generate Invoice button ONLY after items are saved */}
+                          {payItemsSaved && (
+                            <div className="mt-4 flex gap-2">
+                              <button
+                                onClick={generateBill}
+                                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition"
+                              >
+                                🧾 Generate Invoice
+                              </button>
+                            </div>
+                          )}
+                        </>
                       );
                     })()}
-                    
-                    {/* Always show Generate Invoice button */}
-                    <div className="mt-4 flex gap-2">
-                      <button
-                        onClick={generateBill}
-                        className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition"
-                      >
-                        Generate Invoice
-                      </button>
-                    </div>
                     
                     {/* Show message when viewing already paid invoices */}
                     {hasPaidInvoices() && (
