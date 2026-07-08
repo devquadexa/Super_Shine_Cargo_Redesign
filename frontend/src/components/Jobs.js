@@ -30,6 +30,11 @@ function Jobs() {
   // Petty cash assignments to create after job is saved (optional, array of {userId, amount})
   const [pcAssignments, setPcAssignments] = useState([]);
   const [pcFormRow, setPcFormRow] = useState({ userId: '', amount: '' });
+  const [settlingAssignmentId, setSettlingAssignmentId] = useState(null); // Track which assignment is being settled
+  const [settlementItemsModal, setSettlementItemsModal] = useState(null); // {pettyAssignmentId, userName}
+  const [settleModal, setSettleModal] = useState(null); // {pettyAssignmentId, userName, assignedAmount}
+  const [settleItems, setSettleItems] = useState([{ itemName: '', actualCost: '', hasBill: false }]);
+  const [settleLoading, setSettleLoading] = useState(false);
   const [selectedJob, setSelectedJob] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
@@ -389,6 +394,73 @@ function Jobs() {
     }
   };
 
+  const handleSettleAssignment = async (assignment) => {
+    const job = viewJobModal;
+    let defaultItems = [{ itemName: '', actualCost: '', hasBill: false }];
+    
+    // Load templates based on job's shipment category
+    if (job && job.shipmentCategory) {
+      try {
+        const response = await apiClient.get(`/pay-item-templates/category/${encodeURIComponent(job.shipmentCategory)}`);
+        const templates = response.data;
+        if (templates && templates.length > 0) {
+          defaultItems = templates.map(template => ({
+            itemName: template.itemName,
+            actualCost: '',
+            hasBill: false
+          }));
+        }
+      } catch (error) {
+        console.error('Error loading templates:', error);
+      }
+    }
+    
+    setSettleModal({
+      pettyAssignmentId: assignment.pettyAssignmentId,
+      userName: assignment.userName || assignment.waff_clerk_name || getUserFullName(assignment.userId),
+      assignedAmount: parseFloat(assignment.assignedAmount || 0)
+    });
+    setSettleItems(defaultItems);
+  };
+
+  const handleSettleSubmit = async () => {
+    const validItems = settleItems.filter(item => item.itemName && item.actualCost && parseFloat(item.actualCost) > 0);
+    if (validItems.length === 0) {
+      setMessage('Please add at least one settlement item with name and cost');
+      setTimeout(() => setMessage(''), 3000);
+      return;
+    }
+
+    setSettleLoading(true);
+    try {
+      const response = await apiClient.post(`/petty-cash-assignments/${settleModal.pettyAssignmentId}/settle`, {
+        items: validItems.map(item => ({
+          itemName: item.itemName,
+          actualCost: parseFloat(item.actualCost),
+          hasBill: item.hasBill || false
+        }))
+      });
+
+      setMessage('✅ Settlement submitted successfully!');
+      setSettleModal(null);
+      setSettleItems([{ itemName: '', actualCost: '', hasBill: false }]);
+      fetchJobs();
+      // Refresh view modal
+      if (viewJobModal) {
+        const data = await jobService.getAll();
+        const updatedJob = data.find(j => j.jobId === viewJobModal.jobId);
+        if (updatedJob) setViewJobModal(updatedJob);
+      }
+    } catch (error) {
+      console.error('Error settling:', error);
+      const errorMsg = error.response?.data?.message || error.message || 'Error settling assignment';
+      setMessage(`❌ ${errorMsg}`);
+    } finally {
+      setSettleLoading(false);
+      setTimeout(() => setMessage(''), 5000);
+    }
+  };
+
   const openEditModal = (job) => {
     setSelectedJob(job);
     setIsEditing(true);
@@ -408,8 +480,8 @@ function Jobs() {
       assignedTo: job.assignedTo || ''
     });
     // For editing, load existing assignments
-    if (job.assignments && job.assignments.length > 0) {
-      setSelectedUsers(job.assignments.map(a => a.userId));
+    if (job.assignedUsers && job.assignedUsers.length > 0) {
+      setSelectedUsers(job.assignedUsers.map(a => a.userId));
     } else if (job.assignedTo) {
       setSelectedUsers([job.assignedTo]);
     } else {
@@ -526,6 +598,77 @@ function Jobs() {
     setCurrentPage(1);
   };
 
+  // Sub-component for settlement items modal (fetches data on mount)
+  const SettlementItemsModalContent = ({ assignmentId, userName, onClose }) => {
+    const [items, setItems] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+      const fetchItems = async () => {
+        try {
+          const response = await apiClient.get(`/petty-cash-assignments/${assignmentId}/settlement-items`);
+          setItems(Array.isArray(response.data) ? response.data : []);
+        } catch (err) {
+          console.error('Error fetching settlement items:', err);
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchItems();
+    }, [assignmentId]);
+
+    const total = items.reduce((sum, item) => sum + (parseFloat(item.actualCost) || 0), 0);
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10001] p-4">
+        <div className="bg-white rounded-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
+          <div className="flex items-center justify-between p-5 border-b border-gray-200">
+            <h3 className="text-lg font-bold text-gray-900">Settlement Items - {userName}</h3>
+            <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-2xl font-bold">×</button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-5">
+            {loading ? (
+              <p className="text-blue-600 text-sm">Loading items...</p>
+            ) : items.length === 0 ? (
+              <p className="text-gray-500 text-sm italic text-center py-4">No settlement items found for this assignment.</p>
+            ) : (
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-600">Item Name</th>
+                      <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-600">Cost (LKR)</th>
+                      <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-600">Bill</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((item, idx) => (
+                      <tr key={item.settlementItemId || idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                        <td className="px-4 py-2.5 text-gray-900 font-medium">{item.itemName}</td>
+                        <td className="px-4 py-2.5 text-right text-gray-900">{parseFloat(item.actualCost || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                        <td className="px-4 py-2.5 text-center">{item.hasBill ? '✅' : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-gray-100 border-t-2 border-gray-300">
+                      <td className="px-4 py-2.5 text-right font-bold text-gray-700">Total</td>
+                      <td className="px-4 py-2.5 text-right font-bold text-gray-900">{total.toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </div>
+          <div className="flex items-center justify-end px-5 py-4 border-t border-gray-200">
+            <button onClick={onClose} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition font-medium text-sm">Close</button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
       <div className="flex items-start justify-between mb-8">
@@ -627,16 +770,16 @@ function Jobs() {
                     {user?.role !== 'Waff Clerk' && (
                       <td className="px-6 py-4 text-sm">
                         <div className="flex flex-wrap gap-2">
-                          {job.assignments && job.assignments.length > 0 ? (
+                          {job.assignedUsers && job.assignedUsers.length > 0 ? (
                             <>
-                              {job.assignments.slice(0, 2).map((assignment, index) => (
+                              {job.assignedUsers.slice(0, 2).map((assignment, index) => (
                                 <span key={assignment.userId || index} className="inline-block bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-1 rounded">
                                   {assignment.userName || getUserFullName(assignment.userId)}
                                 </span>
                               ))}
-                              {job.assignments.length > 2 && (
+                              {job.assignedUsers.length > 2 && (
                                 <span className="inline-block bg-gray-200 text-gray-800 text-xs font-semibold px-2 py-1 rounded">
-                                  +{job.assignments.length - 2} more
+                                  +{job.assignedUsers.length - 2} more
                                 </span>
                               )}
                             </>
@@ -684,8 +827,9 @@ function Jobs() {
                           <>
                             <button
                               onClick={() => setInvoicingModalJob(job)}
-                              title="Manage Invoicing"
-                              className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 transition"
+                              disabled={job.pettyCashStatus !== 'Settled' && job.assignments && job.assignments.length > 0}
+                              title={job.pettyCashStatus !== 'Settled' && job.assignments && job.assignments.length > 0 ? 'Petty cash must be settled first' : 'Manage Invoicing'}
+                              className={`p-1.5 rounded-lg transition ${job.pettyCashStatus !== 'Settled' && job.assignments && job.assignments.length > 0 ? 'text-gray-400 cursor-not-allowed' : 'text-green-600 hover:bg-green-50'}`}
                             >
                               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
                                 <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
@@ -854,6 +998,113 @@ function Jobs() {
         </div>
       )}
 
+      {/* Settlement Items Modal */}
+      {settlementItemsModal && (
+        <SettlementItemsModalContent
+          assignmentId={settlementItemsModal.pettyAssignmentId}
+          userName={settlementItemsModal.userName}
+          onClose={() => setSettlementItemsModal(null)}
+        />
+      )}
+
+      {/* Petty Cash Settlement Modal */}
+      {settleModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10000] px-4 py-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-green-600 to-green-700">
+              <div>
+                <h2 className="text-lg font-bold text-white">Settle Petty Cash</h2>
+                <p className="text-green-100 text-xs mt-0.5">{settleModal.userName} — Assigned: LKR {settleModal.assignedAmount.toLocaleString('en-US', {minimumFractionDigits: 2})}</p>
+              </div>
+              <button onClick={() => setSettleModal(null)} className="text-white hover:bg-green-500 rounded-lg p-2 transition">✕</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              <p className="text-sm text-gray-600 mb-4">Add the items that were paid from this petty cash assignment:</p>
+              
+              <div className="space-y-3">
+                {settleItems.map((item, idx) => (
+                  <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                    <div className="flex-1">
+                      <input
+                        type="text"
+                        value={item.itemName}
+                        onChange={(e) => {
+                          const newItems = [...settleItems];
+                          newItems[idx].itemName = e.target.value;
+                          setSettleItems(newItems);
+                        }}
+                        placeholder="Item name (e.g. Port Charges)"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
+                      />
+                    </div>
+                    <div className="w-32">
+                      <input
+                        type="number"
+                        value={item.actualCost}
+                        onChange={(e) => {
+                          const newItems = [...settleItems];
+                          newItems[idx].actualCost = e.target.value;
+                          setSettleItems(newItems);
+                        }}
+                        placeholder="Cost"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
+                      />
+                    </div>
+                    <label className="flex items-center gap-1.5 text-xs text-gray-600 whitespace-nowrap">
+                      <input
+                        type="checkbox"
+                        checked={item.hasBill}
+                        onChange={(e) => {
+                          const newItems = [...settleItems];
+                          newItems[idx].hasBill = e.target.checked;
+                          setSettleItems(newItems);
+                        }}
+                        className="w-4 h-4"
+                      />
+                      Bill
+                    </label>
+                    {settleItems.length > 1 && (
+                      <button
+                        onClick={() => setSettleItems(settleItems.filter((_, i) => i !== idx))}
+                        className="p-1.5 text-red-500 hover:bg-red-50 rounded transition"
+                        title="Remove item"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <button
+                onClick={() => setSettleItems([...settleItems, { itemName: '', actualCost: '', hasBill: false }])}
+                className="mt-3 px-4 py-2 text-sm font-medium text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg transition"
+              >
+                + Add Item
+              </button>
+
+              {/* Total */}
+              <div className="mt-4 p-3 bg-gray-100 rounded-lg flex justify-between items-center">
+                <span className="text-sm font-semibold text-gray-700">Total Spent:</span>
+                <span className="text-lg font-bold text-gray-900">
+                  LKR {settleItems.reduce((sum, item) => sum + (parseFloat(item.actualCost) || 0), 0).toLocaleString('en-US', {minimumFractionDigits: 2})}
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50">
+              <button onClick={() => setSettleModal(null)} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition font-medium text-sm">Cancel</button>
+              <button
+                onClick={handleSettleSubmit}
+                disabled={settleLoading}
+                className="px-5 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white rounded-lg transition font-semibold text-sm"
+              >
+                {settleLoading ? 'Submitting...' : 'Submit Settlement'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
             {/* Header */}
             <div className="flex items-center justify-between px-10 py-5 rounded-t-2xl shrink-0" style={{ background: 'linear-gradient(135deg,#1E3F63 0%,#2f5e8f 100%)' }}>
               <div className="flex items-center gap-4">
@@ -908,9 +1159,9 @@ function Jobs() {
                                 'bg-red-100 text-red-800'
                               }`}>{viewJobModal.status || 'Open'}</span>
                             ) : label === 'Assigned To' ? (
-                              viewJobModal.assignments && viewJobModal.assignments.length > 0
+                              viewJobModal.assignedUsers && viewJobModal.assignedUsers.length > 0
                                 ? <div className="flex flex-wrap gap-1.5">
-                                    {viewJobModal.assignments.map((a, idx) => (
+                                    {viewJobModal.assignedUsers.map((a, idx) => (
                                       <span key={a.userId || idx} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#eef3f8] text-[#1E3F63] border border-[#c8d8e8]">
                                         {a.userName || getUserFullName(a.userId)}
                                       </span>
@@ -1142,6 +1393,9 @@ function Jobs() {
                             <th className="px-5 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase">Settled Amount</th>
                             <th className="px-5 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase">Balance / Return</th>
                             <th className="px-5 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase">Status</th>
+                            {['Manager','Waff Clerk'].includes(user?.role) && (
+                              <th className="px-5 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase">Actions</th>
+                            )}
                           </tr>
                         </thead>
                         <tbody>
@@ -1150,6 +1404,7 @@ function Jobs() {
                               const assignedAmount = parseFloat(a.assignedAmount || 0);
                               const settledAmount = parseFloat(a.settledAmount || 0);
                               const balanceAmount = assignedAmount - settledAmount;
+                              const isAssigned = a.status === 'Assigned';
                               return (
                                 <tr key={a.pettyAssignmentId||i} className={`border-b border-gray-50 ${i%2===0?'bg-white':'bg-[#f8fafc]'}`}>
                                   <td className="px-5 py-3 text-gray-900 font-medium">{a.userName || a.waff_clerk_name || getUserFullName(a.userId)}</td>
@@ -1171,11 +1426,81 @@ function Jobs() {
                                       {a.status || 'Assigned'}
                                     </span>
                                   </td>
+                                  {['Manager','Waff Clerk'].includes(user?.role) && (
+                                    <td className="px-5 py-3 text-center">
+                                      <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                                        {isAssigned && (
+                                          <button
+                                            onClick={() => handleSettleAssignment(a)}
+                                            className="px-2.5 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold rounded-lg transition"
+                                            title="Settle this assignment"
+                                          >
+                                            Settle
+                                          </button>
+                                        )}
+                                        {a.status === 'Balance To Be Return' && (
+                                          <button
+                                            onClick={async () => {
+                                              try {
+                                                await apiClient.post('/cash-balance-settlements', {
+                                                  settlementType: 'BALANCE_RETURN',
+                                                  amount: Math.abs(balanceAmount),
+                                                  notes: `Balance return for Job #${viewJobModal.jobId}`,
+                                                  relatedAssignments: [a.pettyAssignmentId]
+                                                });
+                                                setMessage('✅ Balance return request submitted!');
+                                                fetchJobs();
+                                                setTimeout(() => setMessage(''), 3000);
+                                              } catch (err) {
+                                                setMessage(`❌ ${err.response?.data?.message || 'Error submitting balance return'}`);
+                                                setTimeout(() => setMessage(''), 5000);
+                                              }
+                                            }}
+                                            className="px-2.5 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold rounded-lg transition"
+                                            title="Return balance to management"
+                                          >
+                                            Return Balance
+                                          </button>
+                                        )}
+                                        {a.status === 'Over Due' && (
+                                          <button
+                                            onClick={async () => {
+                                              try {
+                                                await apiClient.post('/cash-balance-settlements', {
+                                                  settlementType: 'OVERDUE_COLLECTION',
+                                                  amount: Math.abs(balanceAmount),
+                                                  notes: `Overdue collection for Job #${viewJobModal.jobId}`,
+                                                  relatedAssignments: [a.pettyAssignmentId]
+                                                });
+                                                setMessage('✅ Overdue collection request submitted!');
+                                                fetchJobs();
+                                                setTimeout(() => setMessage(''), 3000);
+                                              } catch (err) {
+                                                setMessage(`❌ ${err.response?.data?.message || 'Error submitting overdue request'}`);
+                                                setTimeout(() => setMessage(''), 5000);
+                                              }
+                                            }}
+                                            className="px-2.5 py-1.5 bg-red-500 hover:bg-red-600 text-white text-xs font-semibold rounded-lg transition"
+                                            title="Collect overdue from management"
+                                          >
+                                            Collect Overdue
+                                          </button>
+                                        )}
+                                        <button
+                                          onClick={() => setSettlementItemsModal({pettyAssignmentId: a.pettyAssignmentId, userName: a.userName || getUserFullName(a.userId)})}
+                                          className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition"
+                                          title="View settlement items"
+                                        >
+                                          Items
+                                        </button>
+                                      </div>
+                                    </td>
+                                  )}
                                 </tr>
                               );
                             })
                           ) : (
-                            <tr><td colSpan={5} className="px-5 py-3 text-gray-400 text-xs italic text-center">No petty cash assignments yet</td></tr>
+                            <tr><td colSpan={['Manager','Waff Clerk'].includes(user?.role) ? 6 : 5} className="px-5 py-3 text-gray-400 text-xs italic text-center">No petty cash assignments yet</td></tr>
                           )}
                         </tbody>
                         <tfoot>
@@ -1191,6 +1516,7 @@ function Jobs() {
                               {((viewJobModal.assignments || []).reduce((sum,a)=>sum+parseFloat(a.assignedAmount||0),0) - (viewJobModal.assignments || []).reduce((sum,a)=>sum+parseFloat(a.settledAmount||0),0)).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
                             </td>
                             <td></td>
+                            {['Manager','Waff Clerk'].includes(user?.role) && <td></td>}
                           </tr>
                         </tfoot>
                       </table>
