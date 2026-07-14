@@ -6,6 +6,7 @@ import { customerService } from '../api/services/customerService';
 import { authService } from '../api/services/authService';
 import { transporterService } from '../api/services/transporterService';
 import apiClient from '../api/client';
+import API_BASE from '../api/config';
 import OfficePayItems from './OfficePayItems';
 import AdvancePayment from './AdvancePayment';
 import JobPettyCash from './JobPettyCash';
@@ -62,11 +63,15 @@ function Jobs() {
   const [statusFilter, setStatusFilter] = useState('All');
   const [currentPage, setCurrentPage] = useState(1);
   const [recordsPerPage, setRecordsPerPage] = useState(20);
+  const [pettyCashAssignments, setPettyCashAssignments] = useState({}); // Track petty cash assignments by jobId
+  const [invoicedJobIds, setInvoicedJobIds] = useState(new Set()); // Track jobs with invoices
+  const [loadingPettyCash, setLoadingPettyCash] = useState(true); // Track loading state
 
   useEffect(() => {
     fetchJobs();
     fetchCustomers(); // All users need to see customer names
     fetchTransporters();
+    fetchInvoicedJobs(); // Fetch jobs that already have invoices
     if (user?.role === 'Admin' || user?.role === 'Super Admin' || user?.role === 'Manager' || user?.role === 'Office Executive') {
       fetchUsers();
     }
@@ -112,6 +117,7 @@ function Jobs() {
 
   const fetchJobs = async () => {
     try {
+      setLoadingPettyCash(true); // Set loading state
       const data = await jobService.getAll();
       console.log('Fetched jobs data:', data);
       console.log('First job details:', JSON.stringify(data[0], null, 2));
@@ -125,9 +131,144 @@ function Jobs() {
       console.log('Jobs with status:', jobsWithStatus);
       console.log('First job after mapping:', JSON.stringify(jobsWithStatus[0], null, 2));
       setJobs(jobsWithStatus);
+      
+      // Fetch petty cash assignments for all jobs
+      await fetchAllPettyCashAssignments(jobsWithStatus);
     } catch (error) {
       console.error('Error fetching jobs:', error);
+      setLoadingPettyCash(false); // Reset loading state on error
     }
+  };
+
+  // Fetch all petty cash assignments to determine settlement status
+  const fetchAllPettyCashAssignments = async (jobsList) => {
+    try {
+      const token = localStorage.getItem('token');
+      const assignmentsMap = {};
+      
+      // Fetch petty cash assignments for each job
+      await Promise.all(
+        jobsList.map(async (job) => {
+          try {
+            const response = await fetch(`${API_BASE}/api/petty-cash-assignments/job/${job.jobId}/all`, {
+              headers: {
+                'Authorization': `Bearer ${token}`
+              }
+            });
+            
+            if (response.ok) {
+              const assignments = await response.json();
+              assignmentsMap[job.jobId] = Array.isArray(assignments) ? assignments : [];
+            } else {
+              assignmentsMap[job.jobId] = [];
+            }
+          } catch (error) {
+            console.error(`Error fetching petty cash for job ${job.jobId}:`, error);
+            assignmentsMap[job.jobId] = [];
+          }
+        })
+      );
+      
+      setPettyCashAssignments(assignmentsMap);
+      setLoadingPettyCash(false); // Data loaded successfully
+    } catch (error) {
+      console.error('Error fetching petty cash assignments:', error);
+      setLoadingPettyCash(false); // Reset loading state on error
+    }
+  };
+
+  // Fetch jobs that already have invoices
+  const fetchInvoicedJobs = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE}/api/billing`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const bills = await response.json();
+        const invoicedSet = new Set(bills.map(b => b.jobId));
+        setInvoicedJobIds(invoicedSet);
+      }
+    } catch (error) {
+      console.error('Error fetching invoiced jobs:', error);
+    }
+  };
+
+  // Check if petty cash is fully settled for a job
+  const isPettyCashFullySettled = (jobId) => {
+    const assignments = pettyCashAssignments[jobId];
+    
+    // If no assignments exist, consider it as not having petty cash requirement
+    if (!assignments || assignments.length === 0) {
+      return true; // Allow invoice if no petty cash was assigned
+    }
+    
+    // All assignments must be in a settled state
+    const settledStatuses = [
+      'Settled',
+      'Settled/Approved',
+      'Balance Returned',
+      'Overdue Collected',
+      'Settled / Balance Returned',
+      'Settled / Over Due Collected',
+      'Full Petty Cash Returned',
+      'Closed'
+    ];
+    
+    const allSettled = assignments.every(assignment => 
+      settledStatuses.includes(assignment.status)
+    );
+    
+    return allSettled;
+  };
+
+  // Check if manage invoice button should be enabled
+  const canManageInvoice = (job) => {
+    // Check if invoice already exists
+    if (invoicedJobIds.has(job.jobId)) {
+      return false;
+    }
+    
+    // Check if petty cash is fully settled (including balance returned or overdue collected)
+    if (!isPettyCashFullySettled(job.jobId)) {
+      return false;
+    }
+    
+    return true;
+  };
+
+  const getManageInvoiceTooltip = (job) => {
+    if (invoicedJobIds.has(job.jobId)) {
+      return 'Invoice already generated for this job';
+    }
+    
+    if (!isPettyCashFullySettled(job.jobId)) {
+      const assignments = pettyCashAssignments[job.jobId];
+      if (assignments && assignments.length > 0) {
+        const unsettled = assignments.filter(a => {
+          const settledStatuses = [
+            'Settled',
+            'Settled/Approved',
+            'Balance Returned',
+            'Overdue Collected',
+            'Settled / Balance Returned',
+            'Settled / Over Due Collected',
+            'Full Petty Cash Returned',
+            'Closed'
+          ];
+          return !settledStatuses.includes(a.status);
+        });
+        
+        if (unsettled.length > 0) {
+          return `Petty cash must be fully settled first (${unsettled.length} pending)`;
+        }
+      }
+    }
+    
+    return 'Manage Invoicing';
   };
 
   const getCustomerName = (customerId) => {
@@ -867,6 +1008,7 @@ function Jobs() {
                       <div className="flex items-center gap-2">
                         {(user?.role === 'Admin' || user?.role === 'Super Admin' || user?.role === 'Manager' || user?.role === 'Office Executive') && (
                           <>
+<<<<<<< Updated upstream
                             <button
                               onClick={() => setInvoicingModalJob(job)}
                               disabled={job.pettyCashStatus !== 'Settled' && job.assignments && job.assignments.length > 0}
@@ -878,6 +1020,39 @@ function Jobs() {
                                 <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
                               </svg>
                             </button>
+=======
+                            {loadingPettyCash ? (
+                              <button
+                                disabled
+                                title="Loading petty cash data..."
+                                className="p-1.5 rounded-lg text-gray-400 bg-gray-100 cursor-wait opacity-50"
+                              >
+                                <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                                </svg>
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => canManageInvoice(job) && setInvoicingModalJob(job)}
+                                title={getManageInvoiceTooltip(job)}
+                                disabled={!canManageInvoice(job)}
+                                className={`p-1.5 rounded-lg transition ${
+                                  canManageInvoice(job)
+                                    ? 'text-blue-600 hover:bg-blue-50 cursor-pointer'
+                                    : 'text-gray-400 bg-gray-100 cursor-not-allowed opacity-50'
+                                }`}
+                              >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                  <polyline points="14 2 14 8 20 8"></polyline>
+                                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                                  <polyline points="10 9 9 9 8 9"></polyline>
+                                </svg>
+                              </button>
+                            )}
+>>>>>>> Stashed changes
                             <button
                               onClick={() => openEditModal(job)}
                               title="Edit Job"
@@ -1903,10 +2078,12 @@ function Jobs() {
             setInvoicingModalJob(null);
             // Refresh jobs after invoicing operations
             fetchJobs();
+            fetchInvoicedJobs(); // Refresh the invoiced jobs list
           }}
           onInvoiceCreated={(newBill) => {
             console.log('Invoice created:', newBill);
             fetchJobs();
+            fetchInvoicedJobs(); // Refresh the invoiced jobs list
             fetchJobPayments(invoicingModalJob.jobId);
           }}
         />

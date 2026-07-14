@@ -97,7 +97,6 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
   const handleAddPayItem = () => {
     const newPayItems = [...payItems, getBlankPayItem()];
     setPayItems(newPayItems);
-    setEditingItemIdx(newPayItems.length - 1); // Auto-open new item for editing
   };
 
   const handleAddTransporterCost = () => {
@@ -114,7 +113,6 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
       isNewItem: true
     }];
     setPayItems(newPayItems);
-    setEditingItemIdx(newPayItems.length - 1); // Auto-open for editing
   };
 
   const hasTransporterCostItem = (items) => {
@@ -136,7 +134,6 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
   const [loadingSettlement, setLoadingSettlement] = useState(false);
   const [bills, setBills] = useState([]);
   const [expandedBillId, setExpandedBillId] = useState(null);
-  const [editingItemIdx, setEditingItemIdx] = useState(null); // Track which item is being edited
   const [payItemsSaved, setPayItemsSaved] = useState(false);
   const [allItemsHaveBillingAmounts, setAllItemsHaveBillingAmounts] = useState(false); // Track if all items have billing amounts
   
@@ -1078,6 +1075,7 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
     // This is no longer needed - editing is per-item now
   };
 
+<<<<<<< Updated upstream
   const handleSaveItemEdit = async (index) => {
     // Save the currently edited item
     try {
@@ -1120,6 +1118,8 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
     }
   };
 
+=======
+>>>>>>> Stashed changes
   const handleDeleteItem = async (index) => {
     const itemName = payItems[index].name;
     if (!window.confirm(`Delete "${itemName}"?`)) {
@@ -1168,18 +1168,21 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-[10000] flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-lg max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-lg shadow-lg w-[95vw] max-w-[1400px] h-[95vh] flex flex-col">
         {/* Header */}
-        <div className="sticky top-0 bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6 border-b border-blue-800">
+        <div className="flex-shrink-0 bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6 border-b border-blue-800 rounded-t-lg">
           <div className="flex justify-between items-center">
             <h2 className="text-2xl font-bold">
               Invoice Management - Job #{job?.jobId}
             </h2>
             <button
               onClick={onClose}
-              className="text-white hover:bg-blue-600 rounded-lg p-2"
+              className="text-white hover:bg-blue-800 rounded-lg p-2 transition"
             >
-              ✕
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
             </button>
           </div>
           <p className="text-blue-100 mt-2">
@@ -1189,15 +1192,15 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
 
         {/* Messages */}
         {message && (
-          <div className={`p-4 mx-6 mt-4 rounded-lg ${
+          <div className={`flex-shrink-0 p-4 mx-6 mt-4 rounded-lg ${
             message.includes('✅') ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
           }`}>
             {message}
           </div>
         )}
 
-        {/* Content */}
-        <div className="p-6 space-y-6">
+        {/* Content - Scrollable */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {/* Section 1: Pay Items Management */}
           <div className="border border-gray-200 rounded-lg p-6 bg-gray-50">
             <h3 className="text-lg font-semibold mb-4 text-gray-900">
@@ -1212,15 +1215,25 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
                     <div className="mb-4 flex gap-2">
                       <button
                         onClick={handleAddPayItem}
-                        className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition flex items-center gap-2"
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition flex items-center gap-2"
                       >
-                        ➕ Add Pay Item
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <line x1="12" y1="5" x2="12" y2="19"></line>
+                          <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                        Add Pay Item
                       </button>
                       <button
                         onClick={handleAddTransporterCost}
-                        className="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg font-medium transition flex items-center gap-2"
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition flex items-center gap-2"
                       >
-                        🚚 Add Transporter Cost
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="1" y="3" width="15" height="13"></rect>
+                          <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon>
+                          <circle cx="5.5" cy="18.5" r="2.5"></circle>
+                          <circle cx="18.5" cy="18.5" r="2.5"></circle>
+                        </svg>
+                        Add Transporter Cost
                       </button>
                     </div>
 
@@ -1237,15 +1250,20 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
                         </thead>
                         <tbody>
                           {payItems.map((item, idx) => (
-                            <tr key={idx} className={`border-b ${editingItemIdx === idx ? 'bg-blue-50' : 'hover:bg-gray-100'}`}>
+                            <tr key={idx} className="border-b hover:bg-gray-50">
                               <td className="px-4 py-2">
                                 <input
                                   type="text"
                                   value={item.name}
                                   onChange={(e) => handlePayItemChange(idx, 'name', e.target.value)}
+<<<<<<< Updated upstream
                                   disabled={payItemsSaved && editingItemIdx !== idx}
                                   placeholder="Enter item name"
                                   className={`w-full px-2 py-1 border rounded ${payItemsSaved && editingItemIdx !== idx ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
+=======
+                                  placeholder="Enter item name"
+                                  className="w-full px-2 py-1 border border-gray-300 rounded focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+>>>>>>> Stashed changes
                                 />
                               </td>
                               <td className="px-4 py-2 text-right">
@@ -1253,9 +1271,14 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
                                   type="number"
                                   value={item.actualCost}
                                   onChange={(e) => handlePayItemChange(idx, 'actualCost', e.target.value)}
+<<<<<<< Updated upstream
                                   disabled={payItemsSaved && editingItemIdx !== idx}
                                   placeholder="0"
                                   className={`w-24 px-2 py-1 border rounded ${payItemsSaved && editingItemIdx !== idx ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
+=======
+                                  placeholder="0"
+                                  className="w-24 px-2 py-1 border border-gray-300 rounded text-right focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+>>>>>>> Stashed changes
                                 />
                               </td>
                               <td className="px-4 py-2 text-right">
@@ -1263,9 +1286,14 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
                                   type="number"
                                   value={item.billingAmount}
                                   onChange={(e) => handlePayItemChange(idx, 'billingAmount', e.target.value)}
+<<<<<<< Updated upstream
                                   disabled={payItemsSaved && editingItemIdx !== idx}
                                   placeholder="Enter billing amount"
                                   className={`w-24 px-2 py-1 border rounded ${payItemsSaved && editingItemIdx !== idx ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
+=======
+                                  placeholder="0"
+                                  className="w-24 px-2 py-1 border border-gray-300 rounded text-right focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+>>>>>>> Stashed changes
                                 />
                               </td>
                               <td className="px-4 py-2 text-center">
@@ -1273,6 +1301,7 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
                                   type="checkbox"
                                   checked={item.sameAmount}
                                   onChange={(e) => handlePayItemChange(idx, 'sameAmount', e.target.checked)}
+<<<<<<< Updated upstream
                                   className="w-4 h-4 cursor-pointer"
                                 />
                               </td>
@@ -1324,6 +1353,23 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
                                     </>
                                   ) : null}
                                 </div>
+=======
+                                  className="w-4 h-4"
+                                />
+                              </td>
+                              <td className="px-4 py-2 text-center">
+                                <button
+                                  onClick={() => handleDeleteItem(idx)}
+                                  title="Delete this item"
+                                  className="p-2 text-red-600 hover:bg-red-50 rounded transition"
+                                >
+                                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M3 6h18"></path>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path>
+                                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                  </svg>
+                                </button>
+>>>>>>> Stashed changes
                               </td>
                             </tr>
                           ))}
@@ -1393,6 +1439,26 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
                       );
                     })()}
                     
+<<<<<<< Updated upstream
+=======
+                    {/* Always show Generate Invoice button */}
+                    <div className="mt-4 flex gap-2">
+                      <button
+                        onClick={generateBill}
+                        className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition flex items-center gap-2"
+                      >
+                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                          <polyline points="14 2 14 8 20 8"></polyline>
+                          <line x1="16" y1="13" x2="8" y2="13"></line>
+                          <line x1="16" y1="17" x2="8" y2="17"></line>
+                          <polyline points="10 9 9 9 8 9"></polyline>
+                        </svg>
+                        Generate Invoice
+                      </button>
+                    </div>
+                    
+>>>>>>> Stashed changes
                     {/* Show message when viewing already paid invoices */}
                     {hasPaidInvoices() && (
                       <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
@@ -1448,16 +1514,25 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
                       <div className="flex gap-2">
                         <button
                           onClick={() => setExpandedBillId(expandedBillId === bill.billId ? null : bill.billId)}
-                          className="px-3 py-1 text-sm bg-gray-300 hover:bg-gray-400 rounded"
+                          className="px-3 py-1 text-sm bg-gray-200 hover:bg-gray-300 rounded flex items-center gap-1"
                         >
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                            <circle cx="12" cy="12" r="3"></circle>
+                          </svg>
                           {expandedBillId === bill.billId ? 'Hide' : 'View'}
                         </button>
                         <button
                           onClick={() => handlePrintInvoice(bill)}
-                          className="px-3 py-1 text-sm bg-green-600 hover:bg-green-700 text-white rounded"
+                          className="px-3 py-1 text-sm bg-green-600 hover:bg-green-700 text-white rounded flex items-center gap-1"
                           title="Print invoice"
                         >
-                          🖨️ Print
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="6 9 6 2 18 2 18 9"></polyline>
+                            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+                            <rect x="6" y="14" width="12" height="8"></rect>
+                          </svg>
+                          Print
                         </button>
                         {(bill.paymentStatus === 'Unpaid' || bill.paymentStatus === 'Partially Paid') && (
                           <button
@@ -1465,8 +1540,12 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
                               setSelectedBillForPayment(bill);
                               setShowPaymentModal(true);
                             }}
-                            className="px-3 py-1 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded"
+                            className="px-3 py-1 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded flex items-center gap-1"
                           >
+                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <circle cx="12" cy="12" r="10"></circle>
+                              <polyline points="12 6 12 12 16 14"></polyline>
+                            </svg>
                             Record Payment
                           </button>
                         )}
@@ -1476,8 +1555,14 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
                               setSelectedBillForPayment(bill);
                               setShowReviewInvoiceModal(true);
                             }}
-                            className="px-3 py-1 text-sm bg-orange-600 hover:bg-orange-700 text-white rounded"
+                            className="px-3 py-1 text-sm bg-orange-600 hover:bg-orange-700 text-white rounded flex items-center gap-1"
                           >
+                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                              <polyline points="14 2 14 8 20 8"></polyline>
+                              <path d="M12 11v6"></path>
+                              <path d="M9 14l3 3 3-3"></path>
+                            </svg>
                             Send for Review
                           </button>
                         )}

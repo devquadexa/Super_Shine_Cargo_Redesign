@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
+import ReactDOM from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import apiClient from '../api/client';
 import { transporterService } from '../api/services/transporterService';
@@ -41,7 +42,7 @@ function Transporters() {
   const [cities, setCities] = useState([]);
   const [filteredCities, setFilteredCities] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [expandedRow, setExpandedRow] = useState(null);
+  const [viewTransporterModal, setViewTransporterModal] = useState(null); // Transporter object being viewed
   const [showModal, setShowModal] = useState(false);
   const [editingTransporter, setEditingTransporter] = useState(null);
   const [formData, setFormData] = useState(initialFormData);
@@ -452,7 +453,6 @@ function Transporters() {
     try {
       await transporterService.delete(transporterId);
       setMessage('Transporter deactivated successfully');
-      setExpandedRow(null);
       fetchTransporters();
     } catch (error) {
       console.error('Error deactivating transporter:', error);
@@ -787,7 +787,7 @@ function Transporters() {
     } else {
       paymentAmount = parseFloat(partialPaymentAmount);
       if (isNaN(paymentAmount) || paymentAmount <= 0) {
-        setMessage('❌ Please enter a valid payment amount');
+        setMessage('âŒ Please enter a valid payment amount');
         setTimeout(() => setMessage(''), 5000);
         return;
       }
@@ -795,12 +795,12 @@ function Transporters() {
 
     if (paymentMethod === 'Cheque') {
       if (!chequeNumber || !chequeDate || !chequeAmount) {
-        setMessage('❌ Please fill in all cheque details (Number, Date, Amount)');
+        setMessage('âŒ Please fill in all cheque details (Number, Date, Amount)');
         setTimeout(() => setMessage(''), 5000);
         return;
       }
       if (isNaN(parseFloat(chequeAmount)) || parseFloat(chequeAmount) <= 0) {
-        setMessage('❌ Please enter a valid cheque amount');
+        setMessage('âŒ Please enter a valid cheque amount');
         setTimeout(() => setMessage(''), 5000);
         return;
       }
@@ -875,11 +875,11 @@ function Transporters() {
       setShowPaymentModal(false);
       setSelectedJobForPayment(null);
       const paymentTypeText = paymentMode === 'full' ? 'Full payment' : `Partial payment (LKR ${formatAmount(paymentAmount)})`;
-      setMessage(`✅ ${paymentTypeText} recorded for ${selectedJobForPayment.jobId} via ${paymentMethod}`);
+      setMessage(`âœ… ${paymentTypeText} recorded for ${selectedJobForPayment.jobId} via ${paymentMethod}`);
       setTimeout(() => setMessage(''), 4000);
     } catch (error) {
       console.error('Error paying transporter cost:', error);
-      setMessage(error.response?.data?.message || '❌ Error recording payment');
+      setMessage(error.response?.data?.message || 'âŒ Error recording payment');
       setTimeout(() => setMessage(''), 3000);
     }
   };
@@ -918,7 +918,7 @@ function Transporters() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
             <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
               <div className="flex items-center gap-3">
-                <span className="text-xl">👥</span>
+                <span className="text-xl">ðŸ‘¥</span>
                 <div>
                   <div className="text-xs font-medium text-gray-500">Total Transporters</div>
                   <div className="text-xl font-bold text-gray-900">{summary.totalTransporters}</div>
@@ -927,7 +927,7 @@ function Transporters() {
             </div>
             <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
               <div className="flex items-center gap-3">
-                <span className="text-xl">📋</span>
+                <span className="text-xl">ðŸ“‹</span>
                 <div>
                   <div className="text-xs font-medium text-gray-500">With Jobs</div>
                   <div className="text-xl font-bold text-gray-900">{summary.transportersWithJobs}</div>
@@ -936,7 +936,7 @@ function Transporters() {
             </div>
             <div className="bg-white rounded-lg border-l-4 border-l-green-500 border border-gray-200 p-4 shadow-sm">
               <div className="flex items-center gap-3">
-                <span className="text-xl">✅</span>
+                <span className="text-xl">âœ…</span>
                 <div>
                   <div className="text-xs font-medium text-gray-500">Paid</div>
                   <div className="text-xl font-bold text-gray-900">{summary.paidTransporters}</div>
@@ -946,7 +946,7 @@ function Transporters() {
             </div>
             <div className="bg-white rounded-lg border-l-4 border-l-orange-500 border border-gray-200 p-4 shadow-sm">
               <div className="flex items-center gap-3">
-                <span className="text-xl">⏳</span>
+                <span className="text-xl">â³</span>
                 <div>
                   <div className="text-xs font-medium text-gray-500">Unpaid</div>
                   <div className="text-xl font-bold text-gray-900">{summary.unpaidTransporters}</div>
@@ -1016,406 +1016,33 @@ function Transporters() {
                           {transporter.isActive ? 'Active' : 'Inactive'}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-sm flex gap-2">
-                        {canManageTransporters && (
+                      <td className="px-6 py-4 text-sm">
+                        <div className="flex items-center gap-2">
+                          {canManageTransporters && (
+                            <button
+                              onClick={() => openEditModal(transporter)}
+                              title="Edit Transporter"
+                              className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 transition"
+                            >
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                              </svg>
+                            </button>
+                          )}
                           <button
-                            onClick={() => openEditModal(transporter)}
-                            className="px-3 py-1 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded transition text-xs font-medium"
+                            onClick={() => setViewTransporterModal(transporter)}
+                            title="View Details"
+                            className="p-1.5 rounded-lg text-gray-600 hover:bg-gray-100 transition"
                           >
-                            Edit
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                              <circle cx="12" cy="12" r="3"/>
+                            </svg>
                           </button>
-                        )}
-                        <button
-                          onClick={() => setExpandedRow(expandedRow === transporter.transporterId ? null : transporter.transporterId)}
-                          className="px-3 py-1 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded transition text-xs font-medium"
-                        >
-                          {expandedRow === transporter.transporterId ? 'Hide' : 'View'}
-                        </button>
+                        </div>
                       </td>
                     </tr>
-                    {expandedRow === transporter.transporterId && (
-                      <tr className="bg-gray-50">
-                        <td colSpan="8" className="px-6 py-6">
-                          <div className="space-y-6">
-                            <div>
-                              <h4 className="font-bold text-gray-900 mb-2">Address Information</h4>
-                              <div>
-                                <span className="text-gray-600">Address: </span>
-                                <span className="text-gray-900">
-                                  {[
-                                    transporter.addressNumber,
-                                    transporter.addressStreet1,
-                                    transporter.addressStreet2,
-                                    transporter.addressDistrict,
-                                    transporter.addressCity,
-                                    transporter.addressCountry || 'Sri Lanka',
-                                  ]
-                                    .filter(Boolean)
-                                    .join(', ')}
-                                </span>
-                              </div>
-                            </div>
-
-                            <div>
-                              <h4 className="font-bold text-gray-900 mb-2">Contact Persons</h4>
-                              {transporter.contactPersons && transporter.contactPersons.length > 0 ? (
-                                <div className="space-y-2">
-                                  {transporter.contactPersons.map((contactPerson, index) => (
-                                    <div key={index} className="bg-white rounded border border-gray-200 p-3">
-                                      <div className="mb-2">
-                                        <div className="font-semibold text-gray-900">{contactPerson.name}</div>
-                                        {contactPerson.designation && (
-                                          <div className="text-sm text-gray-600">{contactPerson.designation}</div>
-                                        )}
-                                      </div>
-                                      <div className="space-y-1 text-sm">
-                                        <div className="flex justify-between items-center">
-                                          <span className="text-gray-600">Phone:</span>
-                                          <div className="flex items-center gap-2">
-                                            <span className="text-gray-900">{contactPerson.phone || '-'}</span>
-                                            {contactPerson.phone && (
-                                              <button
-                                                className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded text-gray-700"
-                                                onClick={(event) => {
-                                                  event.stopPropagation();
-                                                  navigator.clipboard.writeText(contactPerson.phone);
-                                                  setMessage('Phone number copied!');
-                                                  setTimeout(() => setMessage(''), 2000);
-                                                }}
-                                                title="Copy phone number"
-                                              >
-                                                Copy
-                                              </button>
-                                            )}
-                                          </div>
-                                        </div>
-                                        {contactPerson.email && (
-                                          <div className="flex justify-between items-center">
-                                            <span className="text-gray-600">Email:</span>
-                                            <div className="flex items-center gap-2">
-                                              <span className="text-gray-900">{contactPerson.email}</span>
-                                              <button
-                                                className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded text-gray-700"
-                                                onClick={(event) => {
-                                                  event.stopPropagation();
-                                                  navigator.clipboard.writeText(contactPerson.email);
-                                                  setMessage('Email copied!');
-                                                  setTimeout(() => setMessage(''), 2000);
-                                                }}
-                                                title="Copy email"
-                                              >
-                                                Copy
-                                              </button>
-                                            </div>
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <div className="text-gray-600">No contact persons added</div>
-                              )}
-                            </div>
-
-                            {canManageTransporters && (
-                              <div>
-                                <button
-                                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium"
-                                  onClick={() => handleDeactivate(transporter.transporterId)}
-                                  title="Deactivate Transporter"
-                                >
-                                  Deactivate Transporter
-                                </button>
-                              </div>
-                            )}
-
-                            <div>
-                              <div className="flex justify-between items-center mb-4">
-                                <span className="font-bold text-gray-900">Assigned Jobs</span>
-                                <span className="text-sm text-gray-600">{assignedJobs.length} job{assignedJobs.length !== 1 ? 's' : ''}</span>
-                              </div>
-                              {assignedJobs.length === 0 ? (
-                                <div className="text-center py-8 bg-gray-50 rounded border border-gray-200">
-                                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" className="mx-auto mb-2">
-                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                                    <polyline points="14 2 14 8 20 8"/>
-                                  </svg>
-                                  <p className="text-gray-600">No jobs assigned to this transporter</p>
-                                </div>
-                              ) : (
-                                <>
-                                  <div className="flex gap-4 mb-4 bg-gray-50 p-4 rounded">
-                                    <div className="flex-1">
-                                      <label className="block text-sm font-medium text-gray-700 mb-1">From Date:</label>
-                                      <input
-                                        type="date"
-                                        value={dateRangeFilter.startDate}
-                                        onChange={(e) => setDateRangeFilter({...dateRangeFilter, startDate: e.target.value})}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                      />
-                                    </div>
-                                    <div className="flex-1">
-                                      <label className="block text-sm font-medium text-gray-700 mb-1">To Date:</label>
-                                      <input
-                                        type="date"
-                                        value={dateRangeFilter.endDate}
-                                        onChange={(e) => setDateRangeFilter({...dateRangeFilter, endDate: e.target.value})}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                      />
-                                    </div>
-                                    {(dateRangeFilter.startDate || dateRangeFilter.endDate) && (
-                                      <button
-                                        onClick={() => setDateRangeFilter({startDate: '', endDate: ''})}
-                                        className="px-3 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded text-sm font-medium self-end"
-                                      >
-                                        Clear Filter
-                                      </button>
-                                    )}
-                                  </div>
-                                  <div className="border border-gray-200 rounded overflow-hidden">
-                                  <div className="bg-gray-50 border-b border-gray-200 grid gap-0" style={{gridTemplateColumns: 'repeat(10, minmax(0, 1fr))'}}>
-                                    <div className="px-4 py-2 text-xs font-bold text-gray-700 uppercase">#</div>
-                                    <div className="px-4 py-2 text-xs font-bold text-gray-700 uppercase">Job ID</div>
-                                    <div className="px-4 py-2 text-xs font-bold text-gray-700 uppercase">Category</div>
-                                    <div className="px-4 py-2 text-xs font-bold text-gray-700 uppercase">Delivery Date</div>
-                                    <div className="px-4 py-2 text-xs font-bold text-gray-700 uppercase">Cost</div>
-                                    <div className="px-4 py-2 text-xs font-bold text-gray-700 uppercase">Billing Amount</div>
-                                    <div className="px-4 py-2 text-xs font-bold text-gray-700 uppercase">Paid Amount</div>
-                                    <div className="px-4 py-2 text-xs font-bold text-gray-700 uppercase">Balance</div>
-                                    <div className="px-4 py-2 text-xs font-bold text-gray-700 uppercase">Status</div>
-                                    <div className="px-4 py-2 text-xs font-bold text-gray-700 uppercase">Action</div>
-                                  </div>
-                                  <div className="divide-y divide-gray-200">
-                                    {assignedJobs.filter((job) => {
-                                      if (!dateRangeFilter.startDate && !dateRangeFilter.endDate) {
-                                        return true;
-                                      }
-                                      
-                                      const jobDate = job.transportDeliveryDate ? new Date(job.transportDeliveryDate) : null;
-                                      if (!jobDate) return false;
-                                      
-                                      if (dateRangeFilter.startDate) {
-                                        const startDate = new Date(dateRangeFilter.startDate);
-                                        if (jobDate < startDate) return false;
-                                      }
-                                      
-                                      if (dateRangeFilter.endDate) {
-                                        const endDate = new Date(dateRangeFilter.endDate);
-                                        endDate.setHours(23, 59, 59, 999);
-                                        if (jobDate > endDate) return false;
-                                      }
-                                      
-                                      return true;
-                                    }).map((job, idx) => (
-                                      <React.Fragment key={job.jobId}>
-                                        <div className="grid gap-0" style={{gridTemplateColumns: 'repeat(10, minmax(0, 1fr))'}}>
-                                          <div className="px-4 py-3 text-sm text-gray-900">{idx + 1}</div>
-                                          <div className="px-4 py-3 text-sm text-gray-900">
-                                            {job.jobId || '-'}{job.cusdecNumber && ` / ${job.cusdecNumber}`}
-                                          </div>
-                                          <div className="px-4 py-3 text-sm text-gray-900">
-                                            {job.shipmentCategory || '-'}
-                                          </div>
-                                          <div className="px-4 py-3 text-sm text-gray-900">
-                                            {formatDate(job.transportDeliveryDate)}
-                                          </div>
-                                          <div className="px-4 py-3 text-sm">
-                                            {getTransporterCostAmount(job) > 0 ? (
-                                              <span className="text-gray-900 font-medium">
-                                                LKR {formatAmount(getTransporterCostAmount(job))}
-                                              </span>
-                                            ) : (
-                                              <span className="text-gray-400">-</span>
-                                            )}
-                                          </div>
-                                          <div className="px-4 py-3 text-sm">
-                                            {getBillingAmount(job.jobId) > 0 ? (
-                                              <span className="text-gray-900 font-medium">
-                                                LKR {formatAmount(getBillingAmount(job.jobId))}
-                                              </span>
-                                            ) : (
-                                              <span className="text-gray-400">-</span>
-                                            )}
-                                          </div>
-                                          <div className="px-4 py-3 text-sm">
-                                            {getPaymentDetails(job)?.paidAmount > 0 ? (
-                                              <span className="text-green-600 font-medium">
-                                                LKR {formatAmount(getPaymentDetails(job)?.paidAmount || 0)}
-                                              </span>
-                                            ) : (
-                                              <span className="text-gray-400">-</span>
-                                            )}
-                                          </div>
-                                          <div className="px-4 py-3 text-sm">
-                                            {getRemainingTransporterCost(job) > 0 ? (
-                                              <span className="text-orange-600 font-medium">
-                                                LKR {formatAmount(getRemainingTransporterCost(job))}
-                                              </span>
-                                            ) : (
-                                              <span className="text-gray-400">-</span>
-                                            )}
-                                          </div>
-                                          <div className="px-4 py-3 text-sm">
-                                            {(() => {
-                                              if (getTransporterCostAmount(job) > 0) {
-                                                if (isTransporterCostPaid(job)) {
-                                                  return <span className="inline-block px-2 py-1 bg-green-100 text-green-800 rounded text-xs font-medium">Paid</span>;
-                                                } else if (isTransporterCostPartiallyPaid(job)) {
-                                                  return <span className="inline-block px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-xs font-medium">Partial</span>;
-                                                } else {
-                                                  return <span className="inline-block px-2 py-1 bg-red-100 text-red-800 rounded text-xs font-medium">Unpaid</span>;
-                                                }
-                                              } else {
-                                                return <span className="text-gray-400">-</span>;
-                                              }
-                                            })()}
-                                          </div>
-                                          <div className="px-4 py-3 text-sm flex gap-1">
-                                            {getTransporterCostAmount(job) > 0 && canPayTransporterCosts && !isTransporterCostPaid(job) ? (
-                                              <button
-                                                type="button"
-                                                className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-                                                onClick={() => openPaymentModal(job)}
-                                                title="Record payment"
-                                              >
-                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                                              </button>
-                                            ) : null}
-                                            {getTransporterCostAmount(job) > 0 && (
-                                              <button
-                                                type="button"
-                                                className="p-1 text-gray-600 hover:bg-gray-100 rounded"
-                                                onClick={() => handleViewPaymentDetails(job)}
-                                                title={expandedPaymentDetails === job.jobId ? "Hide details" : "View details"}
-                                              >
-                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                  <polyline points={expandedPaymentDetails === job.jobId ? "18 15 12 9 6 15" : "6 9 12 15 18 9"}></polyline>
-                                                </svg>
-                                              </button>
-                                            )}
-                                          </div>
-                                        </div>
-                                        {expandedPaymentDetails === job.jobId && (
-                                          <div className="col-span-full bg-gray-50 border-t border-gray-200 p-4">
-                                            <div>
-                                              <div className="mb-4">
-                                                <span className="font-bold text-gray-900">Payment Breakdown</span>
-                                              </div>
-                                              
-                                              <div className="border border-gray-200 rounded bg-white">
-                                                <div className="bg-gray-50 border-b border-gray-200 grid gap-0" style={{gridTemplateColumns: '1fr 1fr'}}>
-                                                  <div className="px-4 py-2 text-xs font-bold text-gray-700 uppercase">Description</div>
-                                                  <div className="px-4 py-2 text-xs font-bold text-gray-700 uppercase">Amount</div>
-                                                </div>
-                                                
-                                                <div className="divide-y divide-gray-200">
-                                                  <div className="grid gap-0" style={{gridTemplateColumns: '1fr 1fr'}}>
-                                                    <div className="px-4 py-2 text-sm">
-                                                      <span className="text-gray-700">Total Amount</span>
-                                                    </div>
-                                                    <div className="px-4 py-2 text-sm">
-                                                      <span className="text-gray-900 font-medium">LKR {formatAmount(getTransporterCostAmount(job))}</span>
-                                                    </div>
-                                                  </div>
-                                                  
-                                                  <div className="grid gap-0" style={{gridTemplateColumns: '1fr 1fr'}}>
-                                                    <div className="px-4 py-2 text-sm">
-                                                      <span className="text-gray-700">Paid Amount</span>
-                                                    </div>
-                                                    <div className="px-4 py-2 text-sm">
-                                                      <span className="text-green-600 font-medium">LKR {formatAmount(getPaymentDetails(job)?.paidAmount || 0)}</span>
-                                                    </div>
-                                                  </div>
-                                                  
-                                                  <div className="grid gap-0" style={{gridTemplateColumns: '1fr 1fr'}}>
-                                                    <div className="px-4 py-2 text-sm">
-                                                      <span className="text-gray-700">Remaining Amount</span>
-                                                    </div>
-                                                    <div className="px-4 py-2 text-sm">
-                                                      <span className="text-orange-600 font-medium">LKR {formatAmount(getRemainingTransporterCost(job))}</span>
-                                                    </div>
-                                                  </div>
-                                                </div>
-                                              </div>
-
-                                              {getPaymentDetails(job)?.paidAmount > 0 && (
-                                                <div style={{marginTop: '16px'}}>
-                                                  <div className="border border-gray-200 rounded bg-white">
-                                                    <div className="bg-gray-50 border-b border-gray-200 grid gap-0" style={{gridTemplateColumns: 'repeat(5, minmax(0, 1fr))'}}>
-                                                      <div className="px-4 py-2 text-xs font-bold text-gray-700 uppercase">Payment Date</div>
-                                                      <div className="px-4 py-2 text-xs font-bold text-gray-700 uppercase">Method</div>
-                                                      <div className="px-4 py-2 text-xs font-bold text-gray-700 uppercase">Reference</div>
-                                                      <div className="px-4 py-2 text-xs font-bold text-gray-700 uppercase">Amount</div>
-                                                      <div className="px-4 py-2 text-xs font-bold text-gray-700 uppercase">Paid By</div>
-                                                    </div>
-                                                    
-                                                    <div className="divide-y divide-gray-200">
-                                                      {getAllPaymentRecords(job).map((payment, idx) => (
-                                                        <div key={idx} className="grid gap-0" style={{gridTemplateColumns: 'repeat(5, minmax(0, 1fr))'}}>
-                                                          <div className="px-4 py-2 text-sm text-gray-900">
-                                                            {formatDateWithMonth(payment.paymentDate)}
-                                                          </div>
-                                                          <div className="px-4 py-2 text-sm">
-                                                            <span className="inline-block px-2 py-1 rounded text-xs font-medium" style={{
-                                                              backgroundColor: payment.paymentMethod === 'Cash' ? '#dbeafe' : payment.paymentMethod === 'Cheque' ? '#fef3c7' : '#d1fae5',
-                                                              color: payment.paymentMethod === 'Cash' ? '#0c4a6e' : payment.paymentMethod === 'Cheque' ? '#92400e' : '#065f46'
-                                                            }}>
-                                                              {payment.paymentMethod === 'Cash' && '💵'}
-                                                              {payment.paymentMethod === 'Cheque' && '📝'}
-                                                              {payment.paymentMethod === 'Bank Transfer' && '🏦'}
-                                                              {' '}{payment.paymentMethod || '-'}
-                                                            </span>
-                                                          </div>
-                                                          <div className="px-4 py-2 text-sm text-gray-900">
-                                                            {payment.paymentMethod === 'Cheque' && payment.chequeNumber ? (
-                                                              <span>CHQ: {payment.chequeNumber}</span>
-                                                            ) : payment.paymentMethod === 'Bank Transfer' && payment.bankName ? (
-                                                              <span>{payment.bankName}</span>
-                                                            ) : payment.paymentMethod === 'Cash' ? (
-                                                              <span>Cash</span>
-                                                            ) : (
-                                                              <span className="text-gray-400">-</span>
-                                                            )}
-                                                          </div>
-                                                          <div className="px-4 py-2 text-sm text-gray-900 font-medium">LKR {formatAmount(payment.amount || 0)}</div>
-                                                          <div className="px-4 py-2 text-sm text-gray-900">{payment.paidByName || '-'}</div>
-                                                        </div>
-                                                      ))}
-                                                    </div>
-                                                  </div>
-                                                </div>
-                                              )}
-                                            </div>
-                                          </div>
-                                        )}
-                                      </React.Fragment>
-                                    ))}
-                                    <div className="border-t-2 border-gray-300 bg-gray-50 grid gap-0" style={{gridTemplateColumns: 'repeat(10, minmax(0, 1fr))'}}>
-                                      <div className="px-4 py-2"></div>
-                                      <div className="px-4 py-2 text-sm font-bold text-gray-900"><strong>Total</strong></div>
-                                      <div className="px-4 py-2"></div>
-                                      <div className="px-4 py-2"></div>
-                                      <div className="px-4 py-2 text-sm text-gray-900 font-bold">
-                                        <strong>LKR {formatAmount(assignedJobs.reduce((sum, job) => sum + getTransporterCostAmount(job), 0))}</strong>
-                                      </div>
-                                      <div className="px-4 py-2 text-sm text-gray-900 font-bold">
-                                        <strong>LKR {formatAmount(assignedJobs.reduce((sum, job) => sum + getBillingAmount(job.jobId), 0))}</strong>
-                                      </div>
-                                      <div className="px-4 py-2"></div>
-                                      <div className="px-4 py-2"></div>
-                                      <div className="px-4 py-2"></div>
-                                      <div className="px-4 py-2"></div>
-                                    </div>
-                                  </div>
-                                </div>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
                   </React.Fragment>
                     );
                   })()
@@ -1431,7 +1058,7 @@ function Transporters() {
           <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center border-b border-gray-200 px-6 py-4">
               <h2 className="text-xl font-bold text-gray-900">{editingTransporter ? 'Edit Transporter' : 'New Transporter'}</h2>
-              <button className="text-gray-400 hover:text-gray-600 text-2xl" onClick={() => setShowModal(false)}>×</button>
+              <button className="text-gray-400 hover:text-gray-600 text-2xl" onClick={() => setShowModal(false)}>Ã—</button>
             </div>
 
             <form onSubmit={handleSubmit} className="p-6">
@@ -1733,7 +1360,7 @@ function Transporters() {
       <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center" onClick={() => setShowPaymentModal(false)}>
         <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
 
-          {/* ── Title bar ── */}
+          {/* â”€â”€ Title bar â”€â”€ */}
           <div className="border-b border-gray-200 px-6 py-4 flex justify-between items-center">
             <div className="flex items-center gap-3">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{flexShrink:0}}>
@@ -1744,12 +1371,12 @@ function Transporters() {
                 <span className="text-sm text-gray-600 block">Job&nbsp;#{selectedJobForPayment.jobId}</span>
               </div>
             </div>
-            <button className="text-gray-400 hover:text-gray-600 text-2xl" onClick={() => setShowPaymentModal(false)} aria-label="Close">×</button>
+            <button className="text-gray-400 hover:text-gray-600 text-2xl" onClick={() => setShowPaymentModal(false)} aria-label="Close">Ã—</button>
           </div>
 
-          {/* ══════════════════════════════════════════
-              ROW 1 — Job details (horizontal strip)
-          ══════════════════════════════════════════ */}
+          {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+              ROW 1 â€” Job details (horizontal strip)
+          â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
           <div className="p-6">
           <div className="flex gap-4 flex-wrap mb-6 pb-6 border-b border-gray-200">
             <div className="flex-1 min-w-32">
@@ -1778,9 +1405,9 @@ function Transporters() {
             </div>
           </div>
 
-          {/* ══════════════════════════════════════════
-              ROW 2 — Payment type + amount
-          ══════════════════════════════════════════ */}
+          {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+              ROW 2 â€” Payment type + amount
+          â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
           <div className="grid grid-cols-2 gap-6 mb-6 pb-6 border-b border-gray-200">
 
             {/* Left: radio buttons */}
@@ -1870,9 +1497,9 @@ function Transporters() {
 
           </div>{/* end ROW 2 */}
 
-          {/* ══════════════════════════════════════════
-              ROW 3 — Payment method + details
-          ══════════════════════════════════════════ */}
+          {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+              ROW 3 â€” Payment method + details
+          â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
           <div className="grid grid-cols-2 gap-6 mb-6">
 
             {/* Left: method selector */}
@@ -1901,11 +1528,11 @@ function Transporters() {
                 ))}
               </div>
 
-              {/* Cash — no extra fields */}
+              {/* Cash â€” no extra fields */}
               {paymentMethod === 'Cash' && (
                 <div className="p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2 text-sm text-green-800">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
-                  Cash payment — no additional details required.
+                  Cash payment â€” no additional details required.
                 </div>
               )}
             </div>
@@ -1913,7 +1540,7 @@ function Transporters() {
             {/* Right: cheque / bank fields */}
             <div>
 
-              {/* ── Cheque ── */}
+              {/* â”€â”€ Cheque â”€â”€ */}
               {paymentMethod === 'Cheque' && (
                 <>
                   <p className="text-sm font-bold text-gray-700 mb-3">Cheque Details</p>
@@ -2008,7 +1635,7 @@ function Transporters() {
                 </>
               )}
 
-              {/* ── Bank Transfer ── */}
+              {/* â”€â”€ Bank Transfer â”€â”€ */}
               {paymentMethod === 'Bank Transfer' && (
                 <>
                   <p className="text-sm font-bold text-gray-700 mb-3">Transfer Details</p>
@@ -2030,7 +1657,7 @@ function Transporters() {
                 </>
               )}
 
-              {/* ── Cash placeholder ── */}
+              {/* â”€â”€ Cash placeholder â”€â”€ */}
               {paymentMethod === 'Cash' && (
                 <div className="text-center py-6">
                   <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" strokeWidth="1.5" className="mx-auto mb-2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
@@ -2043,7 +1670,7 @@ function Transporters() {
           </div>{/* end ROW 3 */}
           </div>{/* end pm-body */}
 
-          {/* ── Footer ── */}
+          {/* â”€â”€ Footer â”€â”€ */}
           <div className="border-t border-gray-200 px-6 py-4 flex gap-3 justify-end">
             <button className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg font-medium" onClick={() => setShowPaymentModal(false)}>Cancel</button>
             <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium flex items-center gap-2" onClick={submitTransporterPayment}>
@@ -2069,7 +1696,7 @@ function Transporters() {
                 <span className="text-sm text-gray-600 block">Job #{breakdownJob.jobId}</span>
               </div>
             </div>
-            <button className="text-gray-400 hover:text-gray-600 text-2xl" onClick={() => setShowBreakdownModal(false)} aria-label="Close">×</button>
+            <button className="text-gray-400 hover:text-gray-600 text-2xl" onClick={() => setShowBreakdownModal(false)} aria-label="Close">Ã—</button>
           </div>
 
           <div className="p-6">
@@ -2126,9 +1753,9 @@ function Transporters() {
                             backgroundColor: payment.paymentMethod === 'Cash' ? '#dbeafe' : payment.paymentMethod === 'Cheque' ? '#fef3c7' : '#d1fae5',
                             color: payment.paymentMethod === 'Cash' ? '#0c4a6e' : payment.paymentMethod === 'Cheque' ? '#92400e' : '#065f46'
                           }}>
-                            {payment.paymentMethod === 'Cash' && '💵'}
-                            {payment.paymentMethod === 'Cheque' && '📝'}
-                            {payment.paymentMethod === 'Bank Transfer' && '🏦'}
+                            {payment.paymentMethod === 'Cash' && 'ðŸ’µ'}
+                            {payment.paymentMethod === 'Cheque' && 'ðŸ“'}
+                            {payment.paymentMethod === 'Bank Transfer' && 'ðŸ¦'}
                             {' '}{payment.paymentMethod || '-'}
                           </span>
                         </div>
@@ -2162,6 +1789,260 @@ function Transporters() {
         </div>
       </div>
     )}
+
+      {/* View Transporter Details Modal */}
+      {viewTransporterModal && ReactDOM.createPortal(
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] px-[2.5vw] py-2">
+          <div className="bg-white rounded-2xl shadow-2xl flex flex-col" style={{ width: '85vw', maxWidth: '1200px', height: '90vh' }}>
+            {/* Header */}
+            <div className="flex items-center justify-between px-10 py-5 rounded-t-2xl shrink-0" style={{ background: 'linear-gradient(135deg,#1E3F63 0%,#2f5e8f 100%)' }}>
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+                    <rect x="1" y="3" width="15" height="13"/>
+                    <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/>
+                    <circle cx="5.5" cy="18.5" r="2.5"/>
+                    <circle cx="18.5" cy="18.5" r="2.5"/>
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-white">Transporter Details</h2>
+                  <p className="text-blue-200 text-xs mt-0.5">View complete transporter information</p>
+                </div>
+              </div>
+              <button onClick={() => setViewTransporterModal(null)} className="w-9 h-9 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 min-h-0 overflow-y-auto px-14 py-9">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Basic Information */}
+                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                  <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#1E3F63" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0">
+                      <rect x="3" y="3" width="18" height="18" rx="2"/>
+                      <line x1="3" y1="9" x2="21" y2="9"/>
+                      <line x1="9" y1="21" x2="9" y2="9"/>
+                    </svg>
+                    <span className="text-xs font-bold text-[#1E3F63] uppercase tracking-wider">Basic Information</span>
+                  </div>
+                  <table className="w-full text-sm border-collapse">
+                    <tbody>
+                      <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
+                        <td className="px-4 py-3 text-gray-600 font-medium">Transporter ID</td>
+                        <td className="px-4 py-3 text-gray-900 font-semibold">{viewTransporterModal.transporterId}</td>
+                      </tr>
+                      <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
+                        <td className="px-4 py-3 text-gray-600 font-medium">Name</td>
+                        <td className="px-4 py-3 text-gray-900">{viewTransporterModal.name}</td>
+                      </tr>
+                      <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
+                        <td className="px-4 py-3 text-gray-600 font-medium">Main Phone</td>
+                        <td className="px-4 py-3 text-gray-900">{viewTransporterModal.mainPhone || viewTransporterModal.phone}</td>
+                      </tr>
+                      <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
+                        <td className="px-4 py-3 text-gray-600 font-medium">Email</td>
+                        <td className="px-4 py-3 text-gray-900">{viewTransporterModal.email || '-'}</td>
+                      </tr>
+                      <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
+                        <td className="px-4 py-3 text-gray-600 font-medium">Lorry Number</td>
+                        <td className="px-4 py-3 text-gray-900">{viewTransporterModal.lorryNumber}</td>
+                      </tr>
+                      <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
+                        <td className="px-4 py-3 text-gray-600 font-medium">Registration Date</td>
+                        <td className="px-4 py-3 text-gray-900">{viewTransporterModal.registrationDate ? formatDate(viewTransporterModal.registrationDate) : 'N/A'}</td>
+                      </tr>
+                      <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
+                        <td className="px-4 py-3 text-gray-600 font-medium">Type</td>
+                        <td className="px-4 py-3 text-gray-900">{viewTransporterModal.transporterType || 'Non FCL'}</td>
+                      </tr>
+                      {viewTransporterModal.transporterType === 'FCL' && (
+                        <>
+                          <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
+                            <td className="px-4 py-3 text-gray-600 font-medium">Driver Name</td>
+                            <td className="px-4 py-3 text-gray-900">{viewTransporterModal.driverName || '-'}</td>
+                          </tr>
+                          <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
+                            <td className="px-4 py-3 text-gray-600 font-medium">Size</td>
+                            <td className="px-4 py-3 text-gray-900">{viewTransporterModal.size || '-'}</td>
+                          </tr>
+                        </>
+                      )}
+                      <tr className="hover:bg-gray-50 transition">
+                        <td className="px-4 py-3 text-gray-600 font-medium">Status</td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${viewTransporterModal.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                            {viewTransporterModal.isActive ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Address Information */}
+                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                  <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#1E3F63" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0">
+                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                      <circle cx="12" cy="10" r="3"/>
+                    </svg>
+                    <span className="text-xs font-bold text-[#1E3F63] uppercase tracking-wider">Address Information</span>
+                  </div>
+                  <div className="px-4 py-4">
+                    <p className="text-sm text-gray-700 leading-relaxed">
+                      {viewTransporterModal.addressNumber}, {viewTransporterModal.addressStreet1}
+                      {viewTransporterModal.addressStreet2 && <>, {viewTransporterModal.addressStreet2}</>}
+                      <br/>{viewTransporterModal.addressCity}, {viewTransporterModal.addressDistrict}
+                      <br/>{viewTransporterModal.addressCountry || 'Sri Lanka'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Contact Persons */}
+                {viewTransporterModal.contactPersons && viewTransporterModal.contactPersons.length > 0 && (
+                  <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden lg:col-span-2">
+                    <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="#1E3F63" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                        <circle cx="9" cy="7" r="4"/>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                      </svg>
+                      <span className="text-xs font-bold text-[#1E3F63] uppercase tracking-wider">Contact Persons</span>
+                    </div>
+                    <div className="px-4 py-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {viewTransporterModal.contactPersons.map((cp, idx) => (
+                        <div key={idx} className="p-3 bg-gray-50 rounded-lg">
+                          <p className="font-semibold text-gray-900 text-sm">{cp.name}</p>
+                          <p className="text-gray-600 text-sm mt-1 flex items-center gap-2">
+                            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+                            </svg>
+                            {cp.phone}
+                          </p>
+                          {cp.email && (
+                            <p className="text-gray-600 text-sm mt-1 flex items-center gap-2">
+                              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                                <polyline points="22,6 12,13 2,6"/>
+                              </svg>
+                              {cp.email}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Assigned Jobs */}
+                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden lg:col-span-2">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50">
+                    <div className="flex items-center gap-2">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="#1E3F63" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                        <line x1="16" y1="13" x2="8" y2="13"/>
+                        <line x1="16" y1="17" x2="8" y2="17"/>
+                        <polyline points="10 9 9 9 8 9"/>
+                      </svg>
+                      <span className="text-xs font-bold text-[#1E3F63] uppercase tracking-wider">Assigned Jobs</span>
+                    </div>
+                    <span className="text-xs text-gray-600">{getAssignedJobs(viewTransporterModal).length} job(s)</span>
+                  </div>
+                  <div className="px-4 py-4">
+                    {getAssignedJobs(viewTransporterModal).length === 0 ? (
+                      <div className="text-center py-8 text-gray-500">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" className="mx-auto mb-2">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                          <polyline points="14 2 14 8 20 8"/>
+                        </svg>
+                        <p className="text-sm">No jobs assigned to this transporter</p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-gray-200">
+                              <th className="px-3 py-2 text-left text-xs font-bold text-gray-700">Job ID</th>
+                              <th className="px-3 py-2 text-left text-xs font-bold text-gray-700">Category</th>
+                              <th className="px-3 py-2 text-left text-xs font-bold text-gray-700">Delivery Date</th>
+                              <th className="px-3 py-2 text-left text-xs font-bold text-gray-700">Cost</th>
+                              <th className="px-3 py-2 text-left text-xs font-bold text-gray-700">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {getAssignedJobs(viewTransporterModal).slice(0, 10).map(job => (
+                              <tr key={job.jobId} className="hover:bg-gray-50">
+                                <td className="px-3 py-2 text-gray-900 font-medium">{job.jobId}</td>
+                                <td className="px-3 py-2 text-gray-600">{job.shipmentCategory || '-'}</td>
+                                <td className="px-3 py-2 text-gray-600">{job.transportDeliveryDate ? formatDate(job.transportDeliveryDate) : '-'}</td>
+                                <td className="px-3 py-2 text-gray-900">LKR {formatAmount(getTransporterCostAmount(job))}</td>
+                                <td className="px-3 py-2">
+                                  {isTransporterCostPaid(job) ? (
+                                    <span className="inline-block px-2 py-1 bg-green-100 text-green-800 rounded text-xs font-medium">Paid</span>
+                                  ) : (
+                                    <span className="inline-block px-2 py-1 bg-red-100 text-red-800 rounded text-xs font-medium">Unpaid</span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        {getAssignedJobs(viewTransporterModal).length > 10 && (
+                          <p className="text-xs text-gray-500 mt-2 text-center">Showing 10 of {getAssignedJobs(viewTransporterModal).length} jobs</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              {canManageTransporters && (
+                <div className="mt-6 flex items-center justify-end gap-3 pt-6 border-t border-gray-200">
+                  <button 
+                    onClick={() => {
+                      setViewTransporterModal(null);
+                      openEditModal(viewTransporterModal);
+                    }} 
+                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium flex items-center gap-2"
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                    Edit Transporter
+                  </button>
+                  <button 
+                    onClick={() => {
+                      if (window.confirm(`Are you sure you want to deactivate ${viewTransporterModal.name}?`)) {
+                        handleDeactivate(viewTransporterModal.transporterId);
+                        setViewTransporterModal(null);
+                      }
+                    }} 
+                    className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg transition font-medium flex items-center gap-2"
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10"/>
+                      <line x1="15" y1="9" x2="9" y2="15"/>
+                      <line x1="9" y1="9" x2="15" y2="15"/>
+                    </svg>
+                    Deactivate
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
