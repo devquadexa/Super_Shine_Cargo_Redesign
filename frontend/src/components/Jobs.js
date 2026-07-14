@@ -35,6 +35,9 @@ function Jobs() {
   const [settleModal, setSettleModal] = useState(null); // {pettyAssignmentId, userName, assignedAmount}
   const [settleItems, setSettleItems] = useState([{ itemName: '', actualCost: '', hasBill: false }]);
   const [settleLoading, setSettleLoading] = useState(false);
+  const [assignPcModal, setAssignPcModal] = useState(false); // Show assign petty cash modal
+  const [assignPcForm, setAssignPcForm] = useState({ assignedTo: '', assignedAmount: '', notes: '' });
+  const [assignPcLoading, setAssignPcLoading] = useState(false);
   const [selectedJob, setSelectedJob] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
@@ -457,6 +460,45 @@ function Jobs() {
       setMessage(`❌ ${errorMsg}`);
     } finally {
       setSettleLoading(false);
+      setTimeout(() => setMessage(''), 5000);
+    }
+  };
+
+  const handleAssignPcSubmit = async () => {
+    if (!assignPcForm.assignedTo) {
+      setMessage('Please select a user to assign');
+      setTimeout(() => setMessage(''), 3000);
+      return;
+    }
+    if (!assignPcForm.assignedAmount || parseFloat(assignPcForm.assignedAmount) <= 0) {
+      setMessage('Please enter a valid amount');
+      setTimeout(() => setMessage(''), 3000);
+      return;
+    }
+
+    setAssignPcLoading(true);
+    try {
+      await apiClient.post('/petty-cash-assignments', {
+        jobId: viewJobModal.jobId,
+        assignedTo: assignPcForm.assignedTo,
+        assignedAmount: parseFloat(assignPcForm.assignedAmount),
+        notes: assignPcForm.notes || null
+      });
+
+      setMessage('✅ Petty cash assigned successfully!');
+      setAssignPcModal(false);
+      setAssignPcForm({ assignedTo: '', assignedAmount: '', notes: '' });
+      fetchJobs();
+      // Refresh view modal
+      const data = await jobService.getAll();
+      const updatedJob = data.find(j => j.jobId === viewJobModal.jobId);
+      if (updatedJob) setViewJobModal(updatedJob);
+    } catch (error) {
+      console.error('Error assigning petty cash:', error);
+      const errorMsg = error.response?.data?.message || error.message || 'Error assigning petty cash';
+      setMessage(`❌ ${errorMsg}`);
+    } finally {
+      setAssignPcLoading(false);
       setTimeout(() => setMessage(''), 5000);
     }
   };
@@ -1105,6 +1147,68 @@ function Jobs() {
         </div>
       )}
 
+      {/* Assign Petty Cash Modal */}
+      {assignPcModal && viewJobModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10001] px-4 py-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-600 to-purple-700 rounded-t-2xl">
+              <div>
+                <h2 className="text-lg font-bold text-white">Assign Petty Cash</h2>
+                <p className="text-purple-100 text-xs mt-0.5">Job #{viewJobModal.jobId}</p>
+              </div>
+              <button onClick={() => setAssignPcModal(false)} className="text-white hover:bg-purple-500 rounded-lg p-2 transition">✕</button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Assign To <span className="text-red-600">*</span></label>
+                <select
+                  value={assignPcForm.assignedTo}
+                  onChange={(e) => setAssignPcForm(prev => ({...prev, assignedTo: e.target.value}))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+                >
+                  <option value="">Select Waff Clerk</option>
+                  {users.filter(u => u.role === 'Waff Clerk' || u.role === 'Manager').map(u => (
+                    <option key={u.userId} value={u.userId}>{u.fullName} ({u.role})</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Amount (LKR) <span className="text-red-600">*</span></label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={assignPcForm.assignedAmount}
+                  onChange={(e) => setAssignPcForm(prev => ({...prev, assignedAmount: e.target.value}))}
+                  placeholder="0.00"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Notes (Optional)</label>
+                <textarea
+                  value={assignPcForm.notes}
+                  onChange={(e) => setAssignPcForm(prev => ({...prev, notes: e.target.value}))}
+                  placeholder="Enter any notes..."
+                  rows="2"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-2xl">
+              <button onClick={() => setAssignPcModal(false)} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition font-medium text-sm">Cancel</button>
+              <button
+                onClick={handleAssignPcSubmit}
+                disabled={assignPcLoading}
+                className="px-5 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white rounded-lg transition font-semibold text-sm"
+              >
+                {assignPcLoading ? 'Assigning...' : 'Assign Petty Cash'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
             {/* Header */}
             <div className="flex items-center justify-between px-10 py-5 rounded-t-2xl shrink-0" style={{ background: 'linear-gradient(135deg,#1E3F63 0%,#2f5e8f 100%)' }}>
               <div className="flex items-center gap-4">
@@ -1382,8 +1486,19 @@ function Jobs() {
 
                     {/* Petty Cash Assignments section */}
                     <div className="border-t border-gray-100">
-                      <div className="px-5 py-2.5 bg-purple-50 border-b border-purple-200">
+                      <div className="px-5 py-2.5 bg-purple-50 border-b border-purple-200 flex items-center justify-between">
                         <span className="text-xs font-bold text-purple-700 uppercase tracking-wider">③ Petty Cash Assignments</span>
+                        {['Admin','Super Admin','Manager'].includes(user?.role) && (
+                          <button
+                            onClick={() => setAssignPcModal(true)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-purple-600 hover:bg-purple-700 transition"
+                          >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                            </svg>
+                            Assign Petty Cash
+                          </button>
+                        )}
                       </div>
                       <table className="w-full text-sm border-collapse">
                         <thead>
