@@ -1792,8 +1792,8 @@ function Transporters() {
 
       {/* View Transporter Details Modal */}
       {viewTransporterModal && ReactDOM.createPortal(
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] px-[2.5vw] py-2">
-          <div className="bg-white rounded-2xl shadow-2xl flex flex-col" style={{ width: '85vw', maxWidth: '1200px', height: '90vh' }}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] px-[2.5vw] py-4">
+          <div className="bg-white rounded-2xl shadow-2xl flex flex-col" style={{ width: '90vw', maxWidth: '1400px', height: '92vh' }}>
             {/* Header */}
             <div className="flex items-center justify-between px-10 py-5 rounded-t-2xl shrink-0" style={{ background: 'linear-gradient(135deg,#1E3F63 0%,#2f5e8f 100%)' }}>
               <div className="flex items-center gap-4">
@@ -1819,226 +1819,232 @@ function Transporters() {
             </div>
 
             {/* Body */}
-            <div className="flex-1 min-h-0 overflow-y-auto px-14 py-9">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Basic Information */}
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                  <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="#1E3F63" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0">
-                      <rect x="3" y="3" width="18" height="18" rx="2"/>
-                      <line x1="3" y1="9" x2="21" y2="9"/>
-                      <line x1="9" y1="21" x2="9" y2="9"/>
-                    </svg>
-                    <span className="text-xs font-bold text-[#1E3F63] uppercase tracking-wider">Basic Information</span>
-                  </div>
-                  <table className="w-full text-sm border-collapse">
-                    <tbody>
-                      <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
-                        <td className="px-4 py-3 text-gray-600 font-medium">Transporter ID</td>
-                        <td className="px-4 py-3 text-gray-900 font-semibold">{viewTransporterModal.transporterId}</td>
-                      </tr>
-                      <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
-                        <td className="px-4 py-3 text-gray-600 font-medium">Name</td>
-                        <td className="px-4 py-3 text-gray-900">{viewTransporterModal.name}</td>
-                      </tr>
-                      <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
-                        <td className="px-4 py-3 text-gray-600 font-medium">Main Phone</td>
-                        <td className="px-4 py-3 text-gray-900">{viewTransporterModal.mainPhone || viewTransporterModal.phone}</td>
-                      </tr>
-                      <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
-                        <td className="px-4 py-3 text-gray-600 font-medium">Email</td>
-                        <td className="px-4 py-3 text-gray-900">{viewTransporterModal.email || '-'}</td>
-                      </tr>
-                      <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
-                        <td className="px-4 py-3 text-gray-600 font-medium">Lorry Number</td>
-                        <td className="px-4 py-3 text-gray-900">{viewTransporterModal.lorryNumber}</td>
-                      </tr>
-                      <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
-                        <td className="px-4 py-3 text-gray-600 font-medium">Registration Date</td>
-                        <td className="px-4 py-3 text-gray-900">{viewTransporterModal.registrationDate ? formatDate(viewTransporterModal.registrationDate) : 'N/A'}</td>
-                      </tr>
-                      <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
-                        <td className="px-4 py-3 text-gray-600 font-medium">Type</td>
-                        <td className="px-4 py-3 text-gray-900">{viewTransporterModal.transporterType || 'Non FCL'}</td>
-                      </tr>
-                      {viewTransporterModal.transporterType === 'FCL' && (
-                        <>
-                          <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
-                            <td className="px-4 py-3 text-gray-600 font-medium">Driver Name</td>
-                            <td className="px-4 py-3 text-gray-900">{viewTransporterModal.driverName || '-'}</td>
-                          </tr>
-                          <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
-                            <td className="px-4 py-3 text-gray-600 font-medium">Size</td>
-                            <td className="px-4 py-3 text-gray-900">{viewTransporterModal.size || '-'}</td>
-                          </tr>
-                        </>
-                      )}
-                      <tr className="hover:bg-gray-50 transition">
-                        <td className="px-4 py-3 text-gray-600 font-medium">Status</td>
-                        <td className="px-4 py-3">
-                          <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${viewTransporterModal.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                            {viewTransporterModal.isActive ? 'Active' : 'Inactive'}
-                          </span>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Address Information */}
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                  <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="#1E3F63" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0">
-                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
-                      <circle cx="12" cy="10" r="3"/>
-                    </svg>
-                    <span className="text-xs font-bold text-[#1E3F63] uppercase tracking-wider">Address Information</span>
-                  </div>
-                  <div className="px-4 py-4">
-                    <p className="text-sm text-gray-700 leading-relaxed">
-                      {viewTransporterModal.addressNumber}, {viewTransporterModal.addressStreet1}
-                      {viewTransporterModal.addressStreet2 && <>, {viewTransporterModal.addressStreet2}</>}
-                      <br/>{viewTransporterModal.addressCity}, {viewTransporterModal.addressDistrict}
-                      <br/>{viewTransporterModal.addressCountry || 'Sri Lanka'}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Contact Persons */}
-                {viewTransporterModal.contactPersons && viewTransporterModal.contactPersons.length > 0 && (
-                  <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden lg:col-span-2">
+            <div className="flex-1 min-h-0 overflow-y-auto px-14 py-5">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* LEFT COLUMN: Basic Information & Assigned Jobs */}
+                <div className="space-y-4">
+                  {/* Basic Information */}
+                  <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                     <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50">
                       <svg viewBox="0 0 24 24" fill="none" stroke="#1E3F63" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0">
-                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                        <circle cx="9" cy="7" r="4"/>
-                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                        <rect x="3" y="3" width="18" height="18" rx="2"/>
+                        <line x1="3" y1="9" x2="21" y2="9"/>
+                        <line x1="9" y1="21" x2="9" y2="9"/>
                       </svg>
-                      <span className="text-xs font-bold text-[#1E3F63] uppercase tracking-wider">Contact Persons</span>
+                      <span className="text-xs font-bold text-[#1E3F63] uppercase tracking-wider">Basic Information</span>
                     </div>
-                    <div className="px-4 py-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {viewTransporterModal.contactPersons.map((cp, idx) => (
-                        <div key={idx} className="p-3 bg-gray-50 rounded-lg">
-                          <p className="font-semibold text-gray-900 text-sm">{cp.name}</p>
-                          <p className="text-gray-600 text-sm mt-1 flex items-center gap-2">
-                            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
-                            </svg>
-                            {cp.phone}
-                          </p>
-                          {cp.email && (
+                    <table className="w-full text-sm border-collapse">
+                      <tbody>
+                        <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
+                          <td className="px-4 py-3 text-gray-600 font-medium">Transporter ID</td>
+                          <td className="px-4 py-3 text-gray-900 font-semibold">{viewTransporterModal.transporterId}</td>
+                        </tr>
+                        <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
+                          <td className="px-4 py-3 text-gray-600 font-medium">Name</td>
+                          <td className="px-4 py-3 text-gray-900">{viewTransporterModal.name}</td>
+                        </tr>
+                        <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
+                          <td className="px-4 py-3 text-gray-600 font-medium">Main Phone</td>
+                          <td className="px-4 py-3 text-gray-900">{viewTransporterModal.mainPhone || viewTransporterModal.phone}</td>
+                        </tr>
+                        <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
+                          <td className="px-4 py-3 text-gray-600 font-medium">Email</td>
+                          <td className="px-4 py-3 text-gray-900">{viewTransporterModal.email || '-'}</td>
+                        </tr>
+                        <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
+                          <td className="px-4 py-3 text-gray-600 font-medium">Lorry Number</td>
+                          <td className="px-4 py-3 text-gray-900">{viewTransporterModal.lorryNumber}</td>
+                        </tr>
+                        <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
+                          <td className="px-4 py-3 text-gray-600 font-medium">Registration Date</td>
+                          <td className="px-4 py-3 text-gray-900">{viewTransporterModal.registrationDate ? formatDate(viewTransporterModal.registrationDate) : 'N/A'}</td>
+                        </tr>
+                        <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
+                          <td className="px-4 py-3 text-gray-600 font-medium">Type</td>
+                          <td className="px-4 py-3 text-gray-900">{viewTransporterModal.transporterType || 'Non FCL'}</td>
+                        </tr>
+                        {viewTransporterModal.transporterType === 'FCL' && (
+                          <>
+                            <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
+                              <td className="px-4 py-3 text-gray-600 font-medium">Driver Name</td>
+                              <td className="px-4 py-3 text-gray-900">{viewTransporterModal.driverName || '-'}</td>
+                            </tr>
+                            <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
+                              <td className="px-4 py-3 text-gray-600 font-medium">Size</td>
+                              <td className="px-4 py-3 text-gray-900">{viewTransporterModal.size || '-'}</td>
+                            </tr>
+                          </>
+                        )}
+                        <tr className="hover:bg-gray-50 transition">
+                          <td className="px-4 py-3 text-gray-600 font-medium">Status</td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${viewTransporterModal.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                              {viewTransporterModal.isActive ? 'Active' : 'Inactive'}
+                            </span>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* RIGHT COLUMN: Address & Contact Persons */}
+                <div className="space-y-4">
+                  {/* Address Information */}
+                  <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                    <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="#1E3F63" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0">
+                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                        <circle cx="12" cy="10" r="3"/>
+                      </svg>
+                      <span className="text-xs font-bold text-[#1E3F63] uppercase tracking-wider">Address Information</span>
+                    </div>
+                    <div className="px-4 py-4">
+                      <p className="text-sm text-gray-700 leading-relaxed">
+                        {viewTransporterModal.addressNumber}, {viewTransporterModal.addressStreet1}
+                        {viewTransporterModal.addressStreet2 && <>, {viewTransporterModal.addressStreet2}</>}
+                        <br/>{viewTransporterModal.addressCity}, {viewTransporterModal.addressDistrict}
+                        <br/>{viewTransporterModal.addressCountry || 'Sri Lanka'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Contact Persons */}
+                  {viewTransporterModal.contactPersons && viewTransporterModal.contactPersons.length > 0 && (
+                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                      <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#1E3F63" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0">
+                          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                          <circle cx="9" cy="7" r="4"/>
+                          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                        </svg>
+                        <span className="text-xs font-bold text-[#1E3F63] uppercase tracking-wider">Contact Persons</span>
+                      </div>
+                      <div className="px-4 py-4 space-y-3">
+                        {viewTransporterModal.contactPersons.map((cp, idx) => (
+                          <div key={idx} className="p-3 bg-gray-50 rounded-lg">
+                            <p className="font-semibold text-gray-900 text-sm">{cp.name}</p>
                             <p className="text-gray-600 text-sm mt-1 flex items-center gap-2">
                               <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-                                <polyline points="22,6 12,13 2,6"/>
+                                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
                               </svg>
-                              {cp.email}
+                              {cp.phone}
                             </p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Assigned Jobs */}
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden lg:col-span-2">
-                  <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50">
-                    <div className="flex items-center gap-2">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="#1E3F63" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                        <polyline points="14 2 14 8 20 8"/>
-                        <line x1="16" y1="13" x2="8" y2="13"/>
-                        <line x1="16" y1="17" x2="8" y2="17"/>
-                        <polyline points="10 9 9 9 8 9"/>
-                      </svg>
-                      <span className="text-xs font-bold text-[#1E3F63] uppercase tracking-wider">Assigned Jobs</span>
-                    </div>
-                    <span className="text-xs text-gray-600">{getAssignedJobs(viewTransporterModal).length} job(s)</span>
-                  </div>
-                  <div className="px-4 py-4">
-                    {getAssignedJobs(viewTransporterModal).length === 0 ? (
-                      <div className="text-center py-8 text-gray-500">
-                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" className="mx-auto mb-2">
-                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                          <polyline points="14 2 14 8 20 8"/>
-                        </svg>
-                        <p className="text-sm">No jobs assigned to this transporter</p>
+                            {cp.email && (
+                              <p className="text-gray-600 text-sm mt-1 flex items-center gap-2">
+                                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                                  <polyline points="22,6 12,13 2,6"/>
+                                </svg>
+                                {cp.email}
+                              </p>
+                            )}
+                          </div>
+                        ))}
                       </div>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="border-b border-gray-200">
-                              <th className="px-3 py-2 text-left text-xs font-bold text-gray-700">Job ID</th>
-                              <th className="px-3 py-2 text-left text-xs font-bold text-gray-700">Category</th>
-                              <th className="px-3 py-2 text-left text-xs font-bold text-gray-700">Delivery Date</th>
-                              <th className="px-3 py-2 text-left text-xs font-bold text-gray-700">Cost</th>
-                              <th className="px-3 py-2 text-left text-xs font-bold text-gray-700">Status</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-100">
-                            {getAssignedJobs(viewTransporterModal).slice(0, 10).map(job => (
-                              <tr key={job.jobId} className="hover:bg-gray-50">
-                                <td className="px-3 py-2 text-gray-900 font-medium">{job.jobId}</td>
-                                <td className="px-3 py-2 text-gray-600">{job.shipmentCategory || '-'}</td>
-                                <td className="px-3 py-2 text-gray-600">{job.transportDeliveryDate ? formatDate(job.transportDeliveryDate) : '-'}</td>
-                                <td className="px-3 py-2 text-gray-900">LKR {formatAmount(getTransporterCostAmount(job))}</td>
-                                <td className="px-3 py-2">
-                                  {isTransporterCostPaid(job) ? (
-                                    <span className="inline-block px-2 py-1 bg-green-100 text-green-800 rounded text-xs font-medium">Paid</span>
-                                  ) : (
-                                    <span className="inline-block px-2 py-1 bg-red-100 text-red-800 rounded text-xs font-medium">Unpaid</span>
-                                  )}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                        {getAssignedJobs(viewTransporterModal).length > 10 && (
-                          <p className="text-xs text-gray-500 mt-2 text-center">Showing 10 of {getAssignedJobs(viewTransporterModal).length} jobs</p>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Action Buttons */}
-              {canManageTransporters && (
-                <div className="mt-6 flex items-center justify-end gap-3 pt-6 border-t border-gray-200">
-                  <button 
-                    onClick={() => {
-                      setViewTransporterModal(null);
-                      openEditModal(viewTransporterModal);
-                    }} 
-                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium flex items-center gap-2"
-                  >
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              {/* Assigned Jobs - full width */}
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mt-4">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50">
+                  <div className="flex items-center gap-2">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#1E3F63" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                      <polyline points="14 2 14 8 20 8"/>
+                      <line x1="16" y1="13" x2="8" y2="13"/>
+                      <line x1="16" y1="17" x2="8" y2="17"/>
+                      <polyline points="10 9 9 9 8 9"/>
                     </svg>
-                    Edit Transporter
-                  </button>
-                  <button 
-                    onClick={() => {
-                      if (window.confirm(`Are you sure you want to deactivate ${viewTransporterModal.name}?`)) {
-                        handleDeactivate(viewTransporterModal.transporterId);
-                        setViewTransporterModal(null);
-                      }
-                    }} 
-                    className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg transition font-medium flex items-center gap-2"
-                  >
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="12" cy="12" r="10"/>
-                      <line x1="15" y1="9" x2="9" y2="15"/>
-                      <line x1="9" y1="9" x2="15" y2="15"/>
-                    </svg>
-                    Deactivate
-                  </button>
+                    <span className="text-xs font-bold text-[#1E3F63] uppercase tracking-wider">Assigned Jobs</span>
+                  </div>
+                  <span className="text-xs text-gray-600">{getAssignedJobs(viewTransporterModal).length} job(s)</span>
                 </div>
-              )}
+                <div className="px-4 py-4">
+                  {getAssignedJobs(viewTransporterModal).length === 0 ? (
+                    <div className="text-center py-6 text-gray-500">
+                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" className="mx-auto mb-2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                      </svg>
+                      <p className="text-sm">No jobs assigned to this transporter</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto max-h-56 overflow-y-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-gray-200">
+                            <th className="px-3 py-2 text-left text-xs font-bold text-gray-700">Job ID</th>
+                            <th className="px-3 py-2 text-left text-xs font-bold text-gray-700">Category</th>
+                            <th className="px-3 py-2 text-left text-xs font-bold text-gray-700">Delivery Date</th>
+                            <th className="px-3 py-2 text-left text-xs font-bold text-gray-700">Cost</th>
+                            <th className="px-3 py-2 text-left text-xs font-bold text-gray-700">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {getAssignedJobs(viewTransporterModal).slice(0, 10).map(job => (
+                            <tr key={job.jobId} className="hover:bg-gray-50">
+                              <td className="px-3 py-2 text-gray-900 font-medium">{job.jobId}</td>
+                              <td className="px-3 py-2 text-gray-600">{job.shipmentCategory || '-'}</td>
+                              <td className="px-3 py-2 text-gray-600">{job.transportDeliveryDate ? formatDate(job.transportDeliveryDate) : '-'}</td>
+                              <td className="px-3 py-2 text-gray-900">LKR {formatAmount(getTransporterCostAmount(job))}</td>
+                              <td className="px-3 py-2">
+                                {isTransporterCostPaid(job) ? (
+                                  <span className="inline-block px-2 py-1 bg-green-100 text-green-800 rounded text-xs font-medium">Paid</span>
+                                ) : (
+                                  <span className="inline-block px-2 py-1 bg-red-100 text-red-800 rounded text-xs font-medium">Unpaid</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {getAssignedJobs(viewTransporterModal).length > 10 && (
+                        <p className="text-xs text-gray-500 mt-2 text-center">Showing 10 of {getAssignedJobs(viewTransporterModal).length} jobs</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
+
+            {/* Fixed Footer with Action Buttons */}
+            {canManageTransporters && (
+              <div className="flex items-center justify-end gap-3 px-14 py-4 border-t border-gray-200 rounded-b-2xl bg-gray-50 shrink-0">
+                <button 
+                  onClick={() => {
+                    setViewTransporterModal(null);
+                    openEditModal(viewTransporterModal);
+                  }} 
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                  Edit Transporter
+                </button>
+                <button 
+                  onClick={() => {
+                    if (window.confirm(`Are you sure you want to deactivate ${viewTransporterModal.name}?`)) {
+                      handleDeactivate(viewTransporterModal.transporterId);
+                      setViewTransporterModal(null);
+                    }
+                  }} 
+                  className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg transition font-medium flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="15" y1="9" x2="9" y2="15"/>
+                    <line x1="9" y1="9" x2="15" y2="15"/>
+                  </svg>
+                  Deactivate
+                </button>
+              </div>
+            )}
           </div>
         </div>,
         document.body

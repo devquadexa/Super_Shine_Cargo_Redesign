@@ -1,4 +1,5 @@
 ﻿import React, { useState, useEffect } from 'react';
+import ReactDOM from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { billingService } from '../api/services/billingService';
 import { jobService } from '../api/services/jobService';
@@ -176,6 +177,7 @@ function Billing() {
   const [printMode, setPrintMode] = useState('color');
   const [showPaymentBreakdownModal, setShowPaymentBreakdownModal] = useState(false);
   const [paymentBreakdownBill, setPaymentBreakdownBill] = useState(null);
+  const [showNewInvoiceModal, setShowNewInvoiceModal] = useState(false);
   
   // New states for pay item editing
   const [editingPayItemIndex, setEditingPayItemIndex] = useState(null);
@@ -357,6 +359,20 @@ function Billing() {
       setMessage('Error updating transporter');
       setTimeout(() => setMessage(''), 3000);
     }
+  };
+
+  const openNewInvoiceModal = () => {
+    setSelectedJob(null);
+    setPayItems([]);
+    setShowPayItemsRow(false);
+    setShowNewInvoiceModal(true);
+  };
+
+  const closeNewInvoiceModal = () => {
+    setShowNewInvoiceModal(false);
+    setSelectedJob(null);
+    setPayItems([]);
+    setShowPayItemsRow(false);
   };
 
   const handleJobSelect = async (jobId) => {
@@ -1115,6 +1131,7 @@ function Billing() {
       const customerName = customers.find(c => c.customerId === selectedJob.customerId)?.name || selectedJob.customerId;
       setMessage('Invoice generated successfully!');
       setSelectedJob(null);
+      setShowNewInvoiceModal(false);
       fetchBills();
       setTimeout(() => setMessage(''), 3000);
       console.log('=== GENERATE BILL END ===');
@@ -2217,18 +2234,55 @@ function Billing() {
 
   return (
     <div className="billing-page">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Invoicing Management</h1>
-        <p className="text-gray-600 mt-1">Generate invoices and track profitability</p>
+      <div className="mb-8 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Invoicing Management</h1>
+          <p className="text-gray-600 mt-1">Generate invoices and track profitability</p>
+        </div>
+        <button
+          onClick={openNewInvoiceModal}
+          className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#1E3F63] hover:bg-[#16304d] text-white rounded-lg shadow-sm transition font-semibold text-sm shrink-0"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          New Invoice
+        </button>
       </div>
 
       {message && <div className={`${message.includes('Error') || message.includes('Cannot') || message.includes('âŒ') ? 'bg-red-50 border border-red-200 text-red-800' : 'bg-green-50 border border-green-200 text-green-800'} px-4 py-3 rounded-lg mb-6`}>{message}</div>}
 
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-6">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h2 className="text-2xl font-bold text-gray-900">Generate New Invoice</h2>
-        </div>
-        <div className="p-6">
+      {/* New Invoice Modal */}
+      {showNewInvoiceModal && ReactDOM.createPortal(
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] px-[2.5vw] py-4">
+          <div className="bg-white rounded-2xl shadow-2xl flex flex-col" style={{ width: '92vw', maxWidth: '1500px', height: '92vh' }}>
+            {/* Header */}
+            <div className="flex items-center justify-between px-10 py-5 rounded-t-2xl shrink-0" style={{ background: 'linear-gradient(135deg,#1E3F63 0%,#2f5e8f 100%)' }}>
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-white">New Invoice</h2>
+                  <p className="text-blue-200 text-xs mt-0.5">Select a job and generate a customer invoice</p>
+                </div>
+              </div>
+              <button onClick={closeNewInvoiceModal} className="w-9 h-9 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 min-h-0 overflow-y-auto px-10 py-6">
           <div className="mb-6">
             <label className="block text-sm font-semibold text-gray-700 mb-2">Select Job *</label>
             <div className="flex gap-2 items-center">
@@ -2375,10 +2429,7 @@ function Billing() {
               </div>
             </div>
           )}
-        </div>
-      </div>
 
-      <>
         {selectedJob && (
             <div className="mb-6">
               <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
@@ -2769,8 +2820,11 @@ function Billing() {
               </div>
             </div>
           )}
-      </>
-
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
         <div className="px-6 py-4 border-b border-gray-200">

@@ -845,8 +845,8 @@ function Customers() {
 
       {/* View Customer Details Modal */}
       {viewCustomerModal && ReactDOM.createPortal(
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] px-[2.5vw] py-2">
-          <div className="bg-white rounded-2xl shadow-2xl flex flex-col" style={{ width: '85vw', maxWidth: '1200px', height: '90vh' }}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] px-[2.5vw] py-4">
+          <div className="bg-white rounded-2xl shadow-2xl flex flex-col" style={{ width: '90vw', maxWidth: '1400px', height: '92vh' }}>
             {/* Header */}
             <div className="flex items-center justify-between px-10 py-5 rounded-t-2xl shrink-0" style={{ background: 'linear-gradient(135deg,#1E3F63 0%,#2f5e8f 100%)' }}>
               <div className="flex items-center gap-4">
@@ -870,194 +870,200 @@ function Customers() {
             </div>
 
             {/* Body */}
-            <div className="flex-1 min-h-0 overflow-y-auto px-14 py-9">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Basic Information */}
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                  <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="#1E3F63" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0">
-                      <rect x="3" y="3" width="18" height="18" rx="2"/>
-                      <line x1="3" y1="9" x2="21" y2="9"/>
-                      <line x1="9" y1="21" x2="9" y2="9"/>
-                    </svg>
-                    <span className="text-xs font-bold text-[#1E3F63] uppercase tracking-wider">Basic Information</span>
-                  </div>
-                  <table className="w-full text-sm border-collapse">
-                    <tbody>
-                      <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
-                        <td className="px-4 py-3 text-gray-600 font-medium">Customer ID</td>
-                        <td className="px-4 py-3 text-gray-900 font-semibold">{viewCustomerModal.customerId}</td>
-                      </tr>
-                      <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
-                        <td className="px-4 py-3 text-gray-600 font-medium">Name</td>
-                        <td className="px-4 py-3 text-gray-900">{viewCustomerModal.name}</td>
-                      </tr>
-                      <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
-                        <td className="px-4 py-3 text-gray-600 font-medium">Main Phone</td>
-                        <td className="px-4 py-3 text-gray-900">{viewCustomerModal.mainPhone}</td>
-                      </tr>
-                      <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
-                        <td className="px-4 py-3 text-gray-600 font-medium">Email</td>
-                        <td className="px-4 py-3 text-gray-900">{viewCustomerModal.email}</td>
-                      </tr>
-                      <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
-                        <td className="px-4 py-3 text-gray-600 font-medium">Registration Date</td>
-                        <td className="px-4 py-3 text-gray-900">{viewCustomerModal.registrationDate ? new Date(viewCustomerModal.registrationDate).toLocaleDateString() : 'N/A'}</td>
-                      </tr>
-                      <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
-                        <td className="px-4 py-3 text-gray-600 font-medium">Credit Period</td>
-                        <td className="px-4 py-3 text-gray-900">{viewCustomerModal.creditPeriodDays} days</td>
-                      </tr>
-                      {viewCustomerModal.website && (
+            <div className="flex-1 min-h-0 overflow-y-auto px-14 py-5">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* LEFT COLUMN: Basic Information & Categories */}
+                <div className="space-y-4">
+                  {/* Basic Information */}
+                  <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                    <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="#1E3F63" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0">
+                        <rect x="3" y="3" width="18" height="18" rx="2"/>
+                        <line x1="3" y1="9" x2="21" y2="9"/>
+                        <line x1="9" y1="21" x2="9" y2="9"/>
+                      </svg>
+                      <span className="text-xs font-bold text-[#1E3F63] uppercase tracking-wider">Basic Information</span>
+                    </div>
+                    <table className="w-full text-sm border-collapse">
+                      <tbody>
                         <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
-                          <td className="px-4 py-3 text-gray-600 font-medium">Website</td>
-                          <td className="px-4 py-3 text-blue-600"><a href={viewCustomerModal.website} target="_blank" rel="noopener noreferrer">{viewCustomerModal.website}</a></td>
+                          <td className="px-4 py-3 text-gray-600 font-medium">Customer ID</td>
+                          <td className="px-4 py-3 text-gray-900 font-semibold">{viewCustomerModal.customerId}</td>
                         </tr>
-                      )}
-                      <tr className="hover:bg-gray-50 transition">
-                        <td className="px-4 py-3 text-gray-600 font-medium">Status</td>
-                        <td className="px-4 py-3">
-                          <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${viewCustomerModal.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                            {viewCustomerModal.isActive ? 'Active' : 'Inactive'}
-                          </span>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
+                        <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
+                          <td className="px-4 py-3 text-gray-600 font-medium">Name</td>
+                          <td className="px-4 py-3 text-gray-900">{viewCustomerModal.name}</td>
+                        </tr>
+                        <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
+                          <td className="px-4 py-3 text-gray-600 font-medium">Main Phone</td>
+                          <td className="px-4 py-3 text-gray-900">{viewCustomerModal.mainPhone}</td>
+                        </tr>
+                        <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
+                          <td className="px-4 py-3 text-gray-600 font-medium">Email</td>
+                          <td className="px-4 py-3 text-gray-900">{viewCustomerModal.email}</td>
+                        </tr>
+                        <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
+                          <td className="px-4 py-3 text-gray-600 font-medium">Registration Date</td>
+                          <td className="px-4 py-3 text-gray-900">{viewCustomerModal.registrationDate ? new Date(viewCustomerModal.registrationDate).toLocaleDateString() : 'N/A'}</td>
+                        </tr>
+                        <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
+                          <td className="px-4 py-3 text-gray-600 font-medium">Credit Period</td>
+                          <td className="px-4 py-3 text-gray-900">{viewCustomerModal.creditPeriodDays} days</td>
+                        </tr>
+                        {viewCustomerModal.website && (
+                          <tr className="border-b border-gray-100 hover:bg-gray-50 transition">
+                            <td className="px-4 py-3 text-gray-600 font-medium">Website</td>
+                            <td className="px-4 py-3 text-blue-600"><a href={viewCustomerModal.website} target="_blank" rel="noopener noreferrer">{viewCustomerModal.website}</a></td>
+                          </tr>
+                        )}
+                        <tr className="hover:bg-gray-50 transition">
+                          <td className="px-4 py-3 text-gray-600 font-medium">Status</td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${viewCustomerModal.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                              {viewCustomerModal.isActive ? 'Active' : 'Inactive'}
+                            </span>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
 
-                {/* Residential Address */}
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                  <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="#1E3F63" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0">
-                      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-                      <polyline points="9 22 9 12 15 12 15 22"/>
-                    </svg>
-                    <span className="text-xs font-bold text-[#1E3F63] uppercase tracking-wider">Residential Address</span>
-                  </div>
-                  <div className="px-4 py-4">
-                    <p className="text-sm text-gray-700 leading-relaxed">
-                      {viewCustomerModal.addressNumber}, {viewCustomerModal.addressStreet1}
-                      {viewCustomerModal.addressStreet2 && <>, {viewCustomerModal.addressStreet2}</>}
-                      <br/>{viewCustomerModal.addressCity}, {viewCustomerModal.addressDistrict}
-                      <br/>{viewCustomerModal.addressCountry}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Office Address */}
-                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                  <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="#1E3F63" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0">
-                      <path d="M3 21h18"/>
-                      <path d="M9 8h1"/>
-                      <path d="M9 12h1"/>
-                      <path d="M9 16h1"/>
-                      <path d="M14 8h1"/>
-                      <path d="M14 12h1"/>
-                      <path d="M14 16h1"/>
-                      <path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"/>
-                    </svg>
-                    <span className="text-xs font-bold text-[#1E3F63] uppercase tracking-wider">Office Address</span>
-                  </div>
-                  <div className="px-4 py-4">
-                    <p className="text-sm text-gray-700 leading-relaxed">
-                      {viewCustomerModal.isOfficeAddressSame ? (
-                        <span className="text-gray-500 italic">Same as residential address</span>
-                      ) : (
-                        <>
-                          {viewCustomerModal.officeAddressNumber}, {viewCustomerModal.officeAddressStreet1}
-                          {viewCustomerModal.officeAddressStreet2 && <>, {viewCustomerModal.officeAddressStreet2}</>}
-                          <br/>{viewCustomerModal.officeAddressCity}, {viewCustomerModal.officeAddressDistrict}
-                          <br/>{viewCustomerModal.officeAddressCountry}
-                        </>
-                      )}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Contact Persons */}
-                {viewCustomerModal.contactPersons && viewCustomerModal.contactPersons.length > 0 && (
-                  <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                    <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="#1E3F63" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0">
-                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                        <circle cx="9" cy="7" r="4"/>
-                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                      </svg>
-                      <span className="text-xs font-bold text-[#1E3F63] uppercase tracking-wider">Contact Persons</span>
-                    </div>
-                    <div className="px-4 py-4 space-y-3">
-                      {viewCustomerModal.contactPersons.map((cp, idx) => (
-                        <div key={idx} className="p-3 bg-gray-50 rounded-lg">
-                          <p className="font-semibold text-gray-900 text-sm">{cp.name}</p>
-                          <p className="text-gray-600 text-sm mt-1">📞 {cp.phone}</p>
-                          {cp.email && <p className="text-gray-600 text-sm">✉️ {cp.email}</p>}
+                    {/* Categories within Basic Information */}
+                    {viewCustomerModal.categories && viewCustomerModal.categories.length > 0 && (
+                      <div className="border-t border-gray-100">
+                        <div className="flex items-center gap-2 px-4 py-3 bg-gray-50">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="#1E3F63" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0">
+                            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                            <polyline points="22,6 12,13 2,6"/>
+                          </svg>
+                          <span className="text-xs font-bold text-[#1E3F63] uppercase tracking-wider">Categories</span>
                         </div>
-                      ))}
-                    </div>
+                        <div className="px-4 py-4">
+                          <div className="flex flex-wrap gap-2">
+                            {viewCustomerModal.categories.map(cat => (
+                              <span key={cat.categoryId} className="inline-block bg-blue-100 text-blue-800 text-xs font-semibold px-3 py-1.5 rounded-full">
+                                {cat.categoryName}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
 
-                {/* Categories */}
-                {viewCustomerModal.categories && viewCustomerModal.categories.length > 0 && (
+                {/* RIGHT COLUMN: Addresses & Contact Persons */}
+                <div className="space-y-4">
+                  {/* Residential Address */}
                   <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                     <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50">
                       <svg viewBox="0 0 24 24" fill="none" stroke="#1E3F63" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0">
-                        <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-                        <polyline points="22,6 12,13 2,6"/>
+                        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                        <polyline points="9 22 9 12 15 12 15 22"/>
                       </svg>
-                      <span className="text-xs font-bold text-[#1E3F63] uppercase tracking-wider">Categories</span>
+                      <span className="text-xs font-bold text-[#1E3F63] uppercase tracking-wider">Residential Address</span>
                     </div>
                     <div className="px-4 py-4">
-                      <div className="flex flex-wrap gap-2">
-                        {viewCustomerModal.categories.map(cat => (
-                          <span key={cat.categoryId} className="inline-block bg-blue-100 text-blue-800 text-xs font-semibold px-3 py-1.5 rounded-full">
-                            {cat.categoryName}
-                          </span>
+                      <p className="text-sm text-gray-700 leading-relaxed">
+                        {viewCustomerModal.addressNumber}, {viewCustomerModal.addressStreet1}
+                        {viewCustomerModal.addressStreet2 && <>, {viewCustomerModal.addressStreet2}</>}
+                        <br/>{viewCustomerModal.addressCity}, {viewCustomerModal.addressDistrict}
+                        <br/>{viewCustomerModal.addressCountry}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Office Address */}
+                  <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                    <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="#1E3F63" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0">
+                        <path d="M3 21h18"/>
+                        <path d="M9 8h1"/>
+                        <path d="M9 12h1"/>
+                        <path d="M9 16h1"/>
+                        <path d="M14 8h1"/>
+                        <path d="M14 12h1"/>
+                        <path d="M14 16h1"/>
+                        <path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"/>
+                      </svg>
+                      <span className="text-xs font-bold text-[#1E3F63] uppercase tracking-wider">Office Address</span>
+                    </div>
+                    <div className="px-4 py-4">
+                      <p className="text-sm text-gray-700 leading-relaxed">
+                        {viewCustomerModal.isOfficeAddressSame ? (
+                          <span className="text-gray-500 italic">Same as residential address</span>
+                        ) : (
+                          <>
+                            {viewCustomerModal.officeAddressNumber}, {viewCustomerModal.officeAddressStreet1}
+                            {viewCustomerModal.officeAddressStreet2 && <>, {viewCustomerModal.officeAddressStreet2}</>}
+                            <br/>{viewCustomerModal.officeAddressCity}, {viewCustomerModal.officeAddressDistrict}
+                            <br/>{viewCustomerModal.officeAddressCountry}
+                          </>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Contact Persons */}
+                  {viewCustomerModal.contactPersons && viewCustomerModal.contactPersons.length > 0 && (
+                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                      <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#1E3F63" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0">
+                          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                          <circle cx="9" cy="7" r="4"/>
+                          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                        </svg>
+                        <span className="text-xs font-bold text-[#1E3F63] uppercase tracking-wider">Contact Persons</span>
+                      </div>
+                      <div className="px-4 py-4 space-y-3">
+                        {viewCustomerModal.contactPersons.map((cp, idx) => (
+                          <div key={idx} className="p-3 bg-gray-50 rounded-lg">
+                            <p className="font-semibold text-gray-900 text-sm">{cp.name}</p>
+                            <p className="text-gray-600 text-sm mt-1">📞 {cp.phone}</p>
+                            {cp.email && <p className="text-gray-600 text-sm">✉️ {cp.email}</p>}
+                          </div>
                         ))}
                       </div>
                     </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Action Buttons */}
-              {isAdminOrSuperAdmin() && (
-                <div className="mt-6 flex items-center justify-end gap-3 pt-6 border-t border-gray-200">
-                  <button 
-                    onClick={() => {
-                      setViewCustomerModal(null);
-                      handleEdit(viewCustomerModal);
-                    }} 
-                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium flex items-center gap-2"
-                  >
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                    </svg>
-                    Edit Customer
-                  </button>
-                  <button 
-                    onClick={() => {
-                      if (window.confirm(`Are you sure you want to deactivate ${viewCustomerModal.name}?`)) {
-                        handleDeactivate(viewCustomerModal.customerId);
-                        setViewCustomerModal(null);
-                      }
-                    }} 
-                    className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg transition font-medium flex items-center gap-2"
-                  >
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="12" cy="12" r="10"/>
-                      <line x1="15" y1="9" x2="9" y2="15"/>
-                      <line x1="9" y1="9" x2="15" y2="15"/>
-                    </svg>
-                    Deactivate
-                  </button>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
+
+            {/* Fixed Footer with Action Buttons */}
+            {isAdminOrSuperAdmin() && (
+              <div className="flex items-center justify-end gap-3 px-14 py-4 border-t border-gray-200 rounded-b-2xl bg-gray-50 shrink-0">
+                <button 
+                  onClick={() => {
+                    setViewCustomerModal(null);
+                    handleEdit(viewCustomerModal);
+                  }} 
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                  Edit Customer
+                </button>
+                <button 
+                  onClick={() => {
+                    if (window.confirm(`Are you sure you want to deactivate ${viewCustomerModal.name}?`)) {
+                      handleDeactivate(viewCustomerModal.customerId);
+                      setViewCustomerModal(null);
+                    }
+                  }} 
+                  className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg transition font-medium flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="15" y1="9" x2="9" y2="15"/>
+                    <line x1="9" y1="9" x2="15" y2="15"/>
+                  </svg>
+                  Deactivate
+                </button>
+              </div>
+            )}
           </div>
         </div>,
         document.body

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { billingService } from '../api/services/billingService';
 import { jobService } from '../api/services/jobService';
@@ -348,8 +348,8 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
 
     // If validation fails, show error message with missing fields
     if (missingFields.length > 0) {
-      const fieldsList = missingFields.join('\n• ');
-      setMessage(`❌ Cannot save pay items. Please complete the following required fields:\n• ${fieldsList}`);
+      const fieldsList = missingFields.join('\nâ€¢ ');
+      setMessage(`âŒ Cannot save pay items. Please complete the following required fields:\nâ€¢ ${fieldsList}`);
       setTimeout(() => setMessage(''), 7000);
       return;
     }
@@ -399,7 +399,7 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
       await jobService.replacePayItems(job.jobId, newPayItemsData);
       
       setPayItemsSaved(true); // Mark as saved after successful save
-      setMessage(`✅ ${validPayItems.length} pay item(s) saved successfully!`);
+      setMessage(`âœ… ${validPayItems.length} pay item(s) saved successfully!`);
       setShowPayItemsRow(false);
       
       // Refresh job data
@@ -473,8 +473,8 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
 
     // If validation fails, show error message with missing fields
     if (missingFields.length > 0) {
-      const fieldsList = missingFields.join('\n• ');
-      setMessage(`❌ Cannot generate invoice. Please complete the following required fields:\n• ${fieldsList}`);
+      const fieldsList = missingFields.join('\nâ€¢ ');
+      setMessage(`âŒ Cannot generate invoice. Please complete the following required fields:\nâ€¢ ${fieldsList}`);
       setTimeout(() => setMessage(''), 7000);
       return;
     }
@@ -486,7 +486,7 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
       };
       
       const newBill = await billingService.createBill(billData);
-      setMessage('✅ Invoice generated successfully!');
+      setMessage('âœ… Invoice generated successfully!');
       
       await loadJobBills();
       onInvoiceCreated && onInvoiceCreated(newBill);
@@ -495,7 +495,7 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
     } catch (error) {
       console.error('Error generating bill:', error);
       const errorMessage = error.response?.data?.message || error.message || 'Error generating invoice';
-      setMessage(`❌ ${errorMessage}`);
+      setMessage(`âŒ ${errorMessage}`);
       setTimeout(() => setMessage(''), 5000);
     }
   };
@@ -511,7 +511,7 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
       };
       
       await invoiceReviewService.sendReview(payload);
-      setMessage('✅ Invoice sent to clerk for review!');
+      setMessage('âœ… Invoice sent to clerk for review!');
       setShowReviewInvoiceModal(false);
       
       setTimeout(() => setMessage(''), 3000);
@@ -541,14 +541,14 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
       
       if (paymentMode === 'full') {
         await billingService.markAsPaid(selectedBillForPayment.billId, paymentData);
-        setMessage('✅ Invoice marked as paid!');
+        setMessage('âœ… Invoice marked as paid!');
       } else {
         await billingService.applyPartialPayment(
           selectedBillForPayment.billId,
           parseFloat(partialPaymentAmount),
           paymentData
         );
-        setMessage('✅ Partial payment recorded!');
+        setMessage('âœ… Partial payment recorded!');
       }
       
       setShowPaymentModal(false);
@@ -1075,52 +1075,7 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
     // This is no longer needed - editing is per-item now
   };
 
-<<<<<<< Updated upstream
-  const handleSaveItemEdit = async (index) => {
-    // Save the currently edited item
-    try {
-      const validPayItems = payItems.filter(item => {
-        return item.name && 
-               (item.actualCost || item.actualCost === 0) && 
-               (item.billingAmount || item.billingAmount === 0);
-      });
-      
-      if (validPayItems.length === 0) {
-        setMessage('Please fill in all required fields for at least one pay item');
-        setTimeout(() => setMessage(''), 5000);
-        return;
-      }
-
-      // Save to job
-      const newPayItemsData = validPayItems.map(item => ({
-        description: item.name,
-        amount: parseFloat(item.actualCost),
-        actualCost: parseFloat(item.actualCost),
-        billingAmount: parseFloat(item.billingAmount),
-        paidBy: item.paidByName || item.paidBy || 'Office',
-        source: item.isOfficePayItem ? 'Office Payment' : item.isPettyCashItem ? 'Petty Cash' : 'Custom'
-      }));
-      
-      await jobService.replacePayItems(job.jobId, newPayItemsData);
-      
-      setEditingItemIdx(null);
-      setPayItemsSaved(true);
-      setMessage(`✅ Item saved successfully!`);
-      setTimeout(() => setMessage(''), 3000);
-      await loadJobBills();
-      
-      // Check if all items now have billing amounts
-      setTimeout(() => checkAllItemsHaveBillingAmounts(), 100);
-    } catch (error) {
-      console.error('Error saving item:', error);
-      setMessage('Error saving item');
-      setTimeout(() => setMessage(''), 5000);
-    }
-  };
-
-=======
->>>>>>> Stashed changes
-  const handleDeleteItem = async (index) => {
+const handleDeleteItem = async (index) => {
     const itemName = payItems[index].name;
     if (!window.confirm(`Delete "${itemName}"?`)) {
       return;
@@ -1135,7 +1090,7 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
         setPayItems([]);
         setPayItemsSaved(false);
         setShowPayItemsRow(false);
-        setMessage('✅ All items deleted!');
+        setMessage('âœ… All items deleted!');
       } else {
         // Save remaining items
         const newPayItemsData = updatedItems.map(item => ({
@@ -1149,7 +1104,7 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
         
         await jobService.replacePayItems(job.jobId, newPayItemsData);
         setPayItems(updatedItems);
-        setMessage(`✅ "${itemName}" deleted successfully!`);
+        setMessage(`âœ… "${itemName}" deleted successfully!`);
       }
       
       setTimeout(() => setMessage(''), 3000);
@@ -1193,7 +1148,7 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
         {/* Messages */}
         {message && (
           <div className={`flex-shrink-0 p-4 mx-6 mt-4 rounded-lg ${
-            message.includes('✅') ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
+            message.includes('âœ…') ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
           }`}>
             {message}
           </div>
@@ -1256,105 +1211,34 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
                                   type="text"
                                   value={item.name}
                                   onChange={(e) => handlePayItemChange(idx, 'name', e.target.value)}
-<<<<<<< Updated upstream
-                                  disabled={payItemsSaved && editingItemIdx !== idx}
-                                  placeholder="Enter item name"
-                                  className={`w-full px-2 py-1 border rounded ${payItemsSaved && editingItemIdx !== idx ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
-=======
-                                  placeholder="Enter item name"
+placeholder="Enter item name"
                                   className="w-full px-2 py-1 border border-gray-300 rounded focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
->>>>>>> Stashed changes
-                                />
+/>
                               </td>
                               <td className="px-4 py-2 text-right">
                                 <input
                                   type="number"
                                   value={item.actualCost}
                                   onChange={(e) => handlePayItemChange(idx, 'actualCost', e.target.value)}
-<<<<<<< Updated upstream
-                                  disabled={payItemsSaved && editingItemIdx !== idx}
-                                  placeholder="0"
-                                  className={`w-24 px-2 py-1 border rounded ${payItemsSaved && editingItemIdx !== idx ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
-=======
-                                  placeholder="0"
+placeholder="0"
                                   className="w-24 px-2 py-1 border border-gray-300 rounded text-right focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
->>>>>>> Stashed changes
-                                />
+/>
                               </td>
                               <td className="px-4 py-2 text-right">
                                 <input
                                   type="number"
                                   value={item.billingAmount}
                                   onChange={(e) => handlePayItemChange(idx, 'billingAmount', e.target.value)}
-<<<<<<< Updated upstream
-                                  disabled={payItemsSaved && editingItemIdx !== idx}
-                                  placeholder="Enter billing amount"
-                                  className={`w-24 px-2 py-1 border rounded ${payItemsSaved && editingItemIdx !== idx ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
-=======
-                                  placeholder="0"
+placeholder="0"
                                   className="w-24 px-2 py-1 border border-gray-300 rounded text-right focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
->>>>>>> Stashed changes
-                                />
+/>
                               </td>
                               <td className="px-4 py-2 text-center">
                                 <input
                                   type="checkbox"
                                   checked={item.sameAmount}
                                   onChange={(e) => handlePayItemChange(idx, 'sameAmount', e.target.checked)}
-<<<<<<< Updated upstream
-                                  className="w-4 h-4 cursor-pointer"
-                                />
-                              </td>
-                              <td className="px-4 py-2 text-center">
-                                <div className="flex gap-2 justify-center">
-                                  {editingItemIdx === idx ? (
-                                    <>
-                                      <button
-                                        onClick={() => handleSaveItemEdit(idx)}
-                                        title="Save changes"
-                                        className="px-3 py-1 bg-green-500 hover:bg-green-600 text-white rounded transition text-sm font-medium"
-                                      >
-                                        ✓
-                                      </button>
-                                      <button
-                                        onClick={() => setEditingItemIdx(null)}
-                                        title="Cancel editing"
-                                        className="px-3 py-1 bg-gray-500 hover:bg-gray-600 text-white rounded transition text-sm font-medium"
-                                      >
-                                        ✕
-                                      </button>
-                                    </>
-                                  ) : item.isNewItem ? (
-                                    <>
-                                      <button
-                                        onClick={() => handleDeleteItem(idx)}
-                                        title="Delete this item"
-                                        className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white rounded transition text-sm"
-                                      >
-                                        🗑️
-                                      </button>
-                                    </>
-                                  ) : payItemsSaved ? (
-                                    <>
-                                      <button
-                                        onClick={() => setEditingItemIdx(idx)}
-                                        title="Edit this item"
-                                        className="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded transition text-sm"
-                                      >
-                                        ✏️
-                                      </button>
-                                      <button
-                                        onClick={() => handleDeleteItem(idx)}
-                                        title="Delete this item"
-                                        className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white rounded transition text-sm"
-                                      >
-                                        🗑️
-                                      </button>
-                                    </>
-                                  ) : null}
-                                </div>
-=======
-                                  className="w-4 h-4"
+className="w-4 h-4"
                                 />
                               </td>
                               <td className="px-4 py-2 text-center">
@@ -1369,8 +1253,7 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
                                     <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
                                   </svg>
                                 </button>
->>>>>>> Stashed changes
-                              </td>
+</td>
                             </tr>
                           ))}
                         </tbody>
@@ -1412,14 +1295,14 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
                             <div className="mt-4">
                               {!totalBillingFilled && (
                                 <p className="text-sm text-orange-700 bg-orange-50 border border-orange-200 rounded-lg p-3 mb-3">
-                                  ⚠️ Please fill in billing amounts for all items to proceed
+                                  âš ï¸ Please fill in billing amounts for all items to proceed
                                 </p>
                               )}
                               <button
                                 onClick={savePayItems}
                                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition"
                               >
-                                💾 Save Pay Items with Billing Amounts
+                                ðŸ’¾ Save Pay Items with Billing Amounts
                               </button>
                             </div>
                           )}
@@ -1431,7 +1314,7 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
                                 onClick={generateBill}
                                 className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition"
                               >
-                                🧾 Generate Invoice
+                                ðŸ§¾ Generate Invoice
                               </button>
                             </div>
                           )}
@@ -1439,9 +1322,7 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
                       );
                     })()}
                     
-<<<<<<< Updated upstream
-=======
-                    {/* Always show Generate Invoice button */}
+{/* Always show Generate Invoice button */}
                     <div className="mt-4 flex gap-2">
                       <button
                         onClick={generateBill}
@@ -1458,12 +1339,11 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
                       </button>
                     </div>
                     
->>>>>>> Stashed changes
-                    {/* Show message when viewing already paid invoices */}
+{/* Show message when viewing already paid invoices */}
                     {hasPaidInvoices() && (
                       <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
                         <p className="text-blue-700 text-sm">
-                          ℹ️ This job has paid invoices. You are viewing pay items for reference. To create a new invoice, complete the pay items above.
+                          â„¹ï¸ This job has paid invoices. You are viewing pay items for reference. To create a new invoice, complete the pay items above.
                         </p>
                       </div>
                     )}
@@ -1476,13 +1356,13 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
                   onClick={handleAddPayItem}
                   className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition flex items-center gap-2"
                 >
-                  ➕ Add Pay Item
+                  âž• Add Pay Item
                 </button>
                 <button
                   onClick={handleAddTransporterCost}
                   className="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg font-medium transition flex items-center gap-2"
                 >
-                  🚚 Add Transporter Cost
+                  ðŸšš Add Transporter Cost
                 </button>
               </div>
             )}

@@ -1008,19 +1008,6 @@ function Jobs() {
                       <div className="flex items-center gap-2">
                         {(user?.role === 'Admin' || user?.role === 'Super Admin' || user?.role === 'Manager' || user?.role === 'Office Executive') && (
                           <>
-<<<<<<< Updated upstream
-                            <button
-                              onClick={() => setInvoicingModalJob(job)}
-                              disabled={job.pettyCashStatus !== 'Settled' && job.assignments && job.assignments.length > 0}
-                              title={job.pettyCashStatus !== 'Settled' && job.assignments && job.assignments.length > 0 ? 'Petty cash must be settled first' : 'Manage Invoicing'}
-                              className={`p-1.5 rounded-lg transition ${job.pettyCashStatus !== 'Settled' && job.assignments && job.assignments.length > 0 ? 'text-gray-400 cursor-not-allowed' : 'text-green-600 hover:bg-green-50'}`}
-                            >
-                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                                <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
-                                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
-                              </svg>
-                            </button>
-=======
                             {loadingPettyCash ? (
                               <button
                                 disabled
@@ -1052,7 +1039,6 @@ function Jobs() {
                                 </svg>
                               </button>
                             )}
->>>>>>> Stashed changes
                             <button
                               onClick={() => openEditModal(job)}
                               title="Edit Job"
