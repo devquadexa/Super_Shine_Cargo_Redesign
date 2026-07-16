@@ -227,12 +227,12 @@ function Jobs() {
 
   // Check if manage invoice button should be enabled
   const canManageInvoice = (job) => {
-    // Check if invoice already exists
+    // If invoice already exists, allow opening to manage payments
     if (invoicedJobIds.has(job.jobId)) {
-      return false;
+      return true;
     }
     
-    // Check if petty cash is fully settled (including balance returned or overdue collected)
+    // For new invoice creation, check if petty cash is fully settled
     if (!isPettyCashFullySettled(job.jobId)) {
       return false;
     }
@@ -242,7 +242,7 @@ function Jobs() {
 
   const getManageInvoiceTooltip = (job) => {
     if (invoicedJobIds.has(job.jobId)) {
-      return 'Invoice already generated for this job';
+      return 'Manage Invoice / Record Payment';
     }
     
     if (!isPettyCashFullySettled(job.jobId)) {

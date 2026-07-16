@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { billingService } from '../api/services/billingService';
 import { jobService } from '../api/services/jobService';
@@ -167,13 +167,30 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
       // Filter bills for this job
       const jobBills = data.filter(bill => bill.jobId === job.jobId);
       
+      // Calculate total from job's pay items for fallback
+      let jobPayItemsTotal = 0;
+      if (job?.payItems) {
+        const items = typeof job.payItems === 'string' ? JSON.parse(job.payItems) : (Array.isArray(job.payItems) ? job.payItems : []);
+        jobPayItemsTotal = items.reduce((sum, item) => sum + (parseFloat(item.billingAmount) || parseFloat(item.amount) || 0), 0);
+      }
+      
       // Fetch payment records for each bill
       const billsWithPayments = await Promise.all(
         jobBills.map(async (bill) => {
           try {
             const paymentRecords = await apiClient.get(`/payments/bill/${bill.billId}`);
             const records = Array.isArray(paymentRecords.data) ? paymentRecords.data : [];
-            return { ...bill, paymentRecords: records };
+            
+            // If bill amounts are 0, use calculated total from pay items
+            let enrichedBill = { ...bill, paymentRecords: records };
+            const billAmount = parseFloat(bill.netTotal) || parseFloat(bill.billingAmount) || parseFloat(bill.grossTotal) || 0;
+            if (billAmount === 0 && jobPayItemsTotal > 0) {
+              enrichedBill.netTotal = jobPayItemsTotal;
+              enrichedBill.billingAmount = jobPayItemsTotal;
+              enrichedBill.grossTotal = jobPayItemsTotal;
+            }
+            
+            return enrichedBill;
           } catch (error) {
             return { ...bill, paymentRecords: [] };
           }
@@ -348,8 +365,8 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
 
     // If validation fails, show error message with missing fields
     if (missingFields.length > 0) {
-      const fieldsList = missingFields.join('\nâ€¢ ');
-      setMessage(`âŒ Cannot save pay items. Please complete the following required fields:\nâ€¢ ${fieldsList}`);
+      const fieldsList = missingFields.join('\n• ');
+      setMessage(`❌ Cannot save pay items. Please complete the following required fields:\n• ${fieldsList}`);
       setTimeout(() => setMessage(''), 7000);
       return;
     }
@@ -399,7 +416,7 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
       await jobService.replacePayItems(job.jobId, newPayItemsData);
       
       setPayItemsSaved(true); // Mark as saved after successful save
-      setMessage(`âœ… ${validPayItems.length} pay item(s) saved successfully!`);
+      setMessage(`✅ ${validPayItems.length} pay item(s) saved successfully!`);
       setShowPayItemsRow(false);
       
       // Refresh job data
@@ -473,20 +490,33 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
 
     // If validation fails, show error message with missing fields
     if (missingFields.length > 0) {
-      const fieldsList = missingFields.join('\nâ€¢ ');
-      setMessage(`âŒ Cannot generate invoice. Please complete the following required fields:\nâ€¢ ${fieldsList}`);
+      const fieldsList = missingFields.join('\n• ');
+      setMessage(`❌ Cannot generate invoice. Please complete the following required fields:\n• ${fieldsList}`);
       setTimeout(() => setMessage(''), 7000);
       return;
     }
 
     try {
+      // Calculate totals from pay items
+      const { totalActualCost, totalBillingAmount } = calculateTotals();
+      
+      if (totalActualCost === 0 && totalBillingAmount === 0) {
+        setMessage('Error: Unable to calculate totals. Please ensure pay items have amounts filled in.');
+        setTimeout(() => setMessage(''), 5000);
+        return;
+      }
+
       const billData = {
         jobId: job.jobId,
-        customerId: job.customerId
+        customerId: job.customerId,
+        actualCost: totalActualCost,
+        billingAmount: totalBillingAmount,
+        grossTotal: totalBillingAmount,
+        netTotal: totalBillingAmount
       };
       
       const newBill = await billingService.createBill(billData);
-      setMessage('âœ… Invoice generated successfully!');
+      setMessage('✅ Invoice generated successfully!');
       
       await loadJobBills();
       onInvoiceCreated && onInvoiceCreated(newBill);
@@ -495,7 +525,7 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
     } catch (error) {
       console.error('Error generating bill:', error);
       const errorMessage = error.response?.data?.message || error.message || 'Error generating invoice';
-      setMessage(`âŒ ${errorMessage}`);
+      setMessage(`❌ ${errorMessage}`);
       setTimeout(() => setMessage(''), 5000);
     }
   };
@@ -511,7 +541,7 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
       };
       
       await invoiceReviewService.sendReview(payload);
-      setMessage('âœ… Invoice sent to clerk for review!');
+      setMessage('✅ Invoice sent to clerk for review!');
       setShowReviewInvoiceModal(false);
       
       setTimeout(() => setMessage(''), 3000);
@@ -527,28 +557,56 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
     if (!selectedBillForPayment) return;
     
     try {
+      const { totalActualCost, totalBillingAmount } = calculateTotals();
+      const invoiceTotal = totalBillingAmount || parseFloat(selectedBillForPayment.netTotal) || parseFloat(selectedBillForPayment.billingAmount) || parseFloat(selectedBillForPayment.grossTotal) || parseFloat(selectedBillForPayment.total) || 0;
+      const paidAlready = parseFloat(selectedBillForPayment.paidAmount) || 0;
+      const amountDue = invoiceTotal - paidAlready;
+
+      // Always update the bill amounts before recording payment to ensure DB is in sync
+      if (totalBillingAmount > 0) {
+        const billUpdateData = {
+          jobId: job.jobId,
+          customerId: job.customerId,
+          actualCost: totalActualCost,
+          billingAmount: totalBillingAmount,
+          grossTotal: totalBillingAmount,
+          netTotal: totalBillingAmount
+        };
+        const updateResult = await billingService.createBill(billUpdateData);
+        // If bill was blocked (already paid), skip the update
+        if (updateResult && updateResult.blocked) {
+          // Bill is already paid/partially paid via another path, proceed with payment
+        }
+      }
+
       const paymentData = {
         paymentMethod: paymentMethod,
         paymentDate: new Date().toISOString().split('T')[0],
+        paidDate: new Date().toISOString().split('T')[0],
         notes: ''
       };
       
       if (paymentMethod === 'Cheque') {
         paymentData.chequeNumber = chequeNumber;
         paymentData.chequeDate = chequeDate;
+        paymentData.chequeAmount = paymentMode === 'full' ? amountDue : parseFloat(partialPaymentAmount);
+        paymentData.bankName = bankName;
+      }
+      
+      if (paymentMethod === 'Bank Transfer') {
         paymentData.bankName = bankName;
       }
       
       if (paymentMode === 'full') {
         await billingService.markAsPaid(selectedBillForPayment.billId, paymentData);
-        setMessage('âœ… Invoice marked as paid!');
+        setMessage('✅ Invoice marked as paid!');
       } else {
         await billingService.applyPartialPayment(
           selectedBillForPayment.billId,
           parseFloat(partialPaymentAmount),
           paymentData
         );
-        setMessage('âœ… Partial payment recorded!');
+        setMessage('✅ Partial payment recorded!');
       }
       
       setShowPaymentModal(false);
@@ -558,7 +616,8 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
       setTimeout(() => setMessage(''), 3000);
     } catch (error) {
       console.error('Error recording payment:', error);
-      setMessage('Error recording payment');
+      const errorMsg = error.response?.data?.message || error.message || 'Error recording payment';
+      setMessage(`Error: ${errorMsg}`);
       setTimeout(() => setMessage(''), 5000);
     }
   };
@@ -1090,7 +1149,7 @@ const handleDeleteItem = async (index) => {
         setPayItems([]);
         setPayItemsSaved(false);
         setShowPayItemsRow(false);
-        setMessage('âœ… All items deleted!');
+        setMessage('✅ All items deleted!');
       } else {
         // Save remaining items
         const newPayItemsData = updatedItems.map(item => ({
@@ -1104,7 +1163,7 @@ const handleDeleteItem = async (index) => {
         
         await jobService.replacePayItems(job.jobId, newPayItemsData);
         setPayItems(updatedItems);
-        setMessage(`âœ… "${itemName}" deleted successfully!`);
+        setMessage(`✅ "${itemName}" deleted successfully!`);
       }
       
       setTimeout(() => setMessage(''), 3000);
@@ -1148,7 +1207,7 @@ const handleDeleteItem = async (index) => {
         {/* Messages */}
         {message && (
           <div className={`flex-shrink-0 p-4 mx-6 mt-4 rounded-lg ${
-            message.includes('âœ…') ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
+            message.includes('✅') ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
           }`}>
             {message}
           </div>
@@ -1295,26 +1354,33 @@ className="w-4 h-4"
                             <div className="mt-4">
                               {!totalBillingFilled && (
                                 <p className="text-sm text-orange-700 bg-orange-50 border border-orange-200 rounded-lg p-3 mb-3">
-                                  âš ï¸ Please fill in billing amounts for all items to proceed
+                                  ⚠️ Please fill in billing amounts for all items to proceed
                                 </p>
                               )}
                               <button
                                 onClick={savePayItems}
                                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition"
                               >
-                                ðŸ’¾ Save Pay Items with Billing Amounts
+                                💾 Save Pay Items with Billing Amounts
                               </button>
                             </div>
                           )}
                           
-                          {/* Show Generate Invoice button ONLY after items are saved */}
-                          {payItemsSaved && (
+                          {/* Show Generate Invoice button ONLY after items are saved AND no bill exists yet */}
+                          {payItemsSaved && bills.length === 0 && (
                             <div className="mt-4 flex gap-2">
                               <button
                                 onClick={generateBill}
-                                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition"
+                                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition flex items-center gap-2"
                               >
-                                ðŸ§¾ Generate Invoice
+                                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                  <polyline points="14 2 14 8 20 8"></polyline>
+                                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                                  <polyline points="10 9 9 9 8 9"></polyline>
+                                </svg>
+                                Generate Invoice
                               </button>
                             </div>
                           )}
@@ -1322,28 +1388,11 @@ className="w-4 h-4"
                       );
                     })()}
                     
-{/* Always show Generate Invoice button */}
-                    <div className="mt-4 flex gap-2">
-                      <button
-                        onClick={generateBill}
-                        className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition flex items-center gap-2"
-                      >
-                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                          <polyline points="14 2 14 8 20 8"></polyline>
-                          <line x1="16" y1="13" x2="8" y2="13"></line>
-                          <line x1="16" y1="17" x2="8" y2="17"></line>
-                          <polyline points="10 9 9 9 8 9"></polyline>
-                        </svg>
-                        Generate Invoice
-                      </button>
-                    </div>
-                    
 {/* Show message when viewing already paid invoices */}
                     {hasPaidInvoices() && (
                       <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
                         <p className="text-blue-700 text-sm">
-                          â„¹ï¸ This job has paid invoices. You are viewing pay items for reference. To create a new invoice, complete the pay items above.
+                          ℹ️ This job has paid invoices. You are viewing pay items for reference. To create a new invoice, complete the pay items above.
                         </p>
                       </div>
                     )}
@@ -1362,7 +1411,7 @@ className="w-4 h-4"
                   onClick={handleAddTransporterCost}
                   className="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg font-medium transition flex items-center gap-2"
                 >
-                  ðŸšš Add Transporter Cost
+                  🚚 Add Transporter Cost
                 </button>
               </div>
             )}
@@ -1389,7 +1438,7 @@ className="w-4 h-4"
                             bill.paymentStatus === 'Partially Paid' ? 'text-orange-600' : 'text-red-600'
                           }`}>{bill.paymentStatus}</span>
                         </p>
-                        <p className="text-gray-600 text-sm">Amount: LKR {formatAmount(bill.netTotal || bill.total)}</p>
+                        <p className="text-gray-600 text-sm">Amount: LKR {formatAmount(bill.netTotal || bill.billingAmount || bill.grossTotal || bill.total)}</p>
                       </div>
                       <div className="flex gap-2">
                         <button
@@ -1470,95 +1519,228 @@ className="w-4 h-4"
         </div>
 
         {/* Payment Modal */}
-        {showPaymentModal && selectedBillForPayment && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 z-[10001] flex items-center justify-center">
-            <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full">
-              <h3 className="text-lg font-semibold mb-4">Record Payment</h3>
-              <p className="text-gray-600 mb-4">Invoice #{selectedBillForPayment.billId} - Amount Due: LKR {formatAmount(selectedBillForPayment.netTotal || selectedBillForPayment.total)}</p>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Payment Type</label>
-                  <select
-                    value={paymentMode}
-                    onChange={(e) => setPaymentMode(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg"
-                  >
-                    <option value="full">Full Payment</option>
-                    <option value="partial">Partial Payment</option>
-                  </select>
-                </div>
+        {showPaymentModal && selectedBillForPayment && (() => {
+          const invoiceTotal = parseFloat(selectedBillForPayment.netTotal) || parseFloat(selectedBillForPayment.billingAmount) || parseFloat(selectedBillForPayment.grossTotal) || parseFloat(selectedBillForPayment.total) || 0;
+          const paidAlready = parseFloat(selectedBillForPayment.paidAmount) || 0;
+          const amountDue = invoiceTotal - paidAlready;
+          const collectAmount = paymentMode === 'full' ? amountDue : (parseFloat(partialPaymentAmount) || 0);
 
-                {paymentMode === 'partial' && (
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Amount</label>
-                    <input
-                      type="number"
-                      value={partialPaymentAmount}
-                      onChange={(e) => setPartialPaymentAmount(e.target.value)}
-                      className="w-full px-3 py-2 border rounded-lg"
-                      placeholder="Enter amount"
-                    />
+          return (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[10001] flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden">
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 text-gray-700">
+                      <rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>
+                    </svg>
                   </div>
-                )}
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900">Record Payment</h3>
+                    <p className="text-sm text-gray-500">Invoice #{selectedBillForPayment.billId}</p>
+                  </div>
+                </div>
+                <button onClick={() => { setShowPaymentModal(false); resetPaymentForm(); }} className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-500 transition">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
 
+              {/* Info Bar */}
+              <div className="grid grid-cols-4 gap-4 px-6 py-4 bg-gray-50 border-b border-gray-200">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Payment Method</label>
-                  <select
-                    value={paymentMethod}
-                    onChange={(e) => setPaymentMethod(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg"
-                  >
-                    <option value="Cash">Cash</option>
-                    <option value="Cheque">Cheque</option>
-                    <option value="Bank Transfer">Bank Transfer</option>
-                  </select>
+                  <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Customer</p>
+                  <p className="text-sm font-semibold text-gray-900 mt-0.5">{job?.customerName || 'Customer'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Invoice</p>
+                  <p className="text-sm font-semibold text-gray-900 mt-0.5">{selectedBillForPayment.billId}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Invoice Total</p>
+                  <p className="text-sm font-bold text-gray-900 mt-0.5">LKR {formatAmount(invoiceTotal)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Amount Due</p>
+                  <p className="text-sm font-bold text-orange-600 mt-0.5">LKR {formatAmount(amountDue)}</p>
+                </div>
+              </div>
+
+              {/* Body */}
+              <div className="px-6 py-5">
+                <div className="grid grid-cols-2 gap-8">
+                  {/* Left Column - Payment Type */}
+                  <div>
+                    <p className="text-sm font-semibold text-gray-700 mb-3">Payment Type</p>
+                    <div className="space-y-2">
+                      <label className={`flex items-start gap-3 p-3 rounded-xl border-2 cursor-pointer transition ${paymentMode === 'full' ? 'border-blue-600 bg-blue-50/50' : 'border-gray-200 hover:border-gray-300'}`}>
+                        <input type="radio" name="paymentMode" value="full" checked={paymentMode === 'full'} onChange={(e) => setPaymentMode(e.target.value)} className="mt-0.5 w-4 h-4 text-blue-600" />
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">Full Payment</p>
+                          <p className="text-xs text-gray-500">Settle entire balance</p>
+                        </div>
+                      </label>
+                      <label className={`flex items-start gap-3 p-3 rounded-xl border-2 cursor-pointer transition ${paymentMode === 'partial' ? 'border-blue-600 bg-blue-50/50' : 'border-gray-200 hover:border-gray-300'}`}>
+                        <input type="radio" name="paymentMode" value="partial" checked={paymentMode === 'partial'} onChange={(e) => setPaymentMode(e.target.value)} className="mt-0.5 w-4 h-4 text-blue-600" />
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">Partial Payment</p>
+                          <p className="text-xs text-gray-500">Pay a portion now</p>
+                        </div>
+                      </label>
+                    </div>
+
+                    {paymentMode === 'partial' && (
+                      <div className="mt-3">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Payment Amount (LKR)</label>
+                        <input
+                          type="number"
+                          value={partialPaymentAmount}
+                          onChange={(e) => setPartialPaymentAmount(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                          placeholder="0.00"
+                          min="0.01"
+                          max={amountDue}
+                          step="0.01"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Right Column - Amount to Collect */}
+                  <div>
+                    <p className="text-sm font-semibold text-gray-700 mb-3">Amount to Collect</p>
+                    <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                      <p className="text-3xl font-bold text-gray-900">LKR {formatAmount(collectAmount)}</p>
+                      <p className="text-xs text-gray-500 mt-1">{paymentMode === 'full' ? 'Full balance' : 'Partial amount'}</p>
+                    </div>
+                  </div>
                 </div>
 
-                {paymentMethod === 'Cheque' && (
-                  <>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Cheque Number</label>
-                      <input
-                        type="text"
-                        value={chequeNumber}
-                        onChange={(e) => setChequeNumber(e.target.value)}
-                        className="w-full px-3 py-2 border rounded-lg"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Cheque Date</label>
-                      <input
-                        type="date"
-                        value={chequeDate}
-                        onChange={(e) => setChequeDate(e.target.value)}
-                        className="w-full px-3 py-2 border rounded-lg"
-                      />
-                    </div>
-                  </>
-                )}
+                {/* Payment Method */}
+                <div className="mt-6 pt-5 border-t border-gray-200">
+                  <p className="text-sm font-semibold text-gray-700 mb-3">Payment Method</p>
+                  <div className="flex gap-2">
+                    {[
+                      { value: 'Cash', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-4 h-4"><rect x="1" y="4" width="22" height="16" rx="2"/><circle cx="12" cy="12" r="3"/></svg> },
+                      { value: 'Cheque', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-4 h-4"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg> },
+                      { value: 'Bank Transfer', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-4 h-4"><path d="M12 2L2 7h20L12 2z"/><rect x="4" y="10" width="16" height="10"/><line x1="8" y1="10" x2="8" y2="20"/><line x1="16" y1="10" x2="16" y2="20"/></svg> }
+                    ].map(method => (
+                      <button
+                        key={method.value}
+                        onClick={() => setPaymentMethod(method.value)}
+                        className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 text-sm font-medium transition ${
+                          paymentMethod === method.value 
+                            ? 'border-gray-800 bg-white text-gray-900' 
+                            : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                        }`}
+                      >
+                        {method.icon}
+                        {method.value}
+                      </button>
+                    ))}
+                  </div>
 
-                <div className="flex gap-2 pt-4">
-                  <button
-                    onClick={submitPayment}
-                    className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium"
-                  >
-                    Submit Payment
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowPaymentModal(false);
-                      resetPaymentForm();
-                    }}
-                    className="flex-1 px-4 py-2 bg-gray-300 hover:bg-gray-400 rounded-lg font-medium"
-                  >
-                    Cancel
-                  </button>
+                  {/* Cheque Details */}
+                  {paymentMethod === 'Cheque' && (
+                    <div className="grid grid-cols-2 gap-3 mt-4">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Cheque Number</label>
+                        <input type="text" value={chequeNumber} onChange={(e) => setChequeNumber(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" placeholder="Enter cheque number" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Cheque Date</label>
+                        <input type="date" value={chequeDate} onChange={(e) => setChequeDate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Bank Name</label>
+                        <select value={bankName} onChange={(e) => setBankName(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
+                          <option value="Commercial Bank">Commercial Bank</option>
+                          <option value="Bank of Ceylon">Bank of Ceylon</option>
+                          <option value="People's Bank">People's Bank</option>
+                          <option value="Hatton National Bank">Hatton National Bank</option>
+                          <option value="Sampath Bank">Sampath Bank</option>
+                          <option value="Nations Trust Bank">Nations Trust Bank</option>
+                          <option value="DFCC Bank">DFCC Bank</option>
+                          <option value="Seylan Bank">Seylan Bank</option>
+                          <option value="NDB Bank">NDB Bank</option>
+                          <option value="Pan Asia Banking">Pan Asia Banking</option>
+                          <option value="Union Bank">Union Bank</option>
+                          <option value="Amana Bank">Amana Bank</option>
+                          <option value="HSBC">HSBC</option>
+                          <option value="Standard Chartered">Standard Chartered</option>
+                          <option value="Cargills Bank">Cargills Bank</option>
+                          <option value="Other">Other</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Bank Transfer Details */}
+                  {paymentMethod === 'Bank Transfer' && (
+                    <div className="mt-4 space-y-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Bank Name</label>
+                        <select value={bankName} onChange={(e) => setBankName(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
+                          <option value="Commercial Bank">Commercial Bank</option>
+                          <option value="Bank of Ceylon">Bank of Ceylon</option>
+                          <option value="People's Bank">People's Bank</option>
+                          <option value="Hatton National Bank">Hatton National Bank</option>
+                          <option value="Sampath Bank">Sampath Bank</option>
+                          <option value="Nations Trust Bank">Nations Trust Bank</option>
+                          <option value="DFCC Bank">DFCC Bank</option>
+                          <option value="Seylan Bank">Seylan Bank</option>
+                          <option value="NDB Bank">NDB Bank</option>
+                          <option value="Pan Asia Banking">Pan Asia Banking</option>
+                          <option value="Union Bank">Union Bank</option>
+                          <option value="Amana Bank">Amana Bank</option>
+                          <option value="HSBC">HSBC</option>
+                          <option value="Standard Chartered">Standard Chartered</option>
+                          <option value="Cargills Bank">Cargills Bank</option>
+                          <option value="Other">Other</option>
+                        </select>
+                      </div>
+                      <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <p className="text-sm text-blue-700 flex items-center gap-2">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                          Bank transfer recorded. Verify receipt before confirming.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Cash Info */}
+                  {paymentMethod === 'Cash' && (
+                    <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                      <p className="text-sm text-green-700 flex items-center gap-2">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><polyline points="20 6 9 17 4 12"/></svg>
+                        Cash payment — no additional details required.
+                      </p>
+                    </div>
+                  )}
                 </div>
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50">
+                <button
+                  onClick={() => { setShowPaymentModal(false); resetPaymentForm(); }}
+                  className="px-5 py-2.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg font-medium text-sm transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={submitPayment}
+                  disabled={paymentMode === 'partial' && (!partialPaymentAmount || parseFloat(partialPaymentAmount) <= 0)}
+                  className="px-5 py-2.5 bg-gray-900 hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg font-semibold text-sm transition flex items-center gap-2"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-4 h-4"><polyline points="20 6 9 17 4 12"/></svg>
+                  Confirm Payment
+                </button>
               </div>
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {/* Review Invoice Modal */}
         {showReviewInvoiceModal && selectedBillForPayment && (
