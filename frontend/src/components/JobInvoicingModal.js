@@ -1366,8 +1366,8 @@ className="w-4 h-4"
                             </div>
                           )}
                           
-                          {/* Show Generate Invoice button ONLY after items are saved AND no bill exists yet */}
-                          {payItemsSaved && bills.length === 0 && (
+                          {/* Show Generate Invoice button when items are saved AND (no bill exists OR bill is unpaid with no payments) */}
+                          {payItemsSaved && (bills.length === 0 || bills.every(b => b.paymentStatus === 'Unpaid' && !(parseFloat(b.paidAmount) > 0))) && (
                             <div className="mt-4 flex gap-2">
                               <button
                                 onClick={generateBill}
@@ -1380,7 +1380,7 @@ className="w-4 h-4"
                                   <line x1="16" y1="17" x2="8" y2="17"></line>
                                   <polyline points="10 9 9 9 8 9"></polyline>
                                 </svg>
-                                Generate Invoice
+                                {bills.length === 0 ? 'Generate Invoice' : 'Update Invoice'}
                               </button>
                             </div>
                           )}
