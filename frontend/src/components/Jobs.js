@@ -1327,10 +1327,15 @@ function Jobs() {
                   onChange={(e) => setAssignPcForm(prev => ({...prev, assignedTo: e.target.value}))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
                 >
-                  <option value="">Select Waff Clerk</option>
-                  {users.filter(u => u.role === 'Waff Clerk' || u.role === 'Manager').map(u => (
-                    <option key={u.userId} value={u.userId}>{u.fullName} ({u.role})</option>
-                  ))}
+                  <option value="">Select Assigned User</option>
+                  {viewJobModal.assignedUsers && viewJobModal.assignedUsers.length > 0
+                    ? viewJobModal.assignedUsers.map(a => (
+                        <option key={a.userId} value={a.userId}>{a.userName || getUserFullName(a.userId)} ({a.role || 'Assigned'})</option>
+                      ))
+                    : users.filter(u => u.role === 'Waff Clerk' || u.role === 'Manager').map(u => (
+                        <option key={u.userId} value={u.userId}>{u.fullName} ({u.role})</option>
+                      ))
+                  }
                 </select>
               </div>
               <div>
@@ -1649,17 +1654,28 @@ function Jobs() {
                     <div className="border-t border-gray-100">
                       <div className="px-5 py-2.5 bg-purple-50 border-b border-purple-200 flex items-center justify-between">
                         <span className="text-xs font-bold text-purple-700 uppercase tracking-wider">③ Petty Cash Assignments</span>
-                        {['Admin','Super Admin','Manager'].includes(user?.role) && (
-                          <button
-                            onClick={() => setAssignPcModal(true)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-purple-600 hover:bg-purple-700 transition"
-                          >
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-                              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-                            </svg>
-                            Assign Petty Cash
-                          </button>
-                        )}
+                        {['Admin','Super Admin','Manager'].includes(user?.role) && (() => {
+                          const assignments = viewJobModal.assignments || [];
+                          const settledStatuses = ['Settled', 'Settled/Approved', 'Balance Returned', 'Overdue Collected', 'Settled / Balance Returned', 'Settled / Over Due Collected', 'Full Petty Cash Returned', 'Closed'];
+                          const allSettled = assignments.length > 0 && assignments.every(a => settledStatuses.includes(a.status));
+                          return (
+                            <button
+                              onClick={() => !allSettled || assignments.length === 0 ? setAssignPcModal(true) : null}
+                              disabled={allSettled}
+                              title={allSettled ? 'All petty cash assignments are settled' : 'Assign petty cash to a user'}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                                allSettled
+                                  ? 'text-gray-400 bg-gray-200 cursor-not-allowed'
+                                  : 'text-white bg-purple-600 hover:bg-purple-700'
+                              }`}
+                            >
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                              </svg>
+                              Assign Petty Cash
+                            </button>
+                          );
+                        })()}
                       </div>
                       <table className="w-full text-sm border-collapse">
                         <thead>
