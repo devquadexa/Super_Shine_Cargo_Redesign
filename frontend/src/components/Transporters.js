@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import apiClient from '../api/client';
@@ -787,7 +787,7 @@ function Transporters() {
     } else {
       paymentAmount = parseFloat(partialPaymentAmount);
       if (isNaN(paymentAmount) || paymentAmount <= 0) {
-        setMessage('âŒ Please enter a valid payment amount');
+        setMessage('❌ Please enter a valid payment amount');
         setTimeout(() => setMessage(''), 5000);
         return;
       }
@@ -795,12 +795,12 @@ function Transporters() {
 
     if (paymentMethod === 'Cheque') {
       if (!chequeNumber || !chequeDate || !chequeAmount) {
-        setMessage('âŒ Please fill in all cheque details (Number, Date, Amount)');
+        setMessage('❌ Please fill in all cheque details (Number, Date, Amount)');
         setTimeout(() => setMessage(''), 5000);
         return;
       }
       if (isNaN(parseFloat(chequeAmount)) || parseFloat(chequeAmount) <= 0) {
-        setMessage('âŒ Please enter a valid cheque amount');
+        setMessage('❌ Please enter a valid cheque amount');
         setTimeout(() => setMessage(''), 5000);
         return;
       }
@@ -875,11 +875,11 @@ function Transporters() {
       setShowPaymentModal(false);
       setSelectedJobForPayment(null);
       const paymentTypeText = paymentMode === 'full' ? 'Full payment' : `Partial payment (LKR ${formatAmount(paymentAmount)})`;
-      setMessage(`âœ… ${paymentTypeText} recorded for ${selectedJobForPayment.jobId} via ${paymentMethod}`);
+      setMessage(`✅ ${paymentTypeText} recorded for ${selectedJobForPayment.jobId} via ${paymentMethod}`);
       setTimeout(() => setMessage(''), 4000);
     } catch (error) {
       console.error('Error paying transporter cost:', error);
-      setMessage(error.response?.data?.message || 'âŒ Error recording payment');
+      setMessage(error.response?.data?.message || '❌ Error recording payment');
       setTimeout(() => setMessage(''), 3000);
     }
   };
@@ -918,7 +918,7 @@ function Transporters() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
             <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
               <div className="flex items-center gap-3">
-                <span className="text-xl">ðŸ‘¥</span>
+                <span className="text-xl">👥</span>
                 <div>
                   <div className="text-xs font-medium text-gray-500">Total Transporters</div>
                   <div className="text-xl font-bold text-gray-900">{summary.totalTransporters}</div>
@@ -927,7 +927,7 @@ function Transporters() {
             </div>
             <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
               <div className="flex items-center gap-3">
-                <span className="text-xl">ðŸ“‹</span>
+                <span className="text-xl">📋</span>
                 <div>
                   <div className="text-xs font-medium text-gray-500">With Jobs</div>
                   <div className="text-xl font-bold text-gray-900">{summary.transportersWithJobs}</div>
@@ -936,7 +936,7 @@ function Transporters() {
             </div>
             <div className="bg-white rounded-lg border-l-4 border-l-green-500 border border-gray-200 p-4 shadow-sm">
               <div className="flex items-center gap-3">
-                <span className="text-xl">âœ…</span>
+                <span className="text-xl">✅</span>
                 <div>
                   <div className="text-xs font-medium text-gray-500">Paid</div>
                   <div className="text-xl font-bold text-gray-900">{summary.paidTransporters}</div>
@@ -946,7 +946,7 @@ function Transporters() {
             </div>
             <div className="bg-white rounded-lg border-l-4 border-l-orange-500 border border-gray-200 p-4 shadow-sm">
               <div className="flex items-center gap-3">
-                <span className="text-xl">â³</span>
+                <span className="text-xl">⏳</span>
                 <div>
                   <div className="text-xs font-medium text-gray-500">Unpaid</div>
                   <div className="text-xl font-bold text-gray-900">{summary.unpaidTransporters}</div>
@@ -1357,7 +1357,7 @@ function Transporters() {
       )}
 
       {showPaymentModal && selectedJobForPayment && (
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center" onClick={() => setShowPaymentModal(false)}>
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-[10001] flex items-center justify-center" onClick={() => setShowPaymentModal(false)}>
         <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
 
           {/* â”€â”€ Title bar â”€â”€ */}
@@ -1753,9 +1753,9 @@ function Transporters() {
                             backgroundColor: payment.paymentMethod === 'Cash' ? '#dbeafe' : payment.paymentMethod === 'Cheque' ? '#fef3c7' : '#d1fae5',
                             color: payment.paymentMethod === 'Cash' ? '#0c4a6e' : payment.paymentMethod === 'Cheque' ? '#92400e' : '#065f46'
                           }}>
-                            {payment.paymentMethod === 'Cash' && 'ðŸ’µ'}
-                            {payment.paymentMethod === 'Cheque' && 'ðŸ“'}
-                            {payment.paymentMethod === 'Bank Transfer' && 'ðŸ¦'}
+                            {payment.paymentMethod === 'Cash' && '💵'}
+                            {payment.paymentMethod === 'Cheque' && '📝'}
+                            {payment.paymentMethod === 'Bank Transfer' && '🏦'}
                             {' '}{payment.paymentMethod || '-'}
                           </span>
                         </div>
@@ -1982,11 +1982,13 @@ function Transporters() {
                             <th className="px-3 py-2 text-left text-xs font-bold text-gray-700">Delivery Date</th>
                             <th className="px-3 py-2 text-left text-xs font-bold text-gray-700">Cost</th>
                             <th className="px-3 py-2 text-left text-xs font-bold text-gray-700">Status</th>
+                            {canPayTransporterCosts && <th className="px-3 py-2 text-left text-xs font-bold text-gray-700">Actions</th>}
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                           {getAssignedJobs(viewTransporterModal).slice(0, 10).map(job => (
-                            <tr key={job.jobId} className="hover:bg-gray-50">
+                            <React.Fragment key={job.jobId}>
+                            <tr className="hover:bg-gray-50">
                               <td className="px-3 py-2 text-gray-900 font-medium">{job.jobId}</td>
                               <td className="px-3 py-2 text-gray-600">{job.shipmentCategory || '-'}</td>
                               <td className="px-3 py-2 text-gray-600">{job.transportDeliveryDate ? formatDate(job.transportDeliveryDate) : '-'}</td>
@@ -1998,7 +2000,47 @@ function Transporters() {
                                   <span className="inline-block px-2 py-1 bg-red-100 text-red-800 rounded text-xs font-medium">Unpaid</span>
                                 )}
                               </td>
+                              {canPayTransporterCosts && (
+                                <td className="px-3 py-2">
+                                  {!isTransporterCostPaid(job) && (
+                                    <button
+                                      onClick={() => openPaymentModal(job)}
+                                      className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition flex items-center gap-1"
+                                      title="Record payment for this job"
+                                    >
+                                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
+                                        <rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>
+                                      </svg>
+                                      Pay
+                                    </button>
+                                  )}
+                                </td>
+                              )}
                             </tr>
+                            {/* Payment History Row */}
+                            {getAllPaymentRecords(job).length > 0 && (
+                              <tr key={`${job.jobId}-payments`}>
+                                <td colSpan={canPayTransporterCosts ? 6 : 5} className="px-3 py-2 bg-gray-50">
+                                  <div className="ml-4 border-l-2 border-green-300 pl-3">
+                                    <p className="text-xs font-semibold text-gray-600 mb-1.5">Payment History</p>
+                                    <div className="space-y-1">
+                                      {getAllPaymentRecords(job).map((payment, idx) => (
+                                        <div key={idx} className="flex items-center gap-4 text-xs text-gray-600">
+                                          <span className="font-medium text-green-700">LKR {formatAmount(payment.amount)}</span>
+                                          <span className="text-gray-400">|</span>
+                                          <span>{payment.paymentMethod || 'Cash'}</span>
+                                          {payment.chequeNumber && <span className="text-gray-500">#{payment.chequeNumber}</span>}
+                                          {payment.bankName && <span className="text-gray-500">{payment.bankName}</span>}
+                                          <span className="text-gray-400">|</span>
+                                          <span>{payment.paymentDate ? formatDate(payment.paymentDate) : '-'}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                            </React.Fragment>
                           ))}
                         </tbody>
                       </table>
