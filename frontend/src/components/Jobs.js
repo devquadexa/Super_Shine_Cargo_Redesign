@@ -548,11 +548,43 @@ function Jobs() {
         const response = await apiClient.get(`/pay-item-templates/category/${encodeURIComponent(job.shipmentCategory)}`);
         const templates = response.data;
         if (templates && templates.length > 0) {
-          defaultItems = templates.map(template => ({
-            itemName: template.itemName,
-            actualCost: '',
-            hasBill: false
-          }));
+          // Fetch already settled items from other assignments for this job
+          let alreadySettledItems = [];
+          try {
+            const allAssignments = job.assignments || [];
+            const otherSettledAssignments = allAssignments.filter(
+              a => a.pettyAssignmentId !== assignment.pettyAssignmentId && 
+                   a.status !== 'Assigned'
+            );
+            
+            for (const otherAssignment of otherSettledAssignments) {
+              try {
+                const itemsRes = await apiClient.get(`/petty-cash-assignments/${otherAssignment.pettyAssignmentId}/settlement-items`);
+                if (Array.isArray(itemsRes.data)) {
+                  alreadySettledItems.push(...itemsRes.data.map(item => item.itemName?.toLowerCase().trim()));
+                }
+              } catch (e) {
+                // ignore individual fetch errors
+              }
+            }
+          } catch (e) {
+            console.error('Error fetching settled items:', e);
+          }
+          
+          // Filter out templates that have already been settled by other clerks
+          const availableTemplates = templates.filter(template => 
+            !alreadySettledItems.includes(template.itemName?.toLowerCase().trim())
+          );
+          
+          if (availableTemplates.length > 0) {
+            defaultItems = availableTemplates.map(template => ({
+              itemName: template.itemName,
+              actualCost: '',
+              hasBill: false
+            }));
+          } else {
+            defaultItems = [{ itemName: '', actualCost: '', hasBill: false }];
+          }
         }
       } catch (error) {
         console.error('Error loading templates:', error);
@@ -1692,7 +1724,9 @@ function Jobs() {
                         </thead>
                         <tbody>
                           {viewJobModal.assignments && viewJobModal.assignments.length > 0 ? (
-                            viewJobModal.assignments.map((a, i) => {
+                            viewJobModal.assignments
+                              .filter(a => user?.role === 'Waff Clerk' ? a.userId === user.userId : true)
+                              .map((a, i) => {
                               const assignedAmount = parseFloat(a.assignedAmount || 0);
                               const settledAmount = parseFloat(a.settledAmount || 0);
                               const balanceAmount = assignedAmount - settledAmount;
@@ -1742,6 +1776,10 @@ function Jobs() {
                                                 });
                                                 setMessage('✅ Balance return request submitted!');
                                                 fetchJobs();
+                                                // Refresh the view modal data
+                                                const data = await jobService.getAll();
+                                                const updatedJob = data.find(j => j.jobId === viewJobModal.jobId);
+                                                if (updatedJob) setViewJobModal(updatedJob);
                                                 setTimeout(() => setMessage(''), 3000);
                                               } catch (err) {
                                                 setMessage(`❌ ${err.response?.data?.message || 'Error submitting balance return'}`);
@@ -1766,6 +1804,10 @@ function Jobs() {
                                                 });
                                                 setMessage('✅ Overdue collection request submitted!');
                                                 fetchJobs();
+                                                // Refresh the view modal data
+                                                const data = await jobService.getAll();
+                                                const updatedJob = data.find(j => j.jobId === viewJobModal.jobId);
+                                                if (updatedJob) setViewJobModal(updatedJob);
                                                 setTimeout(() => setMessage(''), 3000);
                                               } catch (err) {
                                                 setMessage(`❌ ${err.response?.data?.message || 'Error submitting overdue request'}`);
@@ -1799,13 +1841,13 @@ function Jobs() {
                           <tr className="bg-purple-50 border-t-2 border-purple-200">
                             <td className="px-5 py-2.5 text-right text-xs font-bold text-purple-700 uppercase tracking-wide">Total</td>
                             <td className="px-5 py-2.5 text-right text-[#1E3F63] font-bold text-sm">
-                              {(viewJobModal.assignments || []).reduce((sum,a)=>sum+parseFloat(a.assignedAmount||0),0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+                              {(viewJobModal.assignments || []).filter(a => user?.role === 'Waff Clerk' ? a.userId === user.userId : true).reduce((sum,a)=>sum+parseFloat(a.assignedAmount||0),0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
                             </td>
                             <td className="px-5 py-2.5 text-right text-gray-600 font-bold text-sm">
-                              {(viewJobModal.assignments || []).reduce((sum,a)=>sum+parseFloat(a.settledAmount||0),0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+                              {(viewJobModal.assignments || []).filter(a => user?.role === 'Waff Clerk' ? a.userId === user.userId : true).reduce((sum,a)=>sum+parseFloat(a.settledAmount||0),0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
                             </td>
                             <td className="px-5 py-2.5 text-right text-orange-600 font-bold text-sm">
-                              {((viewJobModal.assignments || []).reduce((sum,a)=>sum+parseFloat(a.assignedAmount||0),0) - (viewJobModal.assignments || []).reduce((sum,a)=>sum+parseFloat(a.settledAmount||0),0)).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+                              {((viewJobModal.assignments || []).filter(a => user?.role === 'Waff Clerk' ? a.userId === user.userId : true).reduce((sum,a)=>sum+parseFloat(a.assignedAmount||0),0) - (viewJobModal.assignments || []).filter(a => user?.role === 'Waff Clerk' ? a.userId === user.userId : true).reduce((sum,a)=>sum+parseFloat(a.settledAmount||0),0)).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
                             </td>
                             <td></td>
                             {['Manager','Waff Clerk'].includes(user?.role) && <td></td>}
