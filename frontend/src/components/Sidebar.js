@@ -195,6 +195,7 @@ function Sidebar({ isOpen, onClose }) {
               <NavItem to="/reports/pending-payments" label="Pending Payments" />
               <NavItem to="/reports/other-expenses" label="Other Expenses Report" />
               <NavItem to="/reports/transporters" label="Transporters Report" />
+              <NavItem to="/reports/invoices" label="Invoice Report" />
             </NavGroup>
           )}
 
