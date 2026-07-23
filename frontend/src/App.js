@@ -21,6 +21,7 @@ import OtherExpenses from './components/OtherExpenses';
 import OtherExpensesReport from './components/OtherExpensesReport';
 import InvoiceReviewPage from './components/InvoiceReviewPage';
 import CashSummaryReport from './components/CashSummaryReport';
+import InvoiceReport from './components/InvoiceReport';
 import Navbar from './components/Navbar';
 import Sidebar from './components/Sidebar';
 import ResetPassword from './components/ResetPassword';
@@ -154,6 +155,11 @@ function AppContent() {
               <Route
                 path="/reports/transporters"
                 element={<PrivateRoute><AdminRoute><TransportersReport /></AdminRoute></PrivateRoute>}
+              />
+
+              <Route
+                path="/reports/invoices"
+                element={<PrivateRoute><AdminRoute><InvoiceReport /></AdminRoute></PrivateRoute>}
               />
 
               {/* Legacy redirect — keep old bookmark working */}
