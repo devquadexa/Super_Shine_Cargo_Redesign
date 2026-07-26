@@ -583,6 +583,7 @@ function Jobs() {
               hasBill: false
             }));
           } else {
+            // All templates already settled - show empty custom item slot with helpful context
             defaultItems = [{ itemName: '', actualCost: '', hasBill: false }];
           }
         }
@@ -594,28 +595,47 @@ function Jobs() {
     setSettleModal({
       pettyAssignmentId: assignment.pettyAssignmentId,
       userName: assignment.userName || assignment.waff_clerk_name || getUserFullName(assignment.userId),
-      assignedAmount: parseFloat(assignment.assignedAmount || 0)
+      assignedAmount: parseFloat(assignment.assignedAmount || 0),
+      isGroupedSettlement: assignment.isGroupedSettlement || false,
+      groupAssignments: assignment.groupAssignments || null,
+      groupId: assignment.groupId || null
     });
     setSettleItems(defaultItems);
   };
 
   const handleSettleSubmit = async () => {
     const validItems = settleItems.filter(item => item.itemName && item.actualCost && parseFloat(item.actualCost) > 0);
+    
+    // If no items with amounts, treat as full petty cash return
     if (validItems.length === 0) {
-      setMessage('Please add at least one settlement item with name and cost');
-      setTimeout(() => setMessage(''), 3000);
-      return;
+      const confirmFullReturn = window.confirm(
+        `You are submitting a full petty cash return.\n\n` +
+        `Assigned Amount: LKR ${settleModal.assignedAmount.toLocaleString('en-US', {minimumFractionDigits: 2})}\n` +
+        `No items will be claimed as expenses.\n` +
+        `The full amount will be marked for return.\n\n` +
+        `Continue?`
+      );
+      if (!confirmFullReturn) return;
     }
 
     setSettleLoading(true);
     try {
-      const response = await apiClient.post(`/petty-cash-assignments/${settleModal.pettyAssignmentId}/settle`, {
-        items: validItems.map(item => ({
-          itemName: item.itemName,
-          actualCost: parseFloat(item.actualCost),
-          hasBill: item.hasBill || false
-        }))
-      });
+      const itemsPayload = validItems.map(item => ({
+        itemName: item.itemName,
+        actualCost: parseFloat(item.actualCost),
+        hasBill: item.hasBill || false
+      }));
+
+      // Use group settle if multiple assignments (like PettyCash.js)
+      let url;
+      if (settleModal.isGroupedSettlement && settleModal.groupAssignments?.length > 1) {
+        const groupId = settleModal.groupId || `${settleModal.groupAssignments[0].jobId}_${settleModal.groupAssignments[0].userId}`;
+        url = `/petty-cash-assignments/group/${encodeURIComponent(groupId)}/settle`;
+      } else {
+        url = `/petty-cash-assignments/${settleModal.pettyAssignmentId}/settle`;
+      }
+
+      const response = await apiClient.post(url, { items: itemsPayload });
 
       setMessage('✅ Settlement submitted successfully!');
       setSettleModal(null);
@@ -1254,7 +1274,12 @@ function Jobs() {
               <button onClick={() => setSettleModal(null)} className="text-white hover:bg-green-500 rounded-lg p-2 transition">✕</button>
             </div>
             <div className="flex-1 overflow-y-auto p-6">
-              <p className="text-sm text-gray-600 mb-4">Add the items that were paid from this petty cash assignment:</p>
+              <p className="text-sm text-gray-600 mb-2">Add the items that were paid from this petty cash assignment:</p>
+              {settleItems.length === 1 && !settleItems[0].itemName && (
+                <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                  All predefined items have already been settled. Add custom items below, or submit empty to return the remaining balance.
+                </p>
+              )}
               
               <div className="space-y-3">
                 {settleItems.map((item, idx) => (
@@ -1688,7 +1713,7 @@ function Jobs() {
                         <span className="text-xs font-bold text-purple-700 uppercase tracking-wider">③ Petty Cash Assignments</span>
                         {['Admin','Super Admin','Manager'].includes(user?.role) && (() => {
                           const assignments = viewJobModal.assignments || [];
-                          const settledStatuses = ['Settled', 'Settled/Approved', 'Balance Returned', 'Overdue Collected', 'Settled / Balance Returned', 'Settled / Over Due Collected', 'Full Petty Cash Returned', 'Closed'];
+                          const settledStatuses = ['Settled', 'Settled/Approved', 'Balance Returned', 'Overdue Collected', 'Settled / Balance Returned', 'Settled / Over Due Collected', 'Closed'];
                           const allSettled = assignments.length > 0 && assignments.every(a => settledStatuses.includes(a.status));
                           return (
                             <button
@@ -1724,13 +1749,36 @@ function Jobs() {
                         </thead>
                         <tbody>
                           {viewJobModal.assignments && viewJobModal.assignments.length > 0 ? (
-                            viewJobModal.assignments
-                              .filter(a => user?.role === 'Waff Clerk' ? a.userId === user.userId : true)
-                              .map((a, i) => {
-                              const assignedAmount = parseFloat(a.assignedAmount || 0);
-                              const settledAmount = parseFloat(a.settledAmount || 0);
-                              const balanceAmount = assignedAmount - settledAmount;
-                              const isAssigned = a.status === 'Assigned';
+                            (() => {
+                              // Group assignments by userId, but DON'T merge closed/final assignments with active ones
+                              const finalStatuses = ['Full Petty Cash Returned', 'Closed', 'Settled / Balance Returned', 'Settled / Over Due Collected', 'Settled/Approved'];
+                              const filtered = (viewJobModal.assignments || []).filter(a => user?.role === 'Waff Clerk' ? a.userId === user.userId : true);
+                              const groupMap = new Map();
+                              filtered.forEach(a => {
+                                // Use a different key for final/closed assignments so they don't merge with active ones
+                                const isFinal = finalStatuses.includes(a.status);
+                                const key = isFinal ? `${a.userId}_closed_${a.pettyAssignmentId}` : a.userId;
+                                if (!groupMap.has(key)) groupMap.set(key, []);
+                                groupMap.get(key).push(a);
+                              });
+                              
+                              return Array.from(groupMap.values()).map((group, i) => {
+                                const assignedAmount = group.reduce((sum, a) => sum + parseFloat(a.assignedAmount || 0), 0);
+                                const settledAmount = group.reduce((sum, a) => sum + parseFloat(a.settledAmount || 0), 0);
+                                const balanceAmount = assignedAmount - settledAmount;
+                                // Find the sub-assignment that needs action (priority: Assigned > Balance To Be Return > Over Due)
+                                const assignedSub = group.find(a => a.status === 'Assigned');
+                                const balanceReturnSub = group.find(a => a.status === 'Balance To Be Return');
+                                const overDueSub = group.find(a => a.status === 'Over Due');
+                                const isAssigned = !!assignedSub;
+                                // Use first assignment for display fields
+                                const a = group[0];
+                                // Determine overall status for display
+                                const displayStatus = assignedSub 
+                                  ? 'Assigned'
+                                  : balanceReturnSub ? 'Balance To Be Return' 
+                                  : overDueSub ? 'Over Due' 
+                                  : group[group.length - 1].status;
                               return (
                                 <tr key={a.pettyAssignmentId||i} className={`border-b border-gray-50 ${i%2===0?'bg-white':'bg-[#f8fafc]'}`}>
                                   <td className="px-5 py-3 text-gray-900 font-medium">{a.userName || a.waff_clerk_name || getUserFullName(a.userId)}</td>
@@ -1741,15 +1789,16 @@ function Jobs() {
                                   </td>
                                   <td className="px-5 py-3 text-center">
                                     <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
-                                      a.status === 'Assigned' ? 'bg-blue-100 text-blue-800' :
-                                      a.status === 'Settled' ? 'bg-green-100 text-green-800' :
-                                      a.status === 'Settled / Balance Returned' ? 'bg-green-100 text-green-800' :
-                                      a.status === 'Settled / Over Due Collected' ? 'bg-green-100 text-green-800' :
-                                      a.status === 'Full Petty Cash Returned' ? 'bg-gray-100 text-gray-800' :
-                                      a.status === 'Closed' ? 'bg-gray-100 text-gray-800' :
+                                      displayStatus === 'Assigned' ? 'bg-blue-100 text-blue-800' :
+                                      displayStatus === 'Partially Settled' ? 'bg-amber-100 text-amber-800' :
+                                      displayStatus === 'Settled' ? 'bg-green-100 text-green-800' :
+                                      displayStatus === 'Settled / Balance Returned' ? 'bg-green-100 text-green-800' :
+                                      displayStatus === 'Settled / Over Due Collected' ? 'bg-green-100 text-green-800' :
+                                      displayStatus === 'Full Petty Cash Returned' ? 'bg-gray-100 text-gray-800' :
+                                      displayStatus === 'Closed' ? 'bg-gray-100 text-gray-800' :
                                       'bg-yellow-100 text-yellow-800'
                                     }`}>
-                                      {a.status || 'Assigned'}
+                                      {displayStatus || 'Assigned'}
                                     </span>
                                   </td>
                                   {['Manager','Waff Clerk'].includes(user?.role) && (
@@ -1757,14 +1806,26 @@ function Jobs() {
                                       <div className="flex items-center justify-center gap-1.5 flex-wrap">
                                         {isAssigned && (
                                           <button
-                                            onClick={() => handleSettleAssignment(a)}
+                                            onClick={() => {
+                                              // Use group settle like PettyCash.js does
+                                              const firstAssigned = assignedSub || group[0];
+                                              const groupId = firstAssigned.groupId || `${firstAssigned.jobId}_${firstAssigned.userId}`;
+                                              handleSettleAssignment({
+                                                ...firstAssigned,
+                                                pettyAssignmentId: firstAssigned.pettyAssignmentId,
+                                                assignedAmount: assignedAmount, // Total group amount
+                                                isGroupedSettlement: group.length > 1,
+                                                groupAssignments: group,
+                                                groupId: groupId
+                                              });
+                                            }}
                                             className="px-2.5 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold rounded-lg transition"
                                             title="Settle this assignment"
                                           >
                                             Settle
                                           </button>
                                         )}
-                                        {a.status === 'Balance To Be Return' && (
+                                        {!!balanceReturnSub && !assignedSub && (
                                           <button
                                             onClick={async () => {
                                               try {
@@ -1772,7 +1833,7 @@ function Jobs() {
                                                   settlementType: 'BALANCE_RETURN',
                                                   amount: Math.abs(balanceAmount),
                                                   notes: `Balance return for Job #${viewJobModal.jobId}`,
-                                                  relatedAssignments: [a.pettyAssignmentId]
+                                                  relatedAssignments: [balanceReturnSub.pettyAssignmentId]
                                                 });
                                                 setMessage('✅ Balance return request submitted!');
                                                 fetchJobs();
@@ -1792,7 +1853,7 @@ function Jobs() {
                                             Return Balance
                                           </button>
                                         )}
-                                        {a.status === 'Over Due' && (
+                                        {!!overDueSub && !assignedSub && (
                                           <button
                                             onClick={async () => {
                                               try {
@@ -1800,7 +1861,7 @@ function Jobs() {
                                                   settlementType: 'OVERDUE_COLLECTION',
                                                   amount: Math.abs(balanceAmount),
                                                   notes: `Overdue collection for Job #${viewJobModal.jobId}`,
-                                                  relatedAssignments: [a.pettyAssignmentId]
+                                                  relatedAssignments: [overDueSub.pettyAssignmentId]
                                                 });
                                                 setMessage('✅ Overdue collection request submitted!');
                                                 fetchJobs();
@@ -1832,7 +1893,8 @@ function Jobs() {
                                   )}
                                 </tr>
                               );
-                            })
+                            });
+                            })()
                           ) : (
                             <tr><td colSpan={['Manager','Waff Clerk'].includes(user?.role) ? 6 : 5} className="px-5 py-3 text-gray-400 text-xs italic text-center">No petty cash assignments yet</td></tr>
                           )}
