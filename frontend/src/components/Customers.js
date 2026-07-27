@@ -359,10 +359,16 @@ function Customers() {
     });
     
     if (customer.addressDistrict) {
-      handleDistrictChange(customer.addressDistrict, false);
+      const selectedDistrict = districts.find(d => d.districtName === customer.addressDistrict);
+      if (selectedDistrict) {
+        setFilteredCities(cities.filter(c => c.districtId === selectedDistrict.districtId));
+      }
     }
     if (customer.officeAddressDistrict) {
-      handleDistrictChange(customer.officeAddressDistrict, true);
+      const selectedDistrict = districts.find(d => d.districtName === customer.officeAddressDistrict);
+      if (selectedDistrict) {
+        setFilteredOfficeCities(cities.filter(c => c.districtId === selectedDistrict.districtId));
+      }
     }
     
     setShowModal(true);

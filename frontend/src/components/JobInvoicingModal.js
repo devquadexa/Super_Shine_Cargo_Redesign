@@ -1301,6 +1301,7 @@ className="w-4 h-4"
                                 />
                               </td>
                               <td className="px-4 py-2 text-center">
+                                {item.isNewItem ? (
                                 <button
                                   onClick={() => handleDeleteItem(idx)}
                                   title="Delete this item"
@@ -1312,6 +1313,7 @@ className="w-4 h-4"
                                     <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
                                   </svg>
                                 </button>
+                                ) : null}
 </td>
                             </tr>
                           ))}
