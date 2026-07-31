@@ -9,8 +9,8 @@ class AuthenticateUser {
     this.jwtSecret = jwtSecret;
   }
 
-  async execute(username, password) {
-    // Authenticate through repository
+  async execute(username, password, tenantId = null) {
+    // Authenticate through repository (runs against the tenant DB in context)
     const user = await this.userRepository.authenticate(username, password);
     
     if (!user) {
@@ -21,16 +21,22 @@ class AuthenticateUser {
       throw new Error('User account is inactive');
     }
 
-    // Generate JWT token
+    // Generate JWT token. In multi-tenant mode the tenant claim binds the token
+    // to a single tenant database for every subsequent request.
+    const payload = {
+      userId: user.userId,
+      username: user.username,
+      fullName: user.fullName,
+      role: user.role,
+    };
+    if (tenantId) {
+      payload.tenantId = tenantId;
+    }
+
     const token = jwt.sign(
-      { 
-        userId: user.userId, 
-        username: user.username, 
-        fullName: user.fullName,
-        role: user.role 
-      },
+      payload,
       this.jwtSecret,
-      { expiresIn: '24h' }
+      { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
     );
 
     return {

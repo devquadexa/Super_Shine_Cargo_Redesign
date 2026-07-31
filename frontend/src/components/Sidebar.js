@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useTenant } from '../context/TenantContext';
 
 /* ──────────────────────────────────────────────────────────────
    Group / section icons (inherit currentColor)
@@ -51,6 +52,7 @@ const Icon = {
 
 function Sidebar({ isOpen, onClose }) {
   const { user } = useAuth();
+  const { hasFeature } = useTenant();
   const location = useLocation();
   // Accordion: only one section open at a time. Collapsed by default.
   const [openGroup, setOpenGroup] = useState(null);
@@ -67,7 +69,10 @@ function Sidebar({ isOpen, onClose }) {
   /* ── Role-based access ── */
   const isSuperAdmin = user?.role === 'Super Admin';
   const canAccessReports = user?.role === 'Admin' || isSuperAdmin;
-  const canAccessTransporters = ['Admin', 'Super Admin', 'Manager', 'Office Executive'].includes(user?.role);
+  // Access = role permits it AND the tenant has the feature enabled (config-driven).
+  const canAccessTransporters =
+    ['Admin', 'Super Admin', 'Manager', 'Office Executive'].includes(user?.role) &&
+    hasFeature('transporters');
   const canAccessBilling = ['Admin', 'Super Admin', 'Manager'].includes(user?.role);
   const canAccessPettyCash = ['Admin', 'Super Admin', 'Manager', 'Waff Clerk'].includes(user?.role);
   const canAccessInvoiceReviews = user?.role === 'Waff Clerk';

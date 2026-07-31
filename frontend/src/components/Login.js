@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import Tilt from 'react-parallax-tilt';
 import { useAuth } from '../context/AuthContext';
+import { useTenant } from '../context/TenantContext';
 import { useNavigate, Link } from 'react-router-dom';
 
 function Login() {
@@ -10,6 +11,7 @@ function Login() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
+  const { brand } = useTenant();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
@@ -153,7 +155,7 @@ function Login() {
           <div className="flex justify-center mb-8">
             <div className="w-32 h-32 rounded-full overflow-hidden flex items-center justify-center relative bg-white animate-float-slow hover:scale-110 transition-all duration-500"
                  style={{ boxShadow: '0 0 45px rgba(80,150,255,0.45), 0 20px 50px rgba(0,0,0,0.45)' }}>
-              <img src={`${process.env.PUBLIC_URL}/logo.png?v=${Date.now()}`} alt="Super Shine Cargo" className="h-24 w-24 object-contain relative z-10" />
+              <img src={brand.logoUrl || `${process.env.PUBLIC_URL}/logo.png?v=${Date.now()}`} alt={brand.displayName} className="h-24 w-24 object-contain relative z-10" />
             </div>
           </div>
 
@@ -201,8 +203,8 @@ function Login() {
 
         <div className="w-full max-w-md relative z-10 animate-fade-up">
           <div className="text-center mb-8">
-            <h1 className="uppercase tracking-[0.15em] text-3xl font-bold text-[#1e3f63] mb-2">Super Shine Cargo</h1>
-            <p className="uppercase tracking-[0.2em] text-[#2f5e8f] text-xs font-semibold">Sri Lankan Premier Cargo Solutions</p>
+            <h1 className="uppercase tracking-[0.15em] text-3xl font-bold mb-2" style={{ color: 'var(--brand-primary, #1e3f63)' }}>{brand.displayName}</h1>
+            <p className="uppercase tracking-[0.2em] text-xs font-semibold" style={{ color: 'var(--brand-accent, #2f5e8f)' }}>{brand.tagline}</p>
           </div>
 
           <Tilt tiltMaxAngleX={6} tiltMaxAngleY={6} perspective={1500} glareEnable glareMaxOpacity={0.12}>

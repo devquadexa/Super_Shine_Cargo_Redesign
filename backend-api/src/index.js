@@ -28,9 +28,12 @@ const otherExpenseRoutes = require('./presentation/routes/otherExpense');
 const invoiceReviewRoutes = require('./presentation/routes/invoiceReviewRoutes');
 const notificationRoutes = require('./presentation/routes/notifications');
 const testNotificationRoutes = require('./presentation/routes/testNotification');
-const { getConnection } = require('./config/database');
+const tenantContextRoutes = require('./presentation/routes/tenantContext');
+const { getConnection, MULTI_TENANT } = require('./config/database');
 const container = require('./infrastructure/di/container');
 const { startOverdueChecker } = require('./infrastructure/scheduler/overdueChecker');
+const catalog = require('./infrastructure/tenancy/catalog');
+const { tenantScope, tenantResolver } = require('./presentation/middleware/tenantResolver');
 const sql = require('mssql');
 
 const app = express();
@@ -39,20 +42,28 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(bodyParser.json());
 
-// Test database connection on startup
-getConnection()
+// Establish the per-request tenant context, then resolve the tenant from
+// subdomain / header / login slug. No-ops when MULTI_TENANT is disabled.
+app.use(tenantScope);
+app.use(tenantResolver);
+
+// Startup connectivity check. In multi-tenant mode there is no single business
+// DB to test — we verify the catalog (control-plane) instead.
+const startupCheck = MULTI_TENANT
+  ? catalog.getCatalogConnection().then(() => console.log('✅ Catalog (control-plane) DB connected'))
+  : getConnection().then(() => console.log('✅ Database connected successfully'));
+
+startupCheck
   .then(() => {
-    console.log('✅ Database connected successfully');
     console.log('🏗️  Clean Architecture initialized');
-    
-    // Start the overdue invoice checker
     startOverdueChecker(container);
   })
   .catch((err) => {
-    console.error('❌ Failed to connect to database:', err);
+    console.error('❌ Failed to connect on startup:', err);
     console.log('Server will continue but database operations will fail');
   });
 
+app.use('/api/tenant', tenantContextRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/password-reset', passwordResetRoutes(container));
 app.use('/api/customers', customerRoutes);

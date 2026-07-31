@@ -1,35 +1,44 @@
 const jwt = require('jsonwebtoken');
+const tenantContext = require('../infrastructure/tenancy/tenantContext');
+const catalog = require('../infrastructure/tenancy/catalog');
 
+const MULTI_TENANT = process.env.MULTI_TENANT === 'true';
 const JWT_SECRET = process.env.JWT_SECRET || 'super-shine-cargo-secret-key-2024';
 
-const auth = (req, res, next) => {
+const auth = async (req, res, next) => {
   try {
-    console.log('Auth middleware - checking token for:', req.method, req.path);
     const token = req.header('Authorization')?.replace('Bearer ', '');
-    console.log('Auth middleware - token present:', !!token);
     if (!token) {
-      console.log('Auth middleware - no token provided');
-      throw new Error();
+      throw new Error('No token provided');
     }
     const decoded = jwt.verify(token, JWT_SECRET);
-    console.log('Auth middleware - decoded user:', decoded);
     req.user = decoded;
+
+    // In multi-tenant mode the JWT tenant claim is authoritative: re-establish
+    // the tenant context from it so all DB access targets the caller's database.
+    if (MULTI_TENANT) {
+      if (!decoded.tenantId) {
+        return res.status(401).json({ message: 'Token missing tenant context. Please log in again.' });
+      }
+      const tenant = await catalog.getTenantById(decoded.tenantId);
+      if (!tenant) {
+        return res.status(401).json({ message: 'Tenant no longer active.' });
+      }
+      tenantContext.setTenant(tenant);
+      req.tenant = tenant;
+    }
+
     next();
   } catch (error) {
-    console.log('Auth middleware - authentication failed:', error.message);
     res.status(401).json({ message: 'Please authenticate' });
   }
 };
 
 const checkRole = (...roles) => {
   return (req, res, next) => {
-    console.log('CheckRole middleware - user role:', req.user?.role);
-    console.log('CheckRole middleware - required roles:', roles);
-    if (!roles.includes(req.user.role)) {
-      console.log('CheckRole middleware - access denied');
+    if (!req.user || !roles.includes(req.user.role)) {
       return res.status(403).json({ message: 'Access denied' });
     }
-    console.log('CheckRole middleware - access granted');
     next();
   };
 };

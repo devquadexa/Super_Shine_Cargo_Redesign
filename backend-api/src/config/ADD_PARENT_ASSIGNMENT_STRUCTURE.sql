@@ -18,6 +18,7 @@ ELSE
 BEGIN
   PRINT '✓ parentAssignmentId column already exists';
 END
+GO
 
 -- Step 2: Add foreign key constraint
 IF NOT EXISTS (
@@ -34,6 +35,7 @@ ELSE
 BEGIN
   PRINT '✓ Foreign key constraint already exists';
 END
+GO
 
 -- Step 3: Add isMainAssignment flag
 IF NOT EXISTS (
@@ -48,6 +50,7 @@ ELSE
 BEGIN
   PRINT '✓ isMainAssignment column already exists';
 END
+GO
 
 -- Step 4: Backfill existing records as main assignments
 UPDATE PettyCashAssignments

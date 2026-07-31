@@ -11,6 +11,7 @@ BEGIN
     ALTER TABLE Bills ADD remainingAmount DECIMAL(18,2) NOT NULL DEFAULT 0;
     PRINT '✓ Added remainingAmount column';
 END
+GO
 
 -- Initialise existing Paid bills: paidAmount = netTotal, remainingAmount = 0
 UPDATE Bills
