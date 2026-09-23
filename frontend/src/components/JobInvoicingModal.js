@@ -5,6 +5,7 @@ import { jobService } from '../api/services/jobService';
 import { customerService } from '../api/services/customerService';
 import { transporterService } from '../api/services/transporterService';
 import { invoiceReviewService } from '../api/services/invoiceReviewService';
+import { authService } from '../api/services/authService';
 import API_BASE from '../api/config';
 import apiClient from '../api/client';
 import ReviewInvoiceModal from './ReviewInvoiceModal';
@@ -151,14 +152,84 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
   // Review invoice modal
   const [showReviewInvoiceModal, setShowReviewInvoiceModal] = useState(false);
   const [reviewInvoiceLoading, setReviewInvoiceLoading] = useState(false);
+  const [clerks, setClerks] = useState([]);
 
   // Load bills and pay items when modal opens
   useEffect(() => {
     if (isOpen && job) {
       loadJobBills();
       loadPayItems();
+      loadClerks();
     }
   }, [isOpen, job]);
+
+  const loadClerks = async () => {
+    try {
+      const allUsers = await authService.getUsers();
+      const clerkUsers = (allUsers || []).filter(u => u.role === 'Waff Clerk' || u.role === 'Clerk');
+      const userMap = new Map();
+
+      // Priority 1: explicitly assigned users on job
+      if (job?.assignedUsers && Array.isArray(job.assignedUsers)) {
+        job.assignedUsers.forEach(u => {
+          if (u.userId) {
+            userMap.set(u.userId, {
+              userId: u.userId,
+              userName: u.userName || u.fullName || u.name,
+              fullName: u.fullName || u.userName || u.name
+            });
+          }
+        });
+      }
+
+      // Priority 2: job assignments (e.g. from petty cash or tasks)
+      if (job?.assignments && Array.isArray(job.assignments)) {
+        job.assignments.forEach(a => {
+          if (a.userId) {
+            userMap.set(a.userId, {
+              userId: a.userId,
+              userName: a.userName || a.waff_clerk_name || 'Clerk',
+              fullName: a.userName || a.waff_clerk_name || 'Clerk'
+            });
+          }
+        });
+      }
+
+      // Add any other Waff Clerks so there is always a clerk selectable
+      clerkUsers.forEach(u => {
+        if (!userMap.has(u.userId)) {
+          userMap.set(u.userId, {
+            userId: u.userId,
+            userName: u.fullName || u.username,
+            fullName: u.fullName || u.username
+          });
+        }
+      });
+
+      // Fallback: if no clerks matched, show other users
+      if (userMap.size === 0 && Array.isArray(allUsers)) {
+        allUsers.forEach(u => {
+          userMap.set(u.userId, {
+            userId: u.userId,
+            userName: u.fullName || u.username,
+            fullName: u.fullName || u.username
+          });
+        });
+      }
+
+      setClerks(Array.from(userMap.values()));
+    } catch (err) {
+      console.error('Error fetching clerks for invoice review:', err);
+      const fallback = [];
+      if (job?.assignedUsers) {
+        job.assignedUsers.forEach(u => fallback.push({ userId: u.userId, userName: u.userName || u.fullName, fullName: u.fullName || u.userName }));
+      }
+      if (job?.assignments) {
+        job.assignments.forEach(a => fallback.push({ userId: a.userId, userName: a.userName || a.waff_clerk_name, fullName: a.userName || a.waff_clerk_name }));
+      }
+      setClerks(fallback);
+    }
+  };
 
   const loadJobBills = async () => {
     try {
@@ -533,21 +604,51 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
   const handleReviewInvoiceSubmit = async (reviewData) => {
     setReviewInvoiceLoading(true);
     try {
+      const { totalBillingAmount } = calculateTotals();
+      
+      const formattedPayItems = (payItems && payItems.length > 0)
+        ? payItems.map(item => ({
+            itemName: item.name || item.itemName || item.description || 'Pay Item',
+            description: item.name || item.itemName || item.description || 'Pay Item',
+            name: item.name || item.itemName || item.description || 'Pay Item',
+            actualCost: parseFloat(item.actualCost) || 0,
+            billingAmount: parseFloat(item.billingAmount) || 0,
+            isCustomItem: item.isCustomItem || false,
+            hasBill: item.hasBill !== undefined ? item.hasBill : true,
+            paidBy: item.paidByName || item.paidBy || 'Office',
+            paidByName: item.paidByName || item.paidBy || 'Office'
+          }))
+        : (reviewData.payItems || []).map(item => ({
+            ...item,
+            itemName: item.itemName || item.description || item.name || 'Pay Item',
+            description: item.description || item.itemName || item.name || 'Pay Item',
+            name: item.name || item.itemName || item.description || 'Pay Item'
+          }));
+
       const payload = {
         jobId: job.jobId,
-        billId: reviewData.billId,
-        reviewNotes: reviewData.notes,
-        payItems: job.payItems || []
+        clerkId: reviewData.clerkId,
+        reviewNotes: reviewData.reviewNotes,
+        payItems: formattedPayItems,
+        invoiceDetails: {
+          jobReference: job.jobId,
+          customer: job.customerId,
+          shipmentCategory: job.shipmentCategory,
+          totalAmount: totalBillingAmount || (reviewData.invoiceDetails?.totalAmount || 0)
+        }
       };
       
       await invoiceReviewService.sendReview(payload);
-      setMessage('✅ Invoice sent to clerk for review!');
+      setMessage('✅ Invoice sent to clerk for review successfully!');
       setShowReviewInvoiceModal(false);
+      setSelectedBillForPayment(null);
       
-      setTimeout(() => setMessage(''), 3000);
+      setTimeout(() => setMessage(''), 4000);
     } catch (error) {
-      console.error('Error sending review:', error);
-      setMessage('Error sending invoice for review');
+      console.error('Error sending invoice review:', error);
+      const errMsg = error.response?.data?.message || error.message || 'Error sending invoice for review';
+      setMessage(`❌ ${errMsg}`);
+      setTimeout(() => setMessage(''), 5000);
     } finally {
       setReviewInvoiceLoading(false);
     }
@@ -1368,12 +1469,25 @@ className="w-4 h-4"
                             </div>
                           )}
                           
-                          {/* Show Generate Invoice button when items are saved AND (no bill exists OR bill is unpaid with no payments) */}
+                          {/* Show Generate Invoice and Review Invoice buttons when items are saved AND (no bill exists OR bill is unpaid with no payments) */}
                           {payItemsSaved && (bills.length === 0 || bills.every(b => b.paymentStatus === 'Unpaid' && !(parseFloat(b.paidAmount) > 0))) && (
-                            <div className="mt-4 flex gap-2">
+                            <div className="mt-4 flex flex-wrap items-center gap-3">
+                              <button
+                                type="button"
+                                onClick={() => setShowReviewInvoiceModal(true)}
+                                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition flex items-center gap-2 shadow-sm"
+                                title="Send invoice pay items to clerk for review"
+                              >
+                                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"></path>
+                                  <rect x="9" y="3" width="6" height="4" rx="1"></rect>
+                                  <path d="M9 14l2 2 4-4"></path>
+                                </svg>
+                                Review Invoice
+                              </button>
                               <button
                                 onClick={generateBill}
-                                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition flex items-center gap-2"
+                                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition flex items-center gap-2 shadow-sm"
                               >
                                 <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -1745,12 +1859,25 @@ className="w-4 h-4"
         })()}
 
         {/* Review Invoice Modal */}
-        {showReviewInvoiceModal && selectedBillForPayment && (
+        {showReviewInvoiceModal && (
           <ReviewInvoiceModal
-            bill={selectedBillForPayment}
-            job={job}
-            isOpen={true}
-            isLoading={reviewInvoiceLoading}
+            show={showReviewInvoiceModal}
+            job={{
+              ...job,
+              payItems: payItems.map(p => ({
+                itemName: p.name || p.itemName || p.description || 'Pay Item',
+                description: p.name || p.itemName || p.description || 'Pay Item',
+                name: p.name || p.itemName || p.description || 'Pay Item',
+                actualCost: parseFloat(p.actualCost) || 0,
+                billingAmount: parseFloat(p.billingAmount) || 0,
+                isCustomItem: p.isCustomItem || false,
+                hasBill: p.hasBill !== undefined ? p.hasBill : true,
+                paidBy: p.paidByName || p.paidBy || 'Office',
+                paidByName: p.paidByName || p.paidBy || 'Office'
+              }))
+            }}
+            assignedClerks={clerks}
+            loading={reviewInvoiceLoading}
             onClose={() => {
               setShowReviewInvoiceModal(false);
               setSelectedBillForPayment(null);

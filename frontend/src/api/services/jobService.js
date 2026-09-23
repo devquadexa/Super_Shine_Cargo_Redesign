@@ -6,6 +6,11 @@ export const jobService = {
     return response.data;
   },
 
+  getById: async (jobId) => {
+    const response = await apiClient.get(`/jobs/${jobId}`);
+    return response.data;
+  },
+
   create: async (jobData) => {
     const response = await apiClient.post('/jobs', jobData);
     return response.data;
