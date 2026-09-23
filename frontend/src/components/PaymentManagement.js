@@ -19,7 +19,6 @@ function PaymentManagement() {
   const [transporterMethodFilter, setTransporterMethodFilter] = useState('All');
   const [transporterStatusFilter, setTransporterStatusFilter] = useState('All');
   const [expandedCheque, setExpandedCheque] = useState(null);
-  const [expandedJob, setExpandedJob] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [recordsPerPage, setRecordsPerPage] = useState(20);
 
@@ -214,11 +213,6 @@ function PaymentManagement() {
 
     return list.sort((a, b) => new Date(b.paymentDate || 0) - new Date(a.paymentDate || 0));
   }, [dbTransporterPayments, jobs, transporters]);
-
-  // Full payment history for a given job
-  const getJobPaymentHistory = (jobId) => {
-    return transporterPayments.filter(p => p.jobId === jobId);
-  };
 
   // ─── Group cheque payments into cheque records ───────────────────────────
   const chequeGroups = useMemo(() => {
@@ -1146,130 +1140,65 @@ function PaymentManagement() {
                       <th className="px-6 py-3.5 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Amount Paid</th>
                       <th className="px-6 py-3.5 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Cost & Balance</th>
                       <th className="px-6 py-3.5 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Paid By</th>
-                      <th className="px-6 py-3.5 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
                     {paginatedList.map((p, idx) => (
-                      <React.Fragment key={p.paymentId || idx}>
-                        <tr className="hover:bg-gray-50/80 transition">
-                          <td className="px-6 py-4 text-sm text-gray-600">
-                            <span className="font-medium text-gray-900">{formatDate(p.paymentDate)}</span>
-                          </td>
-                          <td className="px-6 py-4 text-sm">
-                            <div className="flex items-center gap-1.5">
-                              <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded font-semibold text-xs">{p.jobId}</span>
-                              {p.shipmentCategory && p.shipmentCategory !== '-' && (
-                                <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-[11px] font-medium">{p.shipmentCategory}</span>
-                              )}
-                            </div>
-                            {p.deliveryDate && (
-                              <div className="text-[11px] text-gray-500 mt-0.5">Del: {formatDate(p.deliveryDate)}</div>
+                      <tr key={p.paymentId || idx} className="hover:bg-gray-50/80 transition">
+                        <td className="px-6 py-4 text-sm text-gray-600">
+                          <span className="font-medium text-gray-900">{formatDate(p.paymentDate)}</span>
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          <div className="flex items-center gap-1.5">
+                            <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded font-semibold text-xs">{p.jobId}</span>
+                            {p.shipmentCategory && p.shipmentCategory !== '-' && (
+                              <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded text-[11px] font-medium">{p.shipmentCategory}</span>
                             )}
-                          </td>
-                          <td className="px-6 py-4 text-sm">
-                            <div className="font-semibold text-gray-900">{p.transporterName || 'Transporter'}</div>
-                            {p.transporterId && <div className="text-xs text-gray-500">{p.transporterId}</div>}
-                          </td>
-                          <td className="px-6 py-4 text-sm">
-                            <div className="flex flex-col gap-0.5">
-                              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold w-fit ${
-                                p.paymentMethod === 'Cash' ? 'bg-emerald-100 text-emerald-800' :
-                                p.paymentMethod === 'Cheque' ? 'bg-blue-100 text-blue-800' :
-                                'bg-purple-100 text-purple-800'
-                              }`}>
-                                {p.paymentMethod}
-                              </span>
-                              {p.paymentMethod === 'Cheque' && p.chequeNumber && (
-                                <span className="text-[11px] font-mono text-gray-600">
-                                  #{p.chequeNumber}{p.bankName ? ` (${p.bankName})` : ''}
-                                </span>
-                              )}
-                              {p.paymentMethod === 'Bank Transfer' && p.bankName && (
-                                <span className="text-[11px] text-gray-500">{p.bankName}</span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 text-sm">
-                            <span className="text-green-700 font-bold text-base">
-                              {formatCurrency(p.amount)}
+                          </div>
+                          {p.deliveryDate && (
+                            <div className="text-[11px] text-gray-500 mt-0.5">Del: {formatDate(p.deliveryDate)}</div>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          <div className="font-semibold text-gray-900">{p.transporterName || 'Transporter'}</div>
+                          {p.transporterId && <div className="text-xs text-gray-500">{p.transporterId}</div>}
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          <div className="flex flex-col gap-0.5">
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold w-fit ${
+                              p.paymentMethod === 'Cash' ? 'bg-emerald-100 text-emerald-800' :
+                              p.paymentMethod === 'Cheque' ? 'bg-blue-100 text-blue-800' :
+                              'bg-purple-100 text-purple-800'
+                            }`}>
+                              {p.paymentMethod}
                             </span>
-                          </td>
-                          <td className="px-6 py-4 text-sm">
-                            <div className="text-xs space-y-0.5">
-                              <div className="text-gray-500">Cost: <span className="font-semibold text-gray-900">{formatCurrency(p.totalCost)}</span></div>
-                              <div className={p.remainingCost > 0 ? 'text-orange-600 font-medium' : 'text-green-600 font-medium'}>
-                                {p.remainingCost > 0 ? `Rem: ${formatCurrency(p.remainingCost)}` : 'Fully Settled'}
-                              </div>
+                            {p.paymentMethod === 'Cheque' && p.chequeNumber && (
+                              <span className="text-[11px] font-mono text-gray-600">
+                                #{p.chequeNumber}{p.bankName ? ` (${p.bankName})` : ''}
+                              </span>
+                            )}
+                            {p.paymentMethod === 'Bank Transfer' && p.bankName && (
+                              <span className="text-[11px] text-gray-500">{p.bankName}</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          <span className="text-green-700 font-bold text-base">
+                            {formatCurrency(p.amount)}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-sm">
+                          <div className="text-xs space-y-0.5">
+                            <div className="text-gray-500">Cost: <span className="font-semibold text-gray-900">{formatCurrency(p.totalCost)}</span></div>
+                            <div className={p.remainingCost > 0 ? 'text-orange-600 font-medium' : 'text-green-600 font-medium'}>
+                              {p.remainingCost > 0 ? `Rem: ${formatCurrency(p.remainingCost)}` : 'Fully Settled'}
                             </div>
-                          </td>
-                          <td className="px-6 py-4 text-sm text-gray-600">
-                            {p.paidByName || '-'}
-                          </td>
-                          <td className="px-6 py-4 text-sm">
-                            <button
-                              className={`px-3 py-1 rounded transition text-xs font-medium flex items-center gap-1.5 ${
-                                expandedJob === p.jobId
-                                  ? 'bg-blue-600 text-white'
-                                  : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                              }`}
-                              onClick={() => setExpandedJob(expandedJob === p.jobId ? null : p.jobId)}
-                            >
-                              <span>{expandedJob === p.jobId ? 'Hide' : 'History'}</span>
-                              <svg className={`w-3 h-3 transition-transform ${expandedJob === p.jobId ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <polyline points="6 9 12 15 18 9"/>
-                              </svg>
-                            </button>
-                          </td>
-                        </tr>
-
-                        {/* Expanded Job Payment History Drawer */}
-                        {expandedJob === p.jobId && (
-                          <tr className="border-b border-gray-200 bg-gray-50/70">
-                            <td colSpan="8" className="px-6 py-4">
-                              <div className="ml-4 border-l-2 border-green-500 pl-4 py-2 space-y-2.5 bg-green-50/40 rounded-r-xl p-4 border border-gray-200">
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                                  <p className="text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center gap-2">
-                                    <span className="w-2.5 h-2.5 rounded-full bg-green-600"></span>
-                                    Payment History for Job #{p.jobId} ({p.transporterName})
-                                  </p>
-                                  <div className="text-xs text-gray-600 flex items-center gap-3">
-                                    <span>Total Cost: <strong className="text-gray-900">{formatCurrency(p.totalCost)}</strong></span>
-                                    <span className="text-gray-300">|</span>
-                                    <span className="text-green-700 font-semibold">Total Paid: {formatCurrency(p.paidAmount)}</span>
-                                    <span className="text-gray-300">|</span>
-                                    <span className="text-orange-600 font-semibold">Remaining: {formatCurrency(p.remainingCost)}</span>
-                                  </div>
-                                </div>
-
-                                <div className="space-y-1.5 pt-1">
-                                  {getJobPaymentHistory(p.jobId).map((record, rIdx) => (
-                                    <div key={rIdx} className="flex flex-wrap items-center gap-3 text-xs bg-white p-2.5 rounded-lg border border-gray-200 shadow-xs">
-                                      <span className="font-bold text-green-700">{formatCurrency(record.amount)}</span>
-                                      <span className="text-gray-300">|</span>
-                                      <span className="font-semibold px-2 py-0.5 rounded bg-gray-100 text-gray-800">{record.paymentMethod || 'Cash'}</span>
-                                      {record.chequeNumber && (
-                                        <span className="text-blue-700 font-mono">
-                                          CHQ #{record.chequeNumber} {record.chequeDate ? `(${formatDate(record.chequeDate)})` : ''}
-                                        </span>
-                                      )}
-                                      {record.bankName && <span className="text-gray-600">{record.bankName}</span>}
-                                      <span className="text-gray-300">|</span>
-                                      <span className="text-gray-600">Date: <strong className="text-gray-800">{record.paymentDate ? formatDate(record.paymentDate) : '-'}</strong></span>
-                                      {record.paidByName && (
-                                        <>
-                                          <span className="text-gray-300">|</span>
-                                          <span className="text-gray-500">Recorded by: <span className="text-gray-800 font-medium">{record.paidByName}</span></span>
-                                        </>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600">
+                          {p.paidByName || '-'}
+                        </td>
+                      </tr>
                     ))}
                   </tbody>
                 </table>

@@ -3237,7 +3237,7 @@ function Billing() {
                           value={chequeNumber}
                           onChange={e => handleExistingChequeSelect(e.target.value)}
                         >
-                          <option value="">✨ -- Enter New Cheque --</option>
+                          <option value="">-- Enter New Cheque --</option>
                           {existingCheques.map(c => (
                             <option key={c.chequeNumber} value={c.chequeNumber}>
                               Cheque #{c.chequeNumber} — Price: LKR {formatAmount(c.chequeAmount)} (Available: LKR {formatAmount(c.remainingBalance)}){c.bankName ? ` - ${c.bankName}` : ''}

@@ -1574,7 +1574,7 @@ function Transporters() {
                           }}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                         >
-                          <option value="">✨ -- Enter New Cheque --</option>
+                          <option value="">-- Enter New Cheque --</option>
                           {availableCheques.map((c) => {
                             const remaining = c.chequeAmount - c.totalUsed;
                             return (

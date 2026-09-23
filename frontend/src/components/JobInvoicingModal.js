@@ -2142,7 +2142,7 @@ const handleDeleteItem = async (index) => {
                           onChange={(e) => handleExistingChequeSelect(e.target.value)}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                         >
-                          <option value="">✨ -- Enter New Cheque --</option>
+                          <option value="">-- Enter New Cheque --</option>
                           {existingCheques.map((c) => (
                             <option key={c.chequeNumber} value={c.chequeNumber}>
                               Cheque #{c.chequeNumber} — Price: LKR {formatAmount(c.chequeAmount)} (Available: LKR {formatAmount(c.remainingBalance)}){c.bankName ? ` - ${c.bankName}` : ''}
