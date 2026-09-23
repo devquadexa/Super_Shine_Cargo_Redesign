@@ -1356,332 +1356,446 @@ function Transporters() {
         </div>
       )}
 
-      {showPaymentModal && selectedJobForPayment && (
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-[10001] flex items-center justify-center" onClick={() => setShowPaymentModal(false)}>
-        <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      {showPaymentModal && selectedJobForPayment && (() => {
+        const remainingCost = getRemainingTransporterCost(selectedJobForPayment);
+        const totalTransporterCost = getTransporterCostAmount(selectedJobForPayment);
+        const paidSoFar = parseFloat(getPaymentDetails(selectedJobForPayment)?.paidAmount || 0);
+        const collectAmount = paymentMode === 'full' ? remainingCost : (parseFloat(partialPaymentAmount) || 0);
+        const availableCheques = getAvailableChequesWithBalance();
+        const selectedChequeData = selectedChequeId ? availableCheques.find(c => `${c.chequeNumber}-${c.chequeDate}` === selectedChequeId) : null;
+        const isChequeSaved = Boolean(selectedChequeId && selectedChequeData);
 
-          {/* â”€â”€ Title bar â”€â”€ */}
-          <div className="border-b border-gray-200 px-6 py-4 flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{flexShrink:0}}>
-                <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>
-              </svg>
-              <div>
-                <span className="font-bold text-gray-900">Record Payment</span>
-                <span className="text-sm text-gray-600 block">Job&nbsp;#{selectedJobForPayment.jobId}</span>
-              </div>
-            </div>
-            <button className="text-gray-400 hover:text-gray-600 text-2xl" onClick={() => setShowPaymentModal(false)} aria-label="Close">Ã—</button>
-          </div>
+        return (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[10001] flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowPaymentModal(false)}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-gray-100" onClick={e => e.stopPropagation()}>
 
-          {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-              ROW 1 â€” Job details (horizontal strip)
-          â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
-          <div className="p-6">
-          <div className="flex gap-4 flex-wrap mb-6 pb-6 border-b border-gray-200">
-            <div className="flex-1 min-w-32">
-              <span className="text-xs font-bold text-gray-600 uppercase">Job ID</span>
-              <span className="block text-gray-900 font-mono">{selectedJobForPayment.jobId}</span>
-            </div>
-            <div className="flex-1 min-w-32">
-              <span className="text-xs font-bold text-gray-600 uppercase">Category</span>
-              <span className="block text-gray-900">{selectedJobForPayment.shipmentCategory || '-'}</span>
-            </div>
-            <div className="flex-1 min-w-32">
-              <span className="text-xs font-bold text-gray-600 uppercase">Transporter Cost</span>
-              <span className="block text-lg font-bold text-gray-900">LKR {formatAmount(getTransporterCostAmount(selectedJobForPayment))}</span>
-            </div>
-            {parseFloat(getPaymentDetails(selectedJobForPayment)?.paidAmount || 0) > 0 && (
-              <div className="flex-1 min-w-32">
-                <span className="text-xs font-bold text-gray-600 uppercase">Already Paid</span>
-                <span className="block text-lg font-bold text-green-600">LKR {formatAmount(getPaymentDetails(selectedJobForPayment)?.paidAmount || 0)}</span>
-              </div>
-            )}
-            <div className={`flex-1 min-w-32 ${parseFloat(getPaymentDetails(selectedJobForPayment)?.paidAmount || 0) > 0 ? '' : ''}`}>
-              <span className="text-xs font-bold text-gray-600 uppercase">Amount Due</span>
-              <span className="block text-lg font-bold text-orange-600">
-                LKR {formatAmount(getRemainingTransporterCost(selectedJobForPayment))}
-              </span>
-            </div>
-          </div>
-
-          {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-              ROW 2 â€” Payment type + amount
-          â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
-          <div className="grid grid-cols-2 gap-6 mb-6 pb-6 border-b border-gray-200">
-
-            {/* Left: radio buttons */}
-            <div>
-              <p className="text-sm font-bold text-gray-700 mb-3">Payment Type</p>
-              <div className="space-y-2">
-                <label
-                  className={`flex items-center p-3 border rounded-lg cursor-pointer transition ${paymentMode === 'full' ? 'bg-blue-50 border-blue-300' : 'border-gray-200 hover:border-gray-300'}`}
-                  onClick={() => { setPaymentMode('full'); setPartialPaymentAmount(''); }}
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
+                      <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
+                      <line x1="1" y1="10" x2="23" y2="10"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900">Record Payment</h3>
+                    <p className="text-sm text-gray-500">Job #{selectedJobForPayment.jobId}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPaymentModal(false)}
+                  className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-500 transition"
+                  aria-label="Close"
                 >
-                  <input
-                    type="radio" name="pmMode" value="full"
-                    checked={paymentMode === 'full'}
-                    onChange={() => { setPaymentMode('full'); setPartialPaymentAmount(''); }}
-                    className="w-4 h-4 mr-3"
-                  />
-                  <span>
-                    <strong className="block text-gray-900 text-sm">Full Payment</strong>
-                    <small className="text-gray-600 text-xs">Settle entire balance</small>
-                  </span>
-                </label>
-                <label
-                  className={`flex items-center p-3 border rounded-lg cursor-pointer transition ${paymentMode === 'partial' ? 'bg-blue-50 border-blue-300' : 'border-gray-200 hover:border-gray-300'}`}
-                  onClick={() => setPaymentMode('partial')}
-                >
-                  <input
-                    type="radio" name="pmMode" value="partial"
-                    checked={paymentMode === 'partial'}
-                    onChange={() => setPaymentMode('partial')}
-                    className="w-4 h-4 mr-3"
-                  />
-                  <span>
-                    <strong className="block text-gray-900 text-sm">Partial Payment</strong>
-                    <small className="text-gray-600 text-xs">Pay a portion now</small>
-                  </span>
-                </label>
-              </div>
-            </div>
-
-            {/* Right: amount area */}
-            <div>
-              {paymentMode === 'full' ? (
-                <div>
-                  <p className="text-sm font-bold text-gray-700 mb-3">Amount to Collect</p>
-                  <div className="text-3xl font-bold text-gray-900 mb-1">
-                    LKR {formatAmount(getRemainingTransporterCost(selectedJobForPayment))}
-                  </div>
-                  <span className="text-xs text-gray-600 inline-block px-2 py-1 bg-gray-100 rounded">{isTransporterCostPartiallyPaid(selectedJobForPayment) ? 'Remaining balance' : 'Full balance'}</span>
-                </div>
-              ) : (
-                <div>
-                  <div className="mb-3">
-                    <label className="block text-sm font-bold text-gray-700 mb-1">Enter Amount (LKR) <span className="text-red-600">*</span></label>
-                    <input
-                      type="number" step="0.01"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      value={partialPaymentAmount}
-                      onChange={e => setPartialPaymentAmount(e.target.value)}
-                      placeholder="0.00"
-                      autoFocus
-                    />
-                  </div>
-                  {/* Mini breakdown */}
-                  <div className="bg-gray-50 rounded p-3 space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Total Amount</span>
-                      <span className="text-gray-900">LKR {formatAmount(getTransporterCostAmount(selectedJobForPayment))}</span>
-                    </div>
-                    {parseFloat(getPaymentDetails(selectedJobForPayment)?.paidAmount || 0) > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">Already Paid</span>
-                        <span className="text-green-600">LKR {formatAmount(parseFloat(getPaymentDetails(selectedJobForPayment)?.paidAmount || 0))}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">This Payment</span>
-                      <span className="text-blue-600">LKR {formatAmount(parseFloat(partialPaymentAmount) || 0)}</span>
-                    </div>
-                    <div className="border-t border-gray-200 pt-2 flex justify-between text-sm font-semibold">
-                      <span className="text-gray-900">Remaining After</span>
-                      <span className="text-gray-900">LKR {formatAmount(Math.max(0, getRemainingTransporterCost(selectedJobForPayment) - (parseFloat(partialPaymentAmount) || 0)))}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-          </div>{/* end ROW 2 */}
-
-          {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-              ROW 3 â€” Payment method + details
-          â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
-          <div className="grid grid-cols-2 gap-6 mb-6">
-
-            {/* Left: method selector */}
-            <div>
-              <p className="text-sm font-bold text-gray-700 mb-3">Payment Method</p>
-              <div className="flex gap-2 mb-3">
-                {['Cash','Cheque','Bank Transfer'].map(m => (
-                  <button
-                    key={m}
-                    type="button"
-                    className={`flex-1 py-2 px-3 rounded-lg border-2 transition text-sm font-medium flex items-center justify-center gap-2 ${paymentMethod === m ? 'bg-blue-50 border-blue-500 text-blue-700' : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300'}`}
-                    onClick={() => {
-                      setPaymentMethod(m);
-                      setChequeNumber('');
-                      setChequeDate('');
-                      setChequeAmount('');
-                      setBankName('Commercial Bank');
-                      setSelectedChequeId('');
-                    }}
-                  >
-                    {m === 'Cash' && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/></svg>}
-                    {m === 'Cheque' && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>}
-                    {m === 'Bank Transfer' && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>}
-                    {m}
-                  </button>
-                ))}
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
               </div>
 
-              {/* Cash â€” no extra fields */}
-              {paymentMethod === 'Cash' && (
-                <div className="p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2 text-sm text-green-800">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
-                  Cash payment â€” no additional details required.
+              {/* Info Bar */}
+              <div className="grid grid-cols-4 gap-4 px-6 py-4 bg-gray-50 border-b border-gray-200">
+                <div>
+                  <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Job ID</p>
+                  <p className="text-sm font-semibold text-gray-900 mt-0.5">{selectedJobForPayment.jobId}</p>
                 </div>
-              )}
-            </div>
+                <div>
+                  <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Category</p>
+                  <p className="text-sm font-semibold text-gray-900 mt-0.5">{selectedJobForPayment.shipmentCategory || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Transporter Cost</p>
+                  <p className="text-sm font-bold text-gray-900 mt-0.5">LKR {formatAmount(totalTransporterCost)}</p>
+                  {paidSoFar > 0 && (
+                    <p className="text-[10px] text-green-600 font-medium">Paid: LKR {formatAmount(paidSoFar)}</p>
+                  )}
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Amount Due</p>
+                  <p className="text-sm font-bold text-orange-600 mt-0.5">LKR {formatAmount(remainingCost)}</p>
+                </div>
+              </div>
 
-            {/* Right: cheque / bank fields */}
-            <div>
-
-              {/* â”€â”€ Cheque â”€â”€ */}
-              {paymentMethod === 'Cheque' && (
-                <>
-                  <p className="text-sm font-bold text-gray-700 mb-3">Cheque Details</p>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Select Cheque <span className="text-red-600">*</span></label>
-                      <select 
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                        value={selectedChequeId}
-                        onChange={(e) => {
-                          const selected = e.target.value;
-                          setSelectedChequeId(selected);
-                          if (selected) {
-                            const availableCheques = getAvailableChequesWithBalance();
-                            const cheque = availableCheques.find(c => `${c.chequeNumber}-${c.chequeDate}` === selected);
-                            if (cheque) {
-                              setChequeNumber(cheque.chequeNumber);
-                              setChequeDate(cheque.chequeDate);
-                              setChequeAmount(String(cheque.chequeAmount - cheque.totalUsed));
-                              setBankName(cheque.bankName || 'Commercial Bank');
-                            }
-                          } else {
-                            setChequeNumber('');
-                            setChequeDate('');
-                            setChequeAmount('');
-                          }
-                        }}
-                      >
-                        <option value="">-- New Cheque --</option>
-                        {getAvailableChequesWithBalance().map((cheque) => {
-                          const remaining = cheque.chequeAmount - cheque.totalUsed;
-                          return (
-                            <option key={`${cheque.chequeNumber}-${cheque.chequeDate}`} value={`${cheque.chequeNumber}-${cheque.chequeDate}`}>
-                              CHQ {cheque.chequeNumber} ({cheque.chequeDate}) - Remaining: LKR {formatAmount(remaining)}
-                            </option>
-                          );
-                        })}
-                      </select>
+              {/* Body */}
+              <div className="px-6 py-5">
+                <div className="grid grid-cols-2 gap-8">
+                  {/* Left Column - Payment Type */}
+                  <div>
+                    <p className="text-sm font-semibold text-gray-700 mb-3">Payment Type</p>
+                    <div className="space-y-2">
+                      <label className={`flex items-start gap-3 p-3 rounded-xl border-2 cursor-pointer transition ${paymentMode === 'full' ? 'border-blue-600 bg-blue-50/50' : 'border-gray-200 hover:border-gray-300'}`}>
+                        <input
+                          type="radio"
+                          name="transporterPaymentMode"
+                          value="full"
+                          checked={paymentMode === 'full'}
+                          onChange={() => { setPaymentMode('full'); setPartialPaymentAmount(''); }}
+                          className="mt-0.5 w-4 h-4 text-blue-600"
+                        />
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">Full Payment</p>
+                          <p className="text-xs text-gray-500">Settle entire balance</p>
+                        </div>
+                      </label>
+                      <label className={`flex items-start gap-3 p-3 rounded-xl border-2 cursor-pointer transition ${paymentMode === 'partial' ? 'border-blue-600 bg-blue-50/50' : 'border-gray-200 hover:border-gray-300'}`}>
+                        <input
+                          type="radio"
+                          name="transporterPaymentMode"
+                          value="partial"
+                          checked={paymentMode === 'partial'}
+                          onChange={() => setPaymentMode('partial')}
+                          className="mt-0.5 w-4 h-4 text-blue-600"
+                        />
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">Partial Payment</p>
+                          <p className="text-xs text-gray-500">Pay a portion now</p>
+                        </div>
+                      </label>
                     </div>
-                    {selectedChequeId && (
-                      <div>
-                        <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Remaining Balance</label>
-                        <input 
-                          type="text" 
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-900"
-                          value={`LKR ${formatAmount(chequeAmount)}`}
-                          disabled
+
+                    {paymentMode === 'partial' && (
+                      <div className="mt-3">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Payment Amount (LKR)</label>
+                        <input
+                          type="number"
+                          value={partialPaymentAmount}
+                          onChange={(e) => setPartialPaymentAmount(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                          placeholder="0.00"
+                          min="0.01"
+                          max={remainingCost}
+                          step="0.01"
                         />
                       </div>
                     )}
-                    {!selectedChequeId && (
-                      <>
-                        <div>
-                          <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Cheque Number <span className="text-red-600">*</span></label>
-                          <input type="text" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                            value={chequeNumber}
-                            onChange={e => setChequeNumber(e.target.value)}
-                            placeholder="e.g. 001234"
-                          />
+                  </div>
+
+                  {/* Right Column - Amount to Collect */}
+                  <div>
+                    <p className="text-sm font-semibold text-gray-700 mb-3">Amount to Collect</p>
+                    <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                      <p className="text-3xl font-bold text-gray-900">LKR {formatAmount(collectAmount)}</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {paymentMode === 'full'
+                          ? (isTransporterCostPartiallyPaid(selectedJobForPayment) ? 'Remaining balance' : 'Full balance')
+                          : 'Partial amount'}
+                      </p>
+                      {paymentMode === 'partial' && (
+                        <div className="mt-3 pt-3 border-t border-gray-200 text-xs text-gray-600 space-y-1">
+                          <div className="flex justify-between">
+                            <span>Remaining after payment:</span>
+                            <span className="font-semibold text-gray-800">
+                              LKR {formatAmount(Math.max(0, remainingCost - (parseFloat(partialPaymentAmount) || 0)))}
+                            </span>
+                          </div>
                         </div>
-                        <div>
-                          <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Cheque Date <span className="text-red-600">*</span></label>
-                          <input type="date" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                            value={chequeDate}
-                            onChange={e => setChequeDate(e.target.value)}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Cheque Amount (LKR) <span className="text-red-600">*</span></label>
-                          <input type="number" step="0.01" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                            value={chequeAmount}
-                            onChange={e => setChequeAmount(e.target.value)}
-                            placeholder="0.00"
-                          />
-                        </div>
-                      </>
-                    )}
-                    <div>
-                      <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Bank Name</label>
-                      <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" value={bankName} onChange={e => setBankName(e.target.value)}>
-                        <option>Commercial Bank</option>
-                        <option>Peoples Bank</option>
-                        <option>Bank of Ceylon</option>
-                        <option>Hatton National Bank</option>
-                        <option>Sampath Bank</option>
-                        <option>Nations Trust Bank</option>
-                        <option>DFCC Bank</option>
-                        <option>Other</option>
-                      </select>
+                      )}
                     </div>
                   </div>
-                </>
-              )}
-
-              {/* â”€â”€ Bank Transfer â”€â”€ */}
-              {paymentMethod === 'Bank Transfer' && (
-                <>
-                  <p className="text-sm font-bold text-gray-700 mb-3">Transfer Details</p>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Bank Name <span className="text-red-600">*</span></label>
-                      <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" value={bankName} onChange={e => setBankName(e.target.value)}>
-                        <option>Commercial Bank</option>
-                        <option>Peoples Bank</option>
-                        <option>Bank of Ceylon</option>
-                        <option>Hatton National Bank</option>
-                        <option>Sampath Bank</option>
-                        <option>Nations Trust Bank</option>
-                        <option>DFCC Bank</option>
-                        <option>Other</option>
-                      </select>
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* â”€â”€ Cash placeholder â”€â”€ */}
-              {paymentMethod === 'Cash' && (
-                <div className="text-center py-6">
-                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" strokeWidth="1.5" className="mx-auto mb-2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
-                  <p className="text-sm text-gray-600">No additional details needed for cash.</p>
                 </div>
-              )}
 
-            </div>{/* end pm-details-panel */}
+                {/* Payment Method */}
+                <div className="mt-6 pt-5 border-t border-gray-200">
+                  <p className="text-sm font-semibold text-gray-700 mb-3">Payment Method</p>
+                  <div className="flex gap-2">
+                    {[
+                      { value: 'Cash', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-4 h-4"><rect x="1" y="4" width="22" height="16" rx="2"/><circle cx="12" cy="12" r="3"/></svg> },
+                      { value: 'Cheque', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-4 h-4"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg> },
+                      { value: 'Bank Transfer', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-4 h-4"><path d="M12 2L2 7h20L12 2z"/><rect x="4" y="10" width="16" height="10"/><line x1="8" y1="10" x2="8" y2="20"/><line x1="16" y1="10" x2="16" y2="20"/></svg> }
+                    ].map(method => (
+                      <button
+                        key={method.value}
+                        type="button"
+                        onClick={() => {
+                          setPaymentMethod(method.value);
+                          if (method.value !== 'Cheque') {
+                            setSelectedChequeId('');
+                          }
+                        }}
+                        className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 text-sm font-medium transition ${
+                          paymentMethod === method.value
+                            ? 'border-gray-800 bg-white text-gray-900 shadow-sm'
+                            : 'border-gray-200 text-gray-600 hover:border-gray-300 bg-white'
+                        }`}
+                      >
+                        {method.icon}
+                        {method.value}
+                      </button>
+                    ))}
+                  </div>
 
-          </div>{/* end ROW 3 */}
-          </div>{/* end pm-body */}
+                  {/* Cheque Details Card */}
+                  {paymentMethod === 'Cheque' && (
+                    <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
+                          <svg className="w-4 h-4 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <rect x="2" y="5" width="20" height="14" rx="2" />
+                            <line x1="2" y1="10" x2="22" y2="10" />
+                          </svg>
+                          Cheque Details
+                        </span>
+                        {availableCheques.length > 0 && (
+                          <span className="text-[11px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                            {availableCheques.length} saved cheque{availableCheques.length > 1 ? 's' : ''} available
+                          </span>
+                        )}
+                      </div>
 
-          {/* â”€â”€ Footer â”€â”€ */}
-          <div className="border-t border-gray-200 px-6 py-4 flex gap-3 justify-end">
-            <button className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg font-medium" onClick={() => setShowPaymentModal(false)}>Cancel</button>
-            <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium flex items-center gap-2" onClick={submitTransporterPayment}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-              Confirm Payment
-            </button>
+                      {/* Saved Cheques Slot */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-semibold text-gray-700">
+                            Saved Cheques Slot (Select Existing or New)
+                          </label>
+                        </div>
+                        <select
+                          value={selectedChequeId}
+                          onChange={(e) => {
+                            const selected = e.target.value;
+                            setSelectedChequeId(selected);
+                            if (selected) {
+                              const cheque = availableCheques.find(c => `${c.chequeNumber}-${c.chequeDate}` === selected);
+                              if (cheque) {
+                                setChequeNumber(cheque.chequeNumber);
+                                setChequeDate(cheque.chequeDate);
+                                setChequeAmount(String(cheque.chequeAmount));
+                                setBankName(cheque.bankName || 'Commercial Bank');
+                              }
+                            } else {
+                              setChequeNumber('');
+                              setChequeDate('');
+                              setChequeAmount('');
+                              setBankName('Commercial Bank');
+                            }
+                          }}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                        >
+                          <option value="">-- Enter New Cheque --</option>
+                          {availableCheques.map((c) => {
+                            const remaining = c.chequeAmount - c.totalUsed;
+                            return (
+                              <option key={`${c.chequeNumber}-${c.chequeDate}`} value={`${c.chequeNumber}-${c.chequeDate}`}>
+                                Cheque #{c.chequeNumber} — Price: LKR {formatAmount(c.chequeAmount)} (Available: LKR {formatAmount(remaining)}){c.bankName ? ` - ${c.bankName}` : ''}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
+
+                      {/* Active Cheque Info Banner */}
+                      {isChequeSaved && selectedChequeData && (
+                        <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 font-bold">✓</span>
+                            <div>
+                              <p className="font-semibold text-emerald-900">
+                                Existing Cheque #{selectedChequeData.chequeNumber} Selected
+                              </p>
+                              <p className="text-[11px] text-emerald-700">
+                                Cheque Price: <span className="font-semibold">LKR {formatAmount(selectedChequeData.chequeAmount)}</span> | Available Balance: <span className="font-bold text-emerald-900">LKR {formatAmount(selectedChequeData.chequeAmount - selectedChequeData.totalUsed)}</span>
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedChequeId('');
+                              setChequeNumber('');
+                              setChequeDate('');
+                              setChequeAmount('');
+                            }}
+                            className="text-[11px] text-emerald-700 hover:text-emerald-900 underline font-medium"
+                          >
+                            Use New
+                          </button>
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-2 gap-3">
+                        {/* Cheque Number */}
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            Cheque Number <span className="text-red-500">*</span>
+                            {isChequeSaved && <span className="text-emerald-600 font-normal ml-1">(Saved)</span>}
+                          </label>
+                          <input
+                            type="text"
+                            value={chequeNumber}
+                            readOnly={isChequeSaved}
+                            onChange={(e) => {
+                              setChequeNumber(e.target.value);
+                              if (isChequeSaved) {
+                                setSelectedChequeId('');
+                              }
+                            }}
+                            className={`w-full px-3 py-2 border rounded-lg text-sm outline-none transition ${
+                              isChequeSaved
+                                ? 'bg-gray-100 text-gray-500 cursor-not-allowed border-gray-200'
+                                : 'bg-white text-gray-900 border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent'
+                            }`}
+                            placeholder="Enter cheque number"
+                          />
+                        </div>
+
+                        {/* Cheque Price / Amount */}
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            Cheque Price / Amount (LKR) <span className="text-red-500">*</span>
+                            {isChequeSaved && <span className="text-emerald-600 font-normal ml-1">(Saved)</span>}
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0.01"
+                            value={chequeAmount}
+                            readOnly={isChequeSaved}
+                            onChange={(e) => setChequeAmount(e.target.value)}
+                            className={`w-full px-3 py-2 border rounded-lg text-sm outline-none transition ${
+                              isChequeSaved
+                                ? 'bg-gray-100 text-gray-500 cursor-not-allowed border-gray-200'
+                                : 'bg-white text-gray-900 border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent'
+                            }`}
+                            placeholder="e.g. 50000.00"
+                          />
+                          <p className="text-[11px] text-gray-500 mt-0.5">
+                            {isChequeSaved ? 'Locked to saved cheque face value' : 'Face value / total price of the cheque'}
+                          </p>
+                        </div>
+
+                        {/* Cheque Date */}
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            Cheque Date <span className="text-red-500">*</span>
+                            {isChequeSaved && <span className="text-emerald-600 font-normal ml-1">(Saved)</span>}
+                          </label>
+                          <input
+                            type="date"
+                            value={chequeDate}
+                            readOnly={isChequeSaved}
+                            disabled={isChequeSaved}
+                            onChange={(e) => setChequeDate(e.target.value)}
+                            className={`w-full px-3 py-2 border rounded-lg text-sm outline-none transition ${
+                              isChequeSaved
+                                ? 'bg-gray-100 text-gray-500 cursor-not-allowed border-gray-200'
+                                : 'bg-white text-gray-900 border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent'
+                            }`}
+                          />
+                        </div>
+
+                        {/* Bank Name */}
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            Bank Name <span className="text-red-500">*</span>
+                            {isChequeSaved && <span className="text-emerald-600 font-normal ml-1">(Saved)</span>}
+                          </label>
+                          <select
+                            value={bankName}
+                            disabled={isChequeSaved}
+                            onChange={(e) => setBankName(e.target.value)}
+                            className={`w-full px-3 py-2 border rounded-lg text-sm outline-none transition ${
+                              isChequeSaved
+                                ? 'bg-gray-100 text-gray-500 cursor-not-allowed border-gray-200'
+                                : 'bg-white text-gray-900 border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent'
+                            }`}
+                          >
+                            <option value="Commercial Bank">Commercial Bank</option>
+                            <option value="Bank of Ceylon">Bank of Ceylon</option>
+                            <option value="People's Bank">People's Bank</option>
+                            <option value="Hatton National Bank">Hatton National Bank</option>
+                            <option value="Sampath Bank">Sampath Bank</option>
+                            <option value="Nations Trust Bank">Nations Trust Bank</option>
+                            <option value="DFCC Bank">DFCC Bank</option>
+                            <option value="Seylan Bank">Seylan Bank</option>
+                            <option value="NDB Bank">NDB Bank</option>
+                            <option value="Pan Asia Banking">Pan Asia Banking</option>
+                            <option value="Union Bank">Union Bank</option>
+                            <option value="Amana Bank">Amana Bank</option>
+                            <option value="HSBC">HSBC</option>
+                            <option value="Standard Chartered">Standard Chartered</option>
+                            <option value="Cargills Bank">Cargills Bank</option>
+                            <option value="Other">Other</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Bank Transfer Details */}
+                  {paymentMethod === 'Bank Transfer' && (
+                    <div className="mt-4 space-y-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Bank Name</label>
+                        <select
+                          value={bankName}
+                          onChange={(e) => setBankName(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                        >
+                          <option value="Commercial Bank">Commercial Bank</option>
+                          <option value="Bank of Ceylon">Bank of Ceylon</option>
+                          <option value="People's Bank">People's Bank</option>
+                          <option value="Hatton National Bank">Hatton National Bank</option>
+                          <option value="Sampath Bank">Sampath Bank</option>
+                          <option value="Nations Trust Bank">Nations Trust Bank</option>
+                          <option value="DFCC Bank">DFCC Bank</option>
+                          <option value="Seylan Bank">Seylan Bank</option>
+                          <option value="NDB Bank">NDB Bank</option>
+                          <option value="Pan Asia Banking">Pan Asia Banking</option>
+                          <option value="Union Bank">Union Bank</option>
+                          <option value="Amana Bank">Amana Bank</option>
+                          <option value="HSBC">HSBC</option>
+                          <option value="Standard Chartered">Standard Chartered</option>
+                          <option value="Cargills Bank">Cargills Bank</option>
+                          <option value="Other">Other</option>
+                        </select>
+                      </div>
+                      <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <p className="text-sm text-blue-700 flex items-center gap-2">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                          Bank transfer recorded. Verify receipt before confirming.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Cash Info */}
+                  {paymentMethod === 'Cash' && (
+                    <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                      <p className="text-sm text-green-700 flex items-center gap-2">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><polyline points="20 6 9 17 4 12"/></svg>
+                        Cash payment — no additional details required.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50">
+                <button
+                  type="button"
+                  onClick={() => setShowPaymentModal(false)}
+                  className="px-5 py-2.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg font-medium text-sm transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={submitTransporterPayment}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-gray-900 hover:bg-gray-800 text-white rounded-lg font-medium text-sm transition shadow-sm"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><polyline points="20 6 9 17 4 12"/></svg>
+                  Confirm Payment
+                </button>
+              </div>
+
+            </div>
           </div>
-
-        </div>
-      </div>
-    )}
+        );
+      })()}
 
     {showBreakdownModal && breakdownJob && (
       <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center" onClick={() => setShowBreakdownModal(false)}>
@@ -1696,7 +1810,7 @@ function Transporters() {
                 <span className="text-sm text-gray-600 block">Job #{breakdownJob.jobId}</span>
               </div>
             </div>
-            <button className="text-gray-400 hover:text-gray-600 text-2xl" onClick={() => setShowBreakdownModal(false)} aria-label="Close">Ã—</button>
+            <button className="w-8 h-8 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-500 transition" onClick={() => setShowBreakdownModal(false)} aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
           </div>
 
           <div className="p-6">

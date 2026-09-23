@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { customerService } from '../api/services/customerService';
+import { jobService } from '../api/services/jobService';
 import Pagination from './Pagination';
 
 function Customers() {
@@ -130,7 +131,17 @@ function Customers() {
   const fetchCustomers = async () => {
     try {
       const data = await customerService.getAll();
-      setCustomers(data);
+      if (user?.role === 'Waff Clerk') {
+        try {
+          const jobs = await jobService.getAll();
+          const assignedCustomerIds = new Set((jobs || []).map(j => j.customerId).filter(Boolean));
+          setCustomers((data || []).filter(c => assignedCustomerIds.has(c.customerId)));
+        } catch (je) {
+          setCustomers(data || []);
+        }
+      } else {
+        setCustomers(data || []);
+      }
     } catch (error) {
       console.error('Error fetching customers:', error);
       if (error.response?.status === 403) {
@@ -536,15 +547,21 @@ function Customers() {
     <div className="p-6">
       <div className="flex items-start justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Customer Management</h1>
-          <p className="text-gray-600 mt-1">Manage customer information and registrations</p>
+          <h1 className="text-3xl font-bold text-gray-900">
+            {user?.role === 'Waff Clerk' ? 'Assigned Customers' : 'Customer Management'}
+          </h1>
+          <p className="text-gray-600 mt-1">
+            {user?.role === 'Waff Clerk' ? 'View customers associated with your assigned jobs' : 'Manage customer information and registrations'}
+          </p>
         </div>
-        <button 
-          onClick={() => setShowModal(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition"
-        >
-          + New Customer
-        </button>
+        {isAdminOrSuperAdmin() && (
+          <button 
+            onClick={() => setShowModal(true)}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition"
+          >
+            + New Customer
+          </button>
+        )}
       </div>
 
       {message && (
@@ -555,7 +572,9 @@ function Customers() {
 
       <div className="bg-white rounded-xl border-2 border-gray-200 shadow-sm overflow-hidden">
         <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-          <h2 className="text-xl font-bold text-gray-900">All Customers ({filteredCustomers.length})</h2>
+          <h2 className="text-xl font-bold text-gray-900">
+            {user?.role === 'Waff Clerk' ? 'Assigned Customers' : 'All Customers'} ({filteredCustomers.length})
+          </h2>
           <div className="relative">
             <svg className="absolute left-3 top-3 text-gray-400" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="11" cy="11" r="8"></circle>

@@ -24,7 +24,8 @@ const updateTransporterPaymentStatus = new UpdateTransporterPaymentStatus(transp
 const transporterPaymentController = new TransporterPaymentController(
   createTransporterPayment,
   getTransporterPayments,
-  updateTransporterPaymentStatus
+  updateTransporterPaymentStatus,
+  transporterPaymentRepository
 );
 
 // Transporter CRUD routes
@@ -35,6 +36,7 @@ router.put('/:id', auth, checkRole('Admin', 'Super Admin', 'Manager'), (req, res
 router.delete('/:id', auth, checkRole('Admin', 'Super Admin', 'Manager'), (req, res) => transporterController.delete(req, res));
 
 // Transporter Payment routes
+router.get('/payments/all', auth, checkRole('Admin', 'Super Admin', 'Manager', 'Office Executive'), (req, res) => transporterPaymentController.getAll(req, res));
 router.post('/payments/record', auth, checkRole('Admin', 'Super Admin', 'Manager', 'Office Executive'), (req, res) => transporterPaymentController.create(req, res));
 router.get('/:transporterId/payments', auth, checkRole('Admin', 'Super Admin', 'Manager', 'Office Executive'), (req, res) => transporterPaymentController.getByTransporter(req, res));
 router.put('/payments/:paymentId/status', auth, checkRole('Admin', 'Super Admin', 'Manager'), (req, res) => transporterPaymentController.updateStatus(req, res));

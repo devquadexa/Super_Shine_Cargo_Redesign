@@ -91,15 +91,8 @@ class Bill {
   // Advance Payment Methods
   calculateTotalsWithAdvance(advancePayment = 0) {
     this.advancePayment = parseFloat(advancePayment) || 0.00;
-    this.grossTotal = this.billingAmount; // Total before advance deduction
-    this.netTotal = this.grossTotal - this.advancePayment; // Final amount after advance
-    
-    // Ensure net total is not negative
-    if (this.netTotal < 0) {
-      this.netTotal = 0;
-    }
-    
-    // Update the main total field for backward compatibility
+    this.grossTotal = this.billingAmount;
+    this.netTotal = Math.max(0, this.grossTotal - this.advancePayment);
     this.total = this.netTotal;
   }
 
@@ -130,7 +123,7 @@ class Bill {
     }
     this.paymentStatus = 'Paid';
     this.paidDate = paymentDetails.paidDate ? new Date(paymentDetails.paidDate) : new Date();
-    this.paidAmount = parseFloat(this.netTotal) || parseFloat(this.billingAmount) || parseFloat(this.grossTotal) || parseFloat(this.total) || 0;
+    this.paidAmount = parseFloat(this.billingAmount) || parseFloat(this.grossTotal) || parseFloat(this.amount) || parseFloat(this.netTotal) || parseFloat(this.total) || 0;
     this.remainingAmount = 0;
     if (paymentDetails.paymentMethod) this.paymentMethod = paymentDetails.paymentMethod;
     if (paymentDetails.chequeNumber) this.chequeNumber = paymentDetails.chequeNumber;
@@ -147,7 +140,7 @@ class Bill {
     if (!amount || amount <= 0) throw new Error('Payment amount must be greater than zero');
 
     const currentPaid = parseFloat(this.paidAmount) || 0;
-    const invoiceTotal = parseFloat(this.netTotal) || parseFloat(this.billingAmount) || parseFloat(this.grossTotal) || parseFloat(this.total) || 0;
+    const invoiceTotal = parseFloat(this.billingAmount) || parseFloat(this.grossTotal) || parseFloat(this.amount) || parseFloat(this.netTotal) || parseFloat(this.total) || 0;
     const newPaidAmount = currentPaid + amount;
 
     if (newPaidAmount > invoiceTotal) {

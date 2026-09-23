@@ -116,6 +116,10 @@ function Dashboard() {
     conversionRate: 0
   });
   const [accountingData, setAccountingData] = useState(null);
+  const [clerkAssignedCustomers, setClerkAssignedCustomers] = useState([]);
+  const [clerkJobs, setClerkJobs] = useState([]);
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
 
   // Per-user dashboard customization (section visibility)
   const prefsKey = `dashboardSections_${user?.username || user?.fullName || 'default'}`;
@@ -260,16 +264,27 @@ function Dashboard() {
       }
 
       const [customers, jobs, bills] = await Promise.all([
-        user?.role !== 'Waff Clerk' ? customerService.getAll() : Promise.resolve([]),
+        customerService.getAll(),
         jobService.getAll(),
         user?.role !== 'Waff Clerk' ? billingService.getBills() : Promise.resolve([])
       ]);
 
       console.log('📊 fetchStats - timePeriod:', timePeriod);
       console.log('📊 Raw data counts:', { customers: customers.length, jobs: jobs.length, bills: bills.length });
+
+      // For Waff Clerk, ensure only customers assigned to their jobs are considered
+      let clerkCustomers = customers;
+      if (user?.role === 'Waff Clerk') {
+        const assignedCustomerIds = new Set((jobs || []).map(j => j.customerId).filter(Boolean));
+        clerkCustomers = (customers || []).filter(c => assignedCustomerIds.has(c.customerId));
+        setClerkAssignedCustomers(clerkCustomers);
+        setClerkJobs(jobs || []);
+      }
       
       // Filter data by date - use openDate for jobs (when job started), billDate for bills, registrationDate for customers
-      const fCustomers = timePeriod === 'all' ? customers : filterByDate(customers, 'registrationDate', ['createdDate']);
+      const fCustomers = timePeriod === 'all' 
+        ? clerkCustomers 
+        : filterByDate(clerkCustomers, 'registrationDate', ['createdDate']);
       const fJobs      = timePeriod === 'all' ? jobs      : filterByDate(jobs, 'openDate', ['createdDate']);
       const fBills     = timePeriod === 'all' ? bills     : filterByDate(bills, 'billDate', ['invoiceDate', 'createdDate']);
       
@@ -559,15 +574,192 @@ function Dashboard() {
 
   /* ── WAFF CLERK ── */
   if (user?.role === 'Waff Clerk') {
+    const filteredClerkCustomers = (clerkAssignedCustomers || []).filter(c => {
+      const q = (customerSearch || '').trim().toLowerCase();
+      if (!q) return true;
+      return (
+        (c.customerId || '').toLowerCase().includes(q) ||
+        (c.name || '').toLowerCase().includes(q) ||
+        (c.email || '').toLowerCase().includes(q) ||
+        (c.mainPhone || '').toLowerCase().includes(q)
+      );
+    });
+
     return (
       <div className="p-5 md:p-8 w-full min-h-screen bg-[#f3f5f9]">
         <PageHeader />
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
-          <KpiCard label="Open Jobs"      value={stats.openJobs}          sub="Pending"          accent="#b45309" icon={Icons.folder} />
-          <KpiCard label="Completed Jobs" value={stats.closedJobs}        sub="Finished"         accent="#15803d" icon={Icons.checkCircle} />
-          <KpiCard label="Paid Invoices"  value={stats.paidBills}         sub="Total paid"       accent="#1E3F63" icon={Icons.check} />
-          <KpiCard label="Petty Cash"     value={fmt(stats.userPettyCash)} sub="Assigned to you" accent="#0f766e" icon={Icons.coins} />
+
+        {/* ── KPI hero row ── */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mb-6">
+          <KpiCard label="Open Jobs"          value={stats.openJobs}           sub="Pending jobs"      accent="#b45309" icon={Icons.folder} />
+          <KpiCard label="Completed Jobs"     value={stats.closedJobs}         sub="Finished jobs"     accent="#15803d" icon={Icons.checkCircle} />
+          <KpiCard label="Assigned Customers" value={stats.totalCustomers}     sub="From your jobs"    accent="#0f766e" icon={Icons.users} />
+          <KpiCard label="Petty Cash"         value={fmt(stats.userPettyCash)} sub="Assigned to you"   accent="#1E3F63" icon={Icons.coins} />
         </div>
+
+        {/* ── Assigned Customers Section ── */}
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
+            <div>
+              <div className="flex items-center gap-2.5">
+                <h2 className="text-base font-bold text-gray-800 tracking-tight">Your Assigned Customers</h2>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  {filteredClerkCustomers.length}
+                </span>
+              </div>
+              <p className="text-xs text-gray-400 mt-0.5">Customers associated with cargo jobs assigned to you</p>
+            </div>
+            
+            <div className="relative min-w-[240px]">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.35-4.35" />
+              </svg>
+              <input
+                type="text"
+                value={customerSearch}
+                onChange={(e) => setCustomerSearch(e.target.value)}
+                placeholder="Search assigned customers..."
+                className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:border-[#1E3F63] focus:ring-1 focus:ring-[#1E3F63] outline-none"
+              />
+            </div>
+          </div>
+
+          {filteredClerkCustomers.length === 0 ? (
+            <div className="p-8 text-center text-gray-400 border border-dashed border-gray-200 rounded-lg">
+              <div className="mx-auto w-10 h-10 flex items-center justify-center text-gray-300 mb-2">
+                {Icons.users}
+              </div>
+              <p className="text-sm font-medium text-gray-600">No assigned customers found</p>
+              <p className="text-xs text-gray-400 mt-1">Customers will appear here once cargo jobs are assigned to you</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead className="bg-gray-50/75 border-b border-gray-100">
+                  <tr>
+                    <th className="px-4 py-3 text-xs font-semibold text-gray-600 uppercase">Customer ID</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-gray-600 uppercase">Name</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-gray-600 uppercase">Phone</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-gray-600 uppercase">Email</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-gray-600 uppercase text-center">Your Jobs</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-gray-600 uppercase text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 text-sm">
+                  {filteredClerkCustomers.map(customer => {
+                    const customerJobs = clerkJobs.filter(j => j.customerId === customer.customerId);
+                    const jobsCount = customerJobs.length;
+                    const openJobsCount = customerJobs.filter(j => j.status === 'Open').length;
+                    return (
+                      <tr key={customer.customerId} className="hover:bg-gray-50/80 transition">
+                        <td className="px-4 py-3 font-semibold text-blue-600">{customer.customerId}</td>
+                        <td className="px-4 py-3 font-medium text-gray-900">{customer.name}</td>
+                        <td className="px-4 py-3 text-gray-600">{customer.mainPhone || '-'}</td>
+                        <td className="px-4 py-3 text-gray-600">{customer.email || '-'}</td>
+                        <td className="px-4 py-3 text-center">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700">
+                            {jobsCount} {jobsCount === 1 ? 'job' : 'jobs'}
+                            {openJobsCount > 0 && <span className="text-amber-600 font-medium">({openJobsCount} open)</span>}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <button
+                            onClick={() => setSelectedCustomer(customer)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-[#1E3F63] hover:bg-blue-50 rounded border border-gray-200 hover:border-blue-300 transition"
+                          >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3.5 h-3.5">
+                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
+                            </svg>
+                            View
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* ── Customer Details Modal ── */}
+        {selectedCustomer && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-gray-100">
+              <div className="flex items-start justify-between border-b border-gray-100 pb-4 mb-4">
+                <div>
+                  <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">{selectedCustomer.customerId}</span>
+                  <h3 className="text-xl font-bold text-gray-900 mt-0.5">{selectedCustomer.name}</h3>
+                </div>
+                <button
+                  onClick={() => setSelectedCustomer(null)}
+                  className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
+                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="space-y-3.5 text-sm">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3 rounded-lg bg-gray-50 border border-gray-100">
+                    <p className="text-xs text-gray-400 uppercase font-medium">Phone</p>
+                    <p className="font-semibold text-gray-800 mt-0.5">{selectedCustomer.mainPhone || '-'}</p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-gray-50 border border-gray-100">
+                    <p className="text-xs text-gray-400 uppercase font-medium">Email</p>
+                    <p className="font-semibold text-gray-800 mt-0.5 truncate">{selectedCustomer.email || '-'}</p>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-lg bg-gray-50 border border-gray-100">
+                  <p className="text-xs text-gray-400 uppercase font-medium">Address</p>
+                  <p className="text-gray-800 mt-0.5">
+                    {[selectedCustomer.addressNumber, selectedCustomer.addressStreet1, selectedCustomer.addressStreet2, selectedCustomer.addressCity, selectedCustomer.addressDistrict, selectedCustomer.addressCountry].filter(Boolean).join(', ') || '-'}
+                  </p>
+                </div>
+
+                {selectedCustomer.website && (
+                  <div className="p-3 rounded-lg bg-gray-50 border border-gray-100">
+                    <p className="text-xs text-gray-400 uppercase font-medium">Website</p>
+                    <p className="text-gray-800 mt-0.5">{selectedCustomer.website}</p>
+                  </div>
+                )}
+
+                <div className="p-3 rounded-lg bg-blue-50/60 border border-blue-100">
+                  <p className="text-xs text-blue-600 uppercase font-semibold">Your Assigned Jobs for this Customer</p>
+                  <div className="mt-2 space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                    {clerkJobs.filter(j => j.customerId === selectedCustomer.customerId).map(j => (
+                      <div key={j.jobId} className="flex items-center justify-between text-xs bg-white px-2.5 py-1.5 rounded border border-blue-100">
+                        <span className="font-bold text-gray-800">{j.jobId}</span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                          j.status === 'Open' ? 'bg-amber-100 text-amber-800' :
+                          j.status === 'In Progress' ? 'bg-blue-100 text-blue-800' :
+                          j.status === 'Completed' ? 'bg-green-100 text-green-800' :
+                          'bg-gray-100 text-gray-700'
+                        }`}>
+                          {j.status || 'Open'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-end">
+                <button
+                  onClick={() => setSelectedCustomer(null)}
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium text-sm rounded-lg transition"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
     );
   }

@@ -107,7 +107,12 @@ class MSSQLBillRepository extends IBillRepository {
 
   async markAsPaid(billId, paymentDetails = {}) {
     const bill = await this.findById(billId);
-    const invoiceTotal = parseFloat(bill?.netTotal) || parseFloat(bill?.billingAmount) || parseFloat(bill?.grossTotal) || parseFloat(bill?.total) || 0;
+    const billingAmount = parseFloat(bill?.billingAmount) || parseFloat(bill?.grossTotal) || parseFloat(bill?.amount) || 0;
+    const advancePayment = parseFloat(bill?.advancePayment) || 0;
+    const netTotal = bill?.netTotal !== undefined && bill?.netTotal !== null
+      ? parseFloat(bill.netTotal)
+      : Math.max(0, billingAmount - advancePayment);
+    const invoiceTotal = netTotal > 0 ? netTotal : billingAmount;
     const pool = await this.db();
 
     await pool.request()
@@ -129,7 +134,12 @@ class MSSQLBillRepository extends IBillRepository {
     const bill = await this.findById(billId);
     if (!bill) throw new Error('Bill not found');
 
-    const invoiceTotal  = parseFloat(bill.netTotal) || parseFloat(bill.billingAmount) || parseFloat(bill.grossTotal) || parseFloat(bill.total) || 0;
+    const billingAmount = parseFloat(bill.billingAmount) || parseFloat(bill.grossTotal) || parseFloat(bill.amount) || 0;
+    const advancePayment = parseFloat(bill.advancePayment) || 0;
+    const netTotal = bill.netTotal !== undefined && bill.netTotal !== null
+      ? parseFloat(bill.netTotal)
+      : Math.max(0, billingAmount - advancePayment);
+    const invoiceTotal  = netTotal > 0 ? netTotal : billingAmount;
     const currentPaid   = parseFloat(bill.paidAmount) || 0;
     const newPaidAmount = currentPaid + parseFloat(paymentAmount);
     const newRemaining  = Math.max(0, invoiceTotal - newPaidAmount);
