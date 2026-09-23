@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { billingService } from '../api/services/billingService';
 import { jobService } from '../api/services/jobService';
@@ -31,8 +31,8 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
   };
 
   const getTransporterCostItem = () => {
-    const fromPlace = job?.exporter || 'placename';
-    const toPlace = job?.transporter || 'placename';
+    const fromPlace = (job?.exporter || '').trim() || 'placename';
+    const toPlace = (job?.transporter || '').trim() || 'placename';
     const description = `transporter cost (from ${fromPlace} to ${toPlace})`;
     
     return {
@@ -40,7 +40,8 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
       actualCost: '',
       billingAmount: '',
       sameAmount: false,
-      hasBill: false
+      hasBill: false,
+      isNewItem: true
     };
   };
 
@@ -96,36 +97,52 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
   };
 
   const handleAddPayItem = () => {
+    if (isInvoiceLocked) {
+      setMessage('⚠️ This invoice is locked because payment has already been recorded.');
+      setTimeout(() => setMessage(''), 4000);
+      return;
+    }
     const newPayItems = [...payItems, getBlankPayItem()];
-    setPayItems(newPayItems);
-  };
-
-  const handleAddTransporterCost = () => {
-    const fromPlace = job?.exporter || 'Origin';
-    const toPlace = job?.importer || 'Destination';
-    const description = `transporter cost (from ${fromPlace} to ${toPlace})`;
-    
-    const newPayItems = [...payItems, {
-      name: description,
-      actualCost: '',
-      billingAmount: '',
-      sameAmount: false,
-      hasBill: false,
-      isNewItem: true
-    }];
     setPayItems(newPayItems);
   };
 
   const hasTransporterCostItem = (items) => {
     return Array.isArray(items) && items.some(item => {
-      const label = (item?.name || item?.description || '').toLowerCase().trim();
-      return label.startsWith('transporter cost (from');
+      const label = (item?.name || item?.description || item?.itemName || '').toLowerCase().trim();
+      return label.startsWith('transporter cost');
     });
   };
 
   const isTransporterCostLabel = (value) => {
     const normalized = String(value || '').toLowerCase().trim();
-    return normalized.startsWith('transporter cost (from');
+    return normalized.startsWith('transporter cost');
+  };
+
+  const ensureFclTransporterCost = (items, shipmentCategory = job?.shipmentCategory) => {
+    const normalizedItems = Array.isArray(items) ? [...items] : [];
+    if (shipmentCategory !== 'FCL') return normalizedItems;
+
+    if (!hasTransporterCostItem(normalizedItems)) {
+      normalizedItems.push(getTransporterCostItem());
+    }
+
+    return normalizedItems;
+  };
+
+  const handleAddTransporterCost = () => {
+    if (isInvoiceLocked) {
+      setMessage('⚠️ This invoice is locked because payment has already been recorded.');
+      setTimeout(() => setMessage(''), 4000);
+      return;
+    }
+    if (hasTransporterCostItem(payItems)) {
+      setMessage('⚠️ Transporter cost is already added. Use the existing row or edit it directly.');
+      setTimeout(() => setMessage(''), 3000);
+      return;
+    }
+    const newPayItems = [...payItems, getTransporterCostItem()];
+    setPayItems(newPayItems);
+    setShowPayItemsRow(true);
   };
 
   // State management
@@ -137,6 +154,16 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
   const [expandedBillId, setExpandedBillId] = useState(null);
   const [payItemsSaved, setPayItemsSaved] = useState(false);
   const [allItemsHaveBillingAmounts, setAllItemsHaveBillingAmounts] = useState(false); // Track if all items have billing amounts
+  const [updatingItemIndex, setUpdatingItemIndex] = useState(null); // Track which cost item is being updated
+
+  // Check if invoice has received payment and should be locked
+  const isInvoiceLocked = useMemo(() => {
+    return bills.some(b =>
+      b.paymentStatus === 'Paid' ||
+      b.paymentStatus === 'Partially Paid' ||
+      parseFloat(b.paidAmount || 0) > 0
+    );
+  }, [bills]);
   
   // Payment modal states
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -148,6 +175,13 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
   const [bankName, setBankName] = useState('Commercial Bank');
   const [paymentMode, setPaymentMode] = useState('full');
   const [partialPaymentAmount, setPartialPaymentAmount] = useState('');
+  
+  // Existing cheques state for customer
+  const [existingCheques, setExistingCheques] = useState([]);
+  const [selectedChequeId, setSelectedChequeId] = useState('');
+  const [loadingExistingCheques, setLoadingExistingCheques] = useState(false);
+  const [chequeAutoFilled, setChequeAutoFilled] = useState(false);
+  const [chequeAutoFillData, setChequeAutoFillData] = useState(null);
   
   // Review invoice modal
   const [showReviewInvoiceModal, setShowReviewInvoiceModal] = useState(false);
@@ -254,7 +288,7 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
             
             // If bill amounts are 0, use calculated total from pay items
             let enrichedBill = { ...bill, paymentRecords: records };
-            const billAmount = parseFloat(bill.netTotal) || parseFloat(bill.billingAmount) || parseFloat(bill.grossTotal) || 0;
+            const billAmount = parseFloat(bill.billingAmount) || parseFloat(bill.grossTotal) || parseFloat(bill.amount) || parseFloat(bill.netTotal) || 0;
             if (billAmount === 0 && jobPayItemsTotal > 0) {
               enrichedBill.netTotal = jobPayItemsTotal;
               enrichedBill.billingAmount = jobPayItemsTotal;
@@ -361,10 +395,13 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
         }
       }
       
-      setPayItems(allPayItems);
-      setShowPayItemsRow(allPayItems.length > 0);
+      // Auto-add default defined transporter cost for FCL shipments
+      const finalPayItems = ensureFclTransporterCost(allPayItems, job?.shipmentCategory);
+      
+      setPayItems(finalPayItems);
+      setShowPayItemsRow(finalPayItems.length > 0);
       // Check if all loaded items have billing amounts
-      if (allPayItems.length > 0) {
+      if (finalPayItems.length > 0) {
         setTimeout(() => checkAllItemsHaveBillingAmounts(), 0);
       }
     } catch (error) {
@@ -374,6 +411,7 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
   };
 
   const handlePayItemChange = (index, field, value) => {
+    if (isInvoiceLocked) return;
     const newPayItems = [...payItems];
     newPayItems[index][field] = value;
     
@@ -390,7 +428,100 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
     setPayItems(newPayItems);
   };
 
+  const handleUpdateItem = async (index) => {
+    if (isInvoiceLocked) {
+      setMessage('⚠️ This invoice is locked because payment has already been recorded.');
+      setTimeout(() => setMessage(''), 4000);
+      return;
+    }
+    const item = payItems[index];
+    if (!item) return;
+
+    if (!item.name || !item.name.trim()) {
+      setMessage('❌ Item description cannot be empty');
+      setTimeout(() => setMessage(''), 4000);
+      return;
+    }
+
+    setUpdatingItemIndex(index);
+    try {
+      // 1. If it's an office pay item, update its backend record
+      if (item.isOfficePayItem && item.officePayItemId) {
+        try {
+          await fetch(`${API_BASE}/api/office-pay-items/${item.officePayItemId}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({
+              description: item.name,
+              actualCost: parseFloat(item.actualCost) || 0,
+              billingAmount: parseFloat(item.billingAmount) || 0,
+              hasBill: item.hasBill || false
+            })
+          });
+        } catch (err) {
+          console.error('Error updating office pay item:', err);
+        }
+      }
+
+      // 2. Prepare all pay items to persist in job.payItems
+      const updatedPayItemsData = payItems.map(p => ({
+        description: p.name,
+        name: p.name,
+        itemName: p.name,
+        amount: parseFloat(p.actualCost) || 0,
+        actualCost: parseFloat(p.actualCost) || 0,
+        billingAmount: parseFloat(p.billingAmount) || 0,
+        paidBy: p.paidByName || p.paidBy || 'Office',
+        paidByName: p.paidByName || p.paidBy || 'Office',
+        hasBill: p.hasBill !== undefined ? p.hasBill : true,
+        source: p.isOfficePayItem ? 'Office Payment' : p.isPettyCashItem ? 'Petty Cash' : 'Custom'
+      }));
+
+      await jobService.replacePayItems(job.jobId, updatedPayItemsData);
+
+      // 3. If a bill exists and is unpaid, update the bill totals too
+      const { totalActualCost, totalBillingAmount } = calculateTotals();
+      if (bills && bills.length > 0) {
+        const unpaidBill = bills.find(b => b.paymentStatus === 'Unpaid' || !(parseFloat(b.paidAmount) > 0));
+        if (unpaidBill) {
+          try {
+            await billingService.createBill({
+              jobId: job.jobId,
+              customerId: job.customerId,
+              actualCost: totalActualCost,
+              billingAmount: totalBillingAmount,
+              grossTotal: totalBillingAmount,
+              netTotal: totalBillingAmount
+            });
+            await loadJobBills();
+          } catch (billErr) {
+            console.error('Error updating bill totals after item update:', billErr);
+          }
+        }
+      }
+
+      setPayItemsSaved(true);
+      setMessage(`✅ "${item.name}" cost updated successfully!`);
+      setTimeout(() => setMessage(''), 4000);
+    } catch (error) {
+      console.error('Error updating cost item:', error);
+      const errMsg = error.response?.data?.message || error.message || 'Error updating cost item';
+      setMessage(`❌ ${errMsg}`);
+      setTimeout(() => setMessage(''), 5000);
+    } finally {
+      setUpdatingItemIndex(null);
+    }
+  };
+
   const savePayItems = async () => {
+    if (isInvoiceLocked) {
+      setMessage('⚠️ This invoice is locked because payment has already been recorded.');
+      setTimeout(() => setMessage(''), 4000);
+      return;
+    }
     // Validate job details BEFORE saving pay items
     const missingFields = [];
     
@@ -654,24 +785,147 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
     }
   };
 
+  // Load existing cheques with remaining balance for customer
+  const loadExistingCheques = async (customerId) => {
+    if (!customerId) return;
+    try {
+      setLoadingExistingCheques(true);
+      const res = await apiClient.get(`/payments/customer/${customerId}/cheques`);
+      const data = res.data;
+      setExistingCheques(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.warn('Could not load existing cheques for customer:', err?.response?.status);
+      setExistingCheques([]);
+    } finally {
+      setLoadingExistingCheques(false);
+    }
+  };
+
+  // Open payment modal and load existing cheques for the customer
+  const handleOpenPaymentModal = (bill) => {
+    setSelectedBillForPayment(bill);
+    setShowPaymentModal(true);
+    const customerId = bill?.customerId || job?.customerId;
+    if (customerId) {
+      loadExistingCheques(customerId);
+    }
+  };
+
+  // Switch payment method and load existing cheques if needed
+  const handlePaymentMethodSelect = (method) => {
+    setPaymentMethod(method);
+    if (method === 'Cheque') {
+      const customerId = selectedBillForPayment?.customerId || job?.customerId;
+      if (customerId && existingCheques.length === 0) {
+        loadExistingCheques(customerId);
+      }
+    }
+  };
+
+  // When selecting a cheque from the Saved Cheques slot dropdown
+  const handleExistingChequeSelect = (chequeNum) => {
+    setSelectedChequeId(chequeNum);
+    if (!chequeNum) {
+      // User chose "-- Enter New Cheque --"
+      setChequeNumber('');
+      setChequeDate('');
+      setChequeAmount('');
+      setBankName('Commercial Bank');
+      setChequeAutoFilled(false);
+      setChequeAutoFillData(null);
+      return;
+    }
+    const found = existingCheques.find(c => c.chequeNumber === chequeNum);
+    if (found) {
+      setChequeNumber(found.chequeNumber);
+      setChequeDate(found.chequeDate ? found.chequeDate.split('T')[0] : '');
+      setChequeAmount(String(found.chequeAmount || ''));
+      if (found.bankName) setBankName(found.bankName);
+      setChequeAutoFilled(true);
+      setChequeAutoFillData(found);
+    }
+  };
+
+  // Auto-fill cheque details when typing a cheque number on blur
+  const handleChequeNumberBlur = async (num) => {
+    const trimmed = (num || '').trim();
+    if (!trimmed || trimmed.length < 4) {
+      return;
+    }
+    try {
+      const res = await apiClient.get(`/payments/cheque/${encodeURIComponent(trimmed)}`);
+      const data = res.data;
+      if (data && data.chequeAmount > 0) {
+        setChequeDate(data.chequeDate ? data.chequeDate.split('T')[0] : '');
+        setChequeAmount(String(data.chequeAmount));
+        if (data.bankName) setBankName(data.bankName);
+        setChequeAutoFilled(true);
+        setChequeAutoFillData(data);
+        setSelectedChequeId(data.chequeNumber);
+      }
+    } catch {
+      // New cheque, manually entered
+    }
+  };
+
   const submitPayment = async () => {
     if (!selectedBillForPayment) return;
     
     try {
       const { totalActualCost, totalBillingAmount } = calculateTotals();
-      const invoiceTotal = totalBillingAmount || parseFloat(selectedBillForPayment.netTotal) || parseFloat(selectedBillForPayment.billingAmount) || parseFloat(selectedBillForPayment.grossTotal) || parseFloat(selectedBillForPayment.total) || 0;
+      const billingTotal = parseFloat(selectedBillForPayment.billingAmount) || totalBillingAmount || parseFloat(selectedBillForPayment.grossTotal) || parseFloat(selectedBillForPayment.amount) || 0;
+      const advancePaid = parseFloat(selectedBillForPayment.advancePayment) || 0;
+      const netTotal = selectedBillForPayment.netTotal !== undefined && selectedBillForPayment.netTotal !== null
+        ? parseFloat(selectedBillForPayment.netTotal)
+        : Math.max(0, billingTotal - advancePaid);
+      const invoicePayable = netTotal > 0 ? netTotal : (billingTotal > 0 ? billingTotal : 0);
       const paidAlready = parseFloat(selectedBillForPayment.paidAmount) || 0;
-      const amountDue = invoiceTotal - paidAlready;
+      const amountDue = Math.max(0, invoicePayable - paidAlready);
 
-      // Always update the bill amounts before recording payment to ensure DB is in sync
-      if (totalBillingAmount > 0) {
+      // Validate based on payment method
+      if (paymentMethod === 'Cheque') {
+        if (!chequeNumber || !chequeNumber.trim()) {
+          setMessage('❌ Please enter Cheque Number');
+          setTimeout(() => setMessage(''), 4000);
+          return;
+        }
+        if (!chequeDate) {
+          setMessage('❌ Please select Cheque Date');
+          setTimeout(() => setMessage(''), 4000);
+          return;
+        }
+        if (!chequeAmount || isNaN(parseFloat(chequeAmount)) || parseFloat(chequeAmount) <= 0) {
+          setMessage('❌ Please enter a valid Cheque Price / Amount');
+          setTimeout(() => setMessage(''), 4000);
+          return;
+        }
+
+        const paymentAmt = paymentMode === 'full' ? amountDue : parseFloat(partialPaymentAmount);
+        const enteredChequePrice = parseFloat(chequeAmount);
+
+        // Check if paying amount exceeds available cheque balance
+        if (chequeAutoFillData && chequeAutoFillData.remainingBalance != null) {
+          if (paymentAmt > chequeAutoFillData.remainingBalance + 0.01) {
+            setMessage(`❌ Payment amount (LKR ${formatAmount(paymentAmt)}) exceeds the available cheque balance (LKR ${formatAmount(chequeAutoFillData.remainingBalance)})`);
+            setTimeout(() => setMessage(''), 5000);
+            return;
+          }
+        } else if (paymentAmt > enteredChequePrice + 0.01) {
+          setMessage(`❌ Payment amount (LKR ${formatAmount(paymentAmt)}) exceeds the total cheque price (LKR ${formatAmount(enteredChequePrice)})`);
+          setTimeout(() => setMessage(''), 5000);
+          return;
+        }
+      }
+
+      // Update the bill amounts before recording payment only if invoice is not locked
+      if (totalBillingAmount > 0 && !isInvoiceLocked) {
         const billUpdateData = {
           jobId: job.jobId,
           customerId: job.customerId,
           actualCost: totalActualCost,
           billingAmount: totalBillingAmount,
           grossTotal: totalBillingAmount,
-          netTotal: totalBillingAmount
+          netTotal: Math.max(0, totalBillingAmount - advancePaid)
         };
         const updateResult = await billingService.createBill(billUpdateData);
         // If bill was blocked (already paid), skip the update
@@ -688,9 +942,9 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
       };
       
       if (paymentMethod === 'Cheque') {
-        paymentData.chequeNumber = chequeNumber;
+        paymentData.chequeNumber = chequeNumber.trim();
         paymentData.chequeDate = chequeDate;
-        paymentData.chequeAmount = paymentMode === 'full' ? amountDue : parseFloat(partialPaymentAmount);
+        paymentData.chequeAmount = parseFloat(chequeAmount);
         paymentData.bankName = bankName;
       }
       
@@ -732,6 +986,10 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
     setPaymentMode('full');
     setPartialPaymentAmount('');
     setSelectedBillForPayment(null);
+    setExistingCheques([]);
+    setSelectedChequeId('');
+    setChequeAutoFilled(false);
+    setChequeAutoFillData(null);
   };
 
   // Helper functions for printing
@@ -1236,6 +1494,11 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
   };
 
 const handleDeleteItem = async (index) => {
+    if (isInvoiceLocked) {
+      setMessage('⚠️ This invoice is locked because payment has already been recorded.');
+      setTimeout(() => setMessage(''), 4000);
+      return;
+    }
     const itemName = payItems[index].name;
     if (!window.confirm(`Delete "${itemName}"?`)) {
       return;
@@ -1326,31 +1589,53 @@ const handleDeleteItem = async (index) => {
             
             {!loadingSettlement && payItems.length > 0 && (
                   <div className="mt-4">
+                    {/* Invoice Locked Notification */}
+                    {isInvoiceLocked && (
+                      <div className="mb-4 flex items-center gap-3 p-3.5 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-sm font-medium shadow-xs">
+                        <div className="p-2 bg-amber-100 rounded-lg text-amber-700 flex-shrink-0">
+                          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                          </svg>
+                        </div>
+                        <div>
+                          <p className="font-semibold text-amber-900">
+                            Invoice is Locked ({bills.some(b => b.paymentStatus === 'Paid') ? 'Fully Paid' : 'Payment Recorded'})
+                          </p>
+                          <p className="text-xs text-amber-700 mt-0.5">
+                            Because this invoice has received at least a partial payment, pay items and billing amounts can no longer be edited or updated.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Add Buttons */}
-                    <div className="mb-4 flex gap-2">
-                      <button
-                        onClick={handleAddPayItem}
-                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition flex items-center gap-2"
-                      >
-                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <line x1="12" y1="5" x2="12" y2="19"></line>
-                          <line x1="5" y1="12" x2="19" y2="12"></line>
-                        </svg>
-                        Add Pay Item
-                      </button>
-                      <button
-                        onClick={handleAddTransporterCost}
-                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition flex items-center gap-2"
-                      >
-                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <rect x="1" y="3" width="15" height="13"></rect>
-                          <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon>
-                          <circle cx="5.5" cy="18.5" r="2.5"></circle>
-                          <circle cx="18.5" cy="18.5" r="2.5"></circle>
-                        </svg>
-                        Add Transporter Cost
-                      </button>
-                    </div>
+                    {!isInvoiceLocked && (
+                      <div className="mb-4 flex gap-2">
+                        <button
+                          onClick={handleAddPayItem}
+                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition flex items-center gap-2"
+                        >
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                          </svg>
+                          Add Pay Item
+                        </button>
+                        <button
+                          onClick={handleAddTransporterCost}
+                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition flex items-center gap-2"
+                        >
+                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <rect x="1" y="3" width="15" height="13"></rect>
+                            <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon>
+                            <circle cx="5.5" cy="18.5" r="2.5"></circle>
+                            <circle cx="18.5" cy="18.5" r="2.5"></circle>
+                          </svg>
+                          Add Transporter Cost
+                        </button>
+                      </div>
+                    )}
 
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
@@ -1370,52 +1655,107 @@ const handleDeleteItem = async (index) => {
                                 <input
                                   type="text"
                                   value={item.name}
+                                  disabled={isInvoiceLocked}
                                   onChange={(e) => handlePayItemChange(idx, 'name', e.target.value)}
-placeholder="Enter item name"
-                                  className="w-full px-2 py-1 border border-gray-300 rounded focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
-/>
+                                  placeholder="Enter item name"
+                                  className={`w-full px-2 py-1 border rounded outline-none ${
+                                    isInvoiceLocked
+                                      ? 'bg-gray-100 text-gray-700 cursor-not-allowed border-gray-200'
+                                      : 'border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
+                                  }`}
+                                />
                               </td>
                               <td className="px-4 py-2 text-right">
                                 <input
                                   type="number"
                                   value={item.actualCost}
+                                  disabled={isInvoiceLocked}
                                   onChange={(e) => handlePayItemChange(idx, 'actualCost', e.target.value)}
-placeholder="0"
-                                  className="w-24 px-2 py-1 border border-gray-300 rounded text-right focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
-/>
+                                  placeholder="0"
+                                  className={`w-24 px-2 py-1 border rounded text-right outline-none ${
+                                    isInvoiceLocked
+                                      ? 'bg-gray-100 text-gray-700 cursor-not-allowed border-gray-200'
+                                      : 'border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
+                                  }`}
+                                />
                               </td>
                               <td className="px-4 py-2 text-right">
                                 <input
                                   type="number"
                                   value={item.billingAmount}
+                                  disabled={isInvoiceLocked}
                                   onChange={(e) => handlePayItemChange(idx, 'billingAmount', e.target.value)}
-placeholder="0"
-                                  className="w-24 px-2 py-1 border border-gray-300 rounded text-right focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
-/>
+                                  placeholder="0"
+                                  className={`w-24 px-2 py-1 border rounded text-right outline-none ${
+                                    isInvoiceLocked
+                                      ? 'bg-gray-100 text-gray-700 cursor-not-allowed border-gray-200'
+                                      : 'border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
+                                  }`}
+                                />
                               </td>
                               <td className="px-4 py-2 text-center">
                                 <input
                                   type="checkbox"
                                   checked={item.sameAmount}
+                                  disabled={isInvoiceLocked}
                                   onChange={(e) => handlePayItemChange(idx, 'sameAmount', e.target.checked)}
-className="w-4 h-4"
+                                  className={`w-4 h-4 ${isInvoiceLocked ? 'cursor-not-allowed opacity-60' : ''}`}
                                 />
                               </td>
                               <td className="px-4 py-2 text-center">
-                                {item.isNewItem ? (
-                                <button
-                                  onClick={() => handleDeleteItem(idx)}
-                                  title="Delete this item"
-                                  className="p-2 text-red-600 hover:bg-red-50 rounded transition"
-                                >
-                                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <path d="M3 6h18"></path>
-                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path>
-                                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                                  </svg>
-                                </button>
-                                ) : null}
-</td>
+                                {isInvoiceLocked ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-gray-100 text-gray-600">
+                                    <svg className="w-3 h-3 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                                    </svg>
+                                    Locked
+                                  </span>
+                                ) : (
+                                  <div className="flex items-center justify-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateItem(idx)}
+                                      disabled={updatingItemIndex === idx}
+                                      title={`Update ${item.name || 'cost'}`}
+                                      className="px-2.5 py-1 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-md transition flex items-center gap-1 shadow-sm disabled:opacity-50"
+                                    >
+                                      {updatingItemIndex === idx ? (
+                                        <>
+                                          <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                                          </svg>
+                                          Saving...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                                            <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                                            <polyline points="7 3 7 8 15 8"></polyline>
+                                          </svg>
+                                          Update
+                                        </>
+                                      )}
+                                    </button>
+                                    {item.isNewItem && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteItem(idx)}
+                                        title="Delete this item"
+                                        className="p-1.5 text-red-600 hover:bg-red-50 rounded transition"
+                                      >
+                                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                          <path d="M3 6h18"></path>
+                                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path>
+                                          <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                        </svg>
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -1452,8 +1792,8 @@ className="w-4 h-4"
                             </div>
                           </div>
                           
-                          {/* Show Save Button if items are not saved yet */}
-                          {!payItemsSaved && (
+                          {/* Show Save Button if items are not saved yet and invoice not locked */}
+                          {!payItemsSaved && !isInvoiceLocked && (
                             <div className="mt-4">
                               {!totalBillingFilled && (
                                 <p className="text-sm text-orange-700 bg-orange-50 border border-orange-200 rounded-lg p-3 mb-3">
@@ -1472,19 +1812,21 @@ className="w-4 h-4"
                           {/* Show Generate Invoice and Review Invoice buttons when items are saved AND (no bill exists OR bill is unpaid with no payments) */}
                           {payItemsSaved && (bills.length === 0 || bills.every(b => b.paymentStatus === 'Unpaid' && !(parseFloat(b.paidAmount) > 0))) && (
                             <div className="mt-4 flex flex-wrap items-center gap-3">
-                              <button
-                                type="button"
-                                onClick={() => setShowReviewInvoiceModal(true)}
-                                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition flex items-center gap-2 shadow-sm"
-                                title="Send invoice pay items to clerk for review"
-                              >
-                                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                  <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"></path>
-                                  <rect x="9" y="3" width="6" height="4" rx="1"></rect>
-                                  <path d="M9 14l2 2 4-4"></path>
-                                </svg>
-                                Review Invoice
-                              </button>
+                              {bills.length === 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setShowReviewInvoiceModal(true)}
+                                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition flex items-center gap-2 shadow-sm"
+                                  title="Send invoice pay items to clerk for review"
+                                >
+                                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"></path>
+                                    <rect x="9" y="3" width="6" height="4" rx="1"></rect>
+                                    <path d="M9 14l2 2 4-4"></path>
+                                  </svg>
+                                  Review Invoice
+                                </button>
+                              )}
                               <button
                                 onClick={generateBill}
                                 className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition flex items-center gap-2 shadow-sm"
@@ -1515,7 +1857,7 @@ className="w-4 h-4"
                   </div>
                 )}
             
-            {!loadingSettlement && payItems.length === 0 && (
+            {!loadingSettlement && payItems.length === 0 && !isInvoiceLocked && (
               <div className="flex gap-2">
                 <button
                   onClick={handleAddPayItem}
@@ -1554,7 +1896,21 @@ className="w-4 h-4"
                             bill.paymentStatus === 'Partially Paid' ? 'text-orange-600' : 'text-red-600'
                           }`}>{bill.paymentStatus}</span>
                         </p>
-                        <p className="text-gray-600 text-sm">Amount: LKR {formatAmount(bill.netTotal || bill.billingAmount || bill.grossTotal || bill.total)}</p>
+                        <div className="text-sm text-gray-600 space-y-0.5 mt-1">
+                          <p>Invoice Total: <strong className="text-gray-900">LKR {formatAmount(bill.billingAmount || bill.grossTotal || bill.amount)}</strong></p>
+                          {parseFloat(bill.advancePayment || 0) > 0 && (
+                            <p>Advance Paid: <strong className="text-blue-600">LKR {formatAmount(bill.advancePayment)}</strong></p>
+                          )}
+                          <p className="text-gray-900 font-medium">
+                            Payment Amount Due: <span className="text-orange-600 font-bold">LKR {formatAmount(
+                              parseFloat(bill.remainingAmount !== undefined && bill.remainingAmount !== null && bill.paymentStatus === 'Partially Paid' ? bill.remainingAmount : (
+                                bill.netTotal !== undefined && bill.netTotal !== null
+                                  ? bill.netTotal
+                                  : Math.max(0, (parseFloat(bill.billingAmount || bill.grossTotal || bill.amount || 0) - parseFloat(bill.advancePayment || 0)))
+                              ))
+                            )}</span>
+                          </p>
+                        </div>
                       </div>
                       <div className="flex gap-2">
                         <button
@@ -1581,10 +1937,7 @@ className="w-4 h-4"
                         </button>
                         {(bill.paymentStatus === 'Unpaid' || bill.paymentStatus === 'Partially Paid') && (
                           <button
-                            onClick={() => {
-                              setSelectedBillForPayment(bill);
-                              setShowPaymentModal(true);
-                            }}
+                            onClick={() => handleOpenPaymentModal(bill)}
                             className="px-3 py-1 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded flex items-center gap-1"
                           >
                             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1592,23 +1945,6 @@ className="w-4 h-4"
                               <polyline points="12 6 12 12 16 14"></polyline>
                             </svg>
                             Record Payment
-                          </button>
-                        )}
-                        {(bill.paymentStatus === 'Unpaid' || bill.paymentStatus === 'Partially Paid') && (
-                          <button
-                            onClick={() => {
-                              setSelectedBillForPayment(bill);
-                              setShowReviewInvoiceModal(true);
-                            }}
-                            className="px-3 py-1 text-sm bg-orange-600 hover:bg-orange-700 text-white rounded flex items-center gap-1"
-                          >
-                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                              <polyline points="14 2 14 8 20 8"></polyline>
-                              <path d="M12 11v6"></path>
-                              <path d="M9 14l3 3 3-3"></path>
-                            </svg>
-                            Send for Review
                           </button>
                         )}
                       </div>
@@ -1619,6 +1955,9 @@ className="w-4 h-4"
                         <p><strong>Actual Cost:</strong> LKR {formatAmount(bill.actualCost)}</p>
                         <p><strong>Billing Amount:</strong> LKR {formatAmount(bill.billingAmount)}</p>
                         <p><strong>Profit:</strong> LKR {formatAmount(bill.profit)}</p>
+                        {parseFloat(bill.advancePayment || 0) > 0 && (
+                          <p><strong>Advance Paid:</strong> LKR {formatAmount(bill.advancePayment)}</p>
+                        )}
                         {bill.paymentStatus === 'Partially Paid' && (
                           <>
                             <p><strong>Amount Paid:</strong> LKR {formatAmount(bill.paidAmount || 0)}</p>
@@ -1636,9 +1975,14 @@ className="w-4 h-4"
 
         {/* Payment Modal */}
         {showPaymentModal && selectedBillForPayment && (() => {
-          const invoiceTotal = parseFloat(selectedBillForPayment.netTotal) || parseFloat(selectedBillForPayment.billingAmount) || parseFloat(selectedBillForPayment.grossTotal) || parseFloat(selectedBillForPayment.total) || 0;
+          const billingTotal = parseFloat(selectedBillForPayment.billingAmount) || parseFloat(selectedBillForPayment.grossTotal) || parseFloat(selectedBillForPayment.amount) || 0;
+          const advancePaid = parseFloat(selectedBillForPayment.advancePayment) || 0;
+          const netTotal = selectedBillForPayment.netTotal !== undefined && selectedBillForPayment.netTotal !== null
+            ? parseFloat(selectedBillForPayment.netTotal)
+            : Math.max(0, billingTotal - advancePaid);
+          const invoicePayable = netTotal > 0 ? netTotal : (billingTotal > 0 ? billingTotal : 0);
           const paidAlready = parseFloat(selectedBillForPayment.paidAmount) || 0;
-          const amountDue = invoiceTotal - paidAlready;
+          const amountDue = Math.max(0, invoicePayable - paidAlready);
           const collectAmount = paymentMode === 'full' ? amountDue : (parseFloat(partialPaymentAmount) || 0);
 
           return (
@@ -1674,10 +2018,13 @@ className="w-4 h-4"
                 </div>
                 <div>
                   <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Invoice Total</p>
-                  <p className="text-sm font-bold text-gray-900 mt-0.5">LKR {formatAmount(invoiceTotal)}</p>
+                  <p className="text-sm font-bold text-gray-900 mt-0.5">LKR {formatAmount(billingTotal || invoicePayable)}</p>
+                  {advancePaid > 0 && (
+                    <p className="text-[10px] text-blue-600 font-medium">Adv: LKR {formatAmount(advancePaid)}</p>
+                  )}
                 </div>
                 <div>
-                  <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Amount Due</p>
+                  <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Payment Due</p>
                   <p className="text-sm font-bold text-orange-600 mt-0.5">LKR {formatAmount(amountDue)}</p>
                 </div>
               </div>
@@ -1743,7 +2090,7 @@ className="w-4 h-4"
                     ].map(method => (
                       <button
                         key={method.value}
-                        onClick={() => setPaymentMethod(method.value)}
+                        onClick={() => handlePaymentMethodSelect(method.value)}
                         className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 text-sm font-medium transition ${
                           paymentMethod === method.value 
                             ? 'border-gray-800 bg-white text-gray-900' 
@@ -1758,35 +2105,184 @@ className="w-4 h-4"
 
                   {/* Cheque Details */}
                   {paymentMethod === 'Cheque' && (
-                    <div className="grid grid-cols-2 gap-3 mt-4">
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">Cheque Number</label>
-                        <input type="text" value={chequeNumber} onChange={(e) => setChequeNumber(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" placeholder="Enter cheque number" />
+                    <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
+                          <svg className="w-4 h-4 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <rect x="2" y="5" width="20" height="14" rx="2" />
+                            <line x1="2" y1="10" x2="22" y2="10" />
+                          </svg>
+                          Cheque Details
+                        </span>
+                        {loadingExistingCheques && (
+                          <span className="text-xs text-blue-600 flex items-center gap-1">
+                            <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Loading saved cheques...
+                          </span>
+                        )}
                       </div>
+
+                      {/* Saved Cheques Slot */}
                       <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">Cheque Date</label>
-                        <input type="date" value={chequeDate} onChange={(e) => setChequeDate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">Bank Name</label>
-                        <select value={bankName} onChange={(e) => setBankName(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
-                          <option value="Commercial Bank">Commercial Bank</option>
-                          <option value="Bank of Ceylon">Bank of Ceylon</option>
-                          <option value="People's Bank">People's Bank</option>
-                          <option value="Hatton National Bank">Hatton National Bank</option>
-                          <option value="Sampath Bank">Sampath Bank</option>
-                          <option value="Nations Trust Bank">Nations Trust Bank</option>
-                          <option value="DFCC Bank">DFCC Bank</option>
-                          <option value="Seylan Bank">Seylan Bank</option>
-                          <option value="NDB Bank">NDB Bank</option>
-                          <option value="Pan Asia Banking">Pan Asia Banking</option>
-                          <option value="Union Bank">Union Bank</option>
-                          <option value="Amana Bank">Amana Bank</option>
-                          <option value="HSBC">HSBC</option>
-                          <option value="Standard Chartered">Standard Chartered</option>
-                          <option value="Cargills Bank">Cargills Bank</option>
-                          <option value="Other">Other</option>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-semibold text-gray-700">
+                            Saved Cheques Slot (Select Existing or New)
+                          </label>
+                          {existingCheques.length > 0 && (
+                            <span className="text-[11px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                              {existingCheques.length} saved cheque{existingCheques.length > 1 ? 's' : ''} available
+                            </span>
+                          )}
+                        </div>
+                        <select
+                          value={selectedChequeId}
+                          onChange={(e) => handleExistingChequeSelect(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                        >
+                          <option value="">✨ -- Enter New Cheque --</option>
+                          {existingCheques.map((c) => (
+                            <option key={c.chequeNumber} value={c.chequeNumber}>
+                              Cheque #{c.chequeNumber} — Price: LKR {formatAmount(c.chequeAmount)} (Available: LKR {formatAmount(c.remainingBalance)}){c.bankName ? ` - ${c.bankName}` : ''}
+                            </option>
+                          ))}
                         </select>
+                      </div>
+
+                      {/* Active Cheque Info Banner */}
+                      {chequeAutoFilled && chequeAutoFillData && (
+                        <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 font-bold">✓</span>
+                            <div>
+                              <p className="font-semibold text-emerald-900">
+                                Existing Cheque #{chequeAutoFillData.chequeNumber} Selected
+                              </p>
+                              <p className="text-[11px] text-emerald-700">
+                                Cheque Price: <span className="font-semibold">LKR {formatAmount(chequeAutoFillData.chequeAmount)}</span> | Available Balance: <span className="font-bold text-emerald-900">LKR {formatAmount(chequeAutoFillData.remainingBalance)}</span>
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleExistingChequeSelect('')}
+                            className="text-[11px] text-emerald-700 hover:text-emerald-900 underline font-medium"
+                          >
+                            Use New
+                          </button>
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-2 gap-3">
+                        {/* Cheque Number */}
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            Cheque Number <span className="text-red-500">*</span>
+                            {chequeAutoFilled && <span className="text-emerald-600 font-normal ml-1">(Saved)</span>}
+                          </label>
+                          <input
+                            type="text"
+                            value={chequeNumber}
+                            readOnly={chequeAutoFilled}
+                            onChange={(e) => {
+                              setChequeNumber(e.target.value);
+                              if (chequeAutoFilled) {
+                                setChequeAutoFilled(false);
+                                setChequeAutoFillData(null);
+                                setSelectedChequeId('');
+                              }
+                            }}
+                            onBlur={(e) => handleChequeNumberBlur(e.target.value)}
+                            className={`w-full px-3 py-2 border rounded-lg text-sm outline-none transition ${
+                              chequeAutoFilled
+                                ? 'bg-gray-100 text-gray-500 cursor-not-allowed border-gray-200'
+                                : 'bg-white text-gray-900 border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent'
+                            }`}
+                            placeholder="Enter cheque number"
+                          />
+                        </div>
+
+                        {/* Cheque Price / Amount */}
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            Cheque Price / Amount (LKR) <span className="text-red-500">*</span>
+                            {chequeAutoFilled && <span className="text-emerald-600 font-normal ml-1">(Saved)</span>}
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0.01"
+                            value={chequeAmount}
+                            readOnly={chequeAutoFilled}
+                            onChange={(e) => setChequeAmount(e.target.value)}
+                            className={`w-full px-3 py-2 border rounded-lg text-sm outline-none transition ${
+                              chequeAutoFilled
+                                ? 'bg-gray-100 text-gray-500 cursor-not-allowed border-gray-200'
+                                : 'bg-white text-gray-900 border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent'
+                            }`}
+                            placeholder="e.g. 50000.00"
+                          />
+                          <p className="text-[11px] text-gray-500 mt-0.5">
+                            {chequeAutoFilled ? 'Locked to saved cheque face value' : 'Face value / total price of the cheque'}
+                          </p>
+                        </div>
+
+                        {/* Cheque Date */}
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            Cheque Date <span className="text-red-500">*</span>
+                            {chequeAutoFilled && <span className="text-emerald-600 font-normal ml-1">(Saved)</span>}
+                          </label>
+                          <input
+                            type="date"
+                            value={chequeDate}
+                            readOnly={chequeAutoFilled}
+                            disabled={chequeAutoFilled}
+                            onChange={(e) => setChequeDate(e.target.value)}
+                            className={`w-full px-3 py-2 border rounded-lg text-sm outline-none transition ${
+                              chequeAutoFilled
+                                ? 'bg-gray-100 text-gray-500 cursor-not-allowed border-gray-200'
+                                : 'bg-white text-gray-900 border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent'
+                            }`}
+                          />
+                        </div>
+
+                        {/* Bank Name */}
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            Bank Name <span className="text-red-500">*</span>
+                            {chequeAutoFilled && <span className="text-emerald-600 font-normal ml-1">(Saved)</span>}
+                          </label>
+                          <select
+                            value={bankName}
+                            disabled={chequeAutoFilled}
+                            onChange={(e) => setBankName(e.target.value)}
+                            className={`w-full px-3 py-2 border rounded-lg text-sm outline-none transition ${
+                              chequeAutoFilled
+                                ? 'bg-gray-100 text-gray-500 cursor-not-allowed border-gray-200'
+                                : 'bg-white text-gray-900 border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent'
+                            }`}
+                          >
+                            <option value="Commercial Bank">Commercial Bank</option>
+                            <option value="Bank of Ceylon">Bank of Ceylon</option>
+                            <option value="People's Bank">People's Bank</option>
+                            <option value="Hatton National Bank">Hatton National Bank</option>
+                            <option value="Sampath Bank">Sampath Bank</option>
+                            <option value="Nations Trust Bank">Nations Trust Bank</option>
+                            <option value="DFCC Bank">DFCC Bank</option>
+                            <option value="Seylan Bank">Seylan Bank</option>
+                            <option value="NDB Bank">NDB Bank</option>
+                            <option value="Pan Asia Banking">Pan Asia Banking</option>
+                            <option value="Union Bank">Union Bank</option>
+                            <option value="Amana Bank">Amana Bank</option>
+                            <option value="HSBC">HSBC</option>
+                            <option value="Standard Chartered">Standard Chartered</option>
+                            <option value="Cargills Bank">Cargills Bank</option>
+                            <option value="Other">Other</option>
+                          </select>
+                        </div>
                       </div>
                     </div>
                   )}

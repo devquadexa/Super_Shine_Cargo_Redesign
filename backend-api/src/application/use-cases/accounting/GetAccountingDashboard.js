@@ -10,8 +10,9 @@ class GetAccountingDashboard {
     this.customerRepository = customerRepository;
   }
 
-  async execute() {
-    console.log('GetAccountingDashboard - Starting...');
+  async execute(filters = {}) {
+    const { fromDate, toDate } = filters || {};
+    console.log('GetAccountingDashboard - Starting with filters:', { fromDate, toDate });
     
     // Get all jobs with their financial data
     const jobs = await this.jobRepository.findAll();
@@ -36,26 +37,51 @@ class GetAccountingDashboard {
       // Get bill for this job
       const jobBills = bills.filter(b => b.jobId === job.jobId);
       const bill = jobBills.length > 0 ? jobBills[0] : null;
+
+      // Filter by date range if provided
+      if (fromDate || toDate) {
+        const rawDate = job.openDate || (bill ? bill.invoiceDate : null) || job.createdAt;
+        if (!rawDate) continue;
+
+        let dateStr = '';
+        if (typeof rawDate === 'string') {
+          dateStr = rawDate.split('T')[0];
+        } else if (rawDate instanceof Date) {
+          dateStr = rawDate.toISOString().split('T')[0];
+        } else {
+          const d = new Date(rawDate);
+          if (isNaN(d.getTime())) continue;
+          dateStr = d.toISOString().split('T')[0];
+        }
+
+        if (fromDate && dateStr < fromDate) continue;
+        if (toDate && dateStr > toDate) continue;
+      }
       
       // Get ALL petty cash assignments for this job (not just the first one)
       const jobPettyCash = pettyCashAssignments.filter(pc => pc.jobId === job.jobId);
       const totalPettyCashIssued = jobPettyCash.reduce((sum, pc) => sum + (parseFloat(pc.assignedAmount || pc.amount || 0)), 0);
       
-      // Calculate actual cost from pay items
-      const actualCost = job.payItems ? 
+      // Calculate actual cost from pay items or bill
+      const payItemsActualCost = job.payItems ? 
         job.payItems.reduce((sum, item) => sum + (parseFloat(item.actualCost) || 0), 0) : 0;
+      const actualCost = payItemsActualCost || (bill ? parseFloat(bill.actualCost || 0) : 0);
       
-      // Calculate billing amount (use netTotal which accounts for advance payments, fallback to billingAmount)
-      const billingAmount = bill ? (parseFloat(bill.netTotal) || parseFloat(bill.billingAmount) || parseFloat(bill.amount) || 0) : 0;
+      // Calculate billing amount (use billingAmount, fallback to grossTotal/amount/total/netTotal)
+      const billingAmount = bill ? (parseFloat(bill.billingAmount) || parseFloat(bill.grossTotal) || parseFloat(bill.amount) || parseFloat(bill.total) || parseFloat(bill.netTotal) || 0) : 0;
       
       // Amount already paid
       const paidAmount = bill ? (parseFloat(bill.paidAmount) || 0) : 0;
       
-      // Remaining outstanding for this bill
-      const remainingAmount = billingAmount - paidAmount;
+      // Remaining outstanding for this bill (after advance payment deduction)
+      const advancePaid = bill ? (parseFloat(bill.advancePayment) || 0) : 0;
+      const netPayable = bill && bill.netTotal !== undefined && bill.netTotal !== null ? parseFloat(bill.netTotal) : Math.max(0, billingAmount - advancePaid);
+      const remainingAmount = Math.max(0, (netPayable > 0 ? netPayable : billingAmount) - paidAmount);
       
-      // Calculate profit
-      const profit = billingAmount - actualCost;
+      // Calculate profit (use bill.profit if available, otherwise billingAmount - actualCost)
+      const profit = bill && bill.profit !== undefined && bill.profit !== null && !isNaN(parseFloat(bill.profit))
+        ? parseFloat(bill.profit)
+        : (billingAmount - actualCost);
       
       // Payment status
       const isPaid = bill ? bill.paymentStatus === 'Paid' : false;
@@ -143,7 +169,8 @@ class GetAccountingDashboard {
     return {
       summary,
       jobFinancials,
-      customerOutstanding: Object.values(customerOutstanding)
+      customerOutstanding: Object.values(customerOutstanding),
+      filters: { fromDate: fromDate || null, toDate: toDate || null }
     };
   }
 }

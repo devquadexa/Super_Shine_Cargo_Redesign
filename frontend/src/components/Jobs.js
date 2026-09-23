@@ -1558,7 +1558,9 @@ function Jobs() {
                         <svg viewBox="0 0 24 24" fill="none" stroke="#1E3F63" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 shrink-0">
                           <rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>
                         </svg>
-                        <span className="text-sm font-bold text-[#1E3F63] uppercase tracking-wider">Payment Details</span>
+                        <span className="text-sm font-bold text-[#1E3F63] uppercase tracking-wider">
+                          {user?.role === 'Waff Clerk' ? 'Petty Cash Assignments' : 'Payment Details'}
+                        </span>
                       </div>
                       {/* Add buttons in header */}
                       {['Admin','Super Admin','Manager','Office Executive'].includes(user?.role) && (
@@ -1588,112 +1590,45 @@ function Jobs() {
                     </div>
 
                     {/* Office Pay Items sub-table */}
-                    <div className="border-b border-gray-100">
-                      <div className="px-5 py-2.5 bg-blue-50 border-b border-blue-200">
-                        <span className="text-xs font-bold text-blue-700 uppercase tracking-wider">① Office Pay Items</span>
-                      </div>
-                      <table className="w-full text-sm border-collapse">
-                        <thead>
-                          <tr className="bg-gray-50 border-b border-gray-100">
-                            <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Description</th>
-                            <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Amount</th>
-                            <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Paid By</th>
-                            <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Date</th>
-                            {['Admin','Super Admin','Manager','Office Executive'].includes(user?.role) && (
-                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Actions</th>
-                            )}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {pd.officeItems.length === 0 ? (
-                            <tr><td colSpan={5} className="px-5 py-3 text-gray-400 text-xs italic">No office payments yet</td></tr>
-                          ) : pd.officeItems.map((item, i) => (
-                            <tr key={item.officePayItemId||i} className={`border-b border-gray-50 ${i%2===0?'bg-white':'bg-[#f8fafc]'}`}>
-                              <td className="px-5 py-3 text-gray-900 font-medium">{item.description||'-'}</td>
-                              <td className="px-5 py-3 text-gray-900 font-semibold">{fmtLKR(item.actualCost)}</td>
-                              <td className="px-5 py-3 text-gray-600">{item.paidByName||'-'}</td>
-                              <td className="px-5 py-3 text-gray-600">{fmtDT(item.paymentDate)}</td>
+                    {user?.role !== 'Waff Clerk' && (
+                      <div className="border-b border-gray-100">
+                        <div className="px-5 py-2.5 bg-blue-50 border-b border-blue-200">
+                          <span className="text-xs font-bold text-blue-700 uppercase tracking-wider">① Office Pay Items</span>
+                        </div>
+                        <table className="w-full text-sm border-collapse">
+                          <thead>
+                            <tr className="bg-gray-50 border-b border-gray-100">
+                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Description</th>
+                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Amount</th>
+                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Paid By</th>
+                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Date</th>
                               {['Admin','Super Admin','Manager','Office Executive'].includes(user?.role) && (
-                                <td className="px-5 py-3">
-                                  <button
-                                    onClick={() => setEditingOfficePayItem({ officePayItemId: item.officePayItemId, description: item.description || '', actualCost: String(item.actualCost || ''), jobId: viewJobModal.jobId })}
-                                    className="p-1.5 rounded text-blue-600 hover:bg-blue-50 transition mr-1" title="Edit"
-                                  >
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-                                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                                    </svg>
-                                  </button>
-                                  <button
-                                    onClick={async () => { if (!window.confirm('Are you sure you want to delete this office pay item?')) return; try { await apiClient.delete(`/office-pay-items/${item.officePayItemId}`); fetchJobs(); fetchJobPayments(viewJobModal.jobId); } catch(err) { console.error('Delete error:', err); } }}
-                                    className="p-1.5 rounded text-red-500 hover:bg-red-50 transition" title="Delete"
-                                  >
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-                                      <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                                    </svg>
-                                  </button>
-                                </td>
+                                <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Actions</th>
                               )}
                             </tr>
-                          ))}
-                        </tbody>
-                        <tfoot>
-                          <tr className="bg-blue-50 border-t border-blue-200">
-                            <td colSpan={['Admin','Super Admin','Manager','Office Executive'].includes(user?.role) ? 4 : 3} className="px-5 py-2.5 text-right text-xs font-bold text-gray-600 uppercase tracking-wide">Total Office Payments</td>
-                            <td className="px-5 py-2.5 text-blue-700 font-bold text-sm">{fmtLKR(officeTotal)}</td>
-                          </tr>
-                        </tfoot>
-                      </table>
-                    </div>
-
-                    {/* Advance Payments sub-table */}
-                    <div>
-                      <div className="px-5 py-2.5 bg-green-50 border-b border-green-200">
-                        <span className="text-xs font-bold text-green-700 uppercase tracking-wider">② Advance Payments</span>
-                      </div>
-                      <table className="w-full text-sm border-collapse">
-                        <thead>
-                          <tr className="bg-gray-50 border-b border-gray-100">
-                            <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Description</th>
-                            <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Amount</th>
-                            <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Paid By</th>
-                            <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Date</th>
-                            <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Notes</th>
-                            {['Admin','Super Admin','Manager'].includes(user?.role) && (
-                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Actions</th>
-                            )}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {pd.advancePayments.length === 0 ? (
-                            <tr><td colSpan={6} className="px-5 py-3 text-gray-400 text-xs italic">No advance payments yet</td></tr>
-                          ) : pd.advancePayments.map((pmt, i) => {
-                            const ptLabel = (pmt.paymentType||'').toLowerCase() === 'check'
-                              ? `Advance Payment (Check #${pmt.checkNo||'-'})`
-                              : `Advance Payment (${pmt.paymentType||'-'})`;
-                            return (
-                              <tr key={pmt.advancePaymentId||i} className={`border-b border-gray-50 ${i%2===0?'bg-white':'bg-[#f8fafc]'}`}>
-                                <td className="px-5 py-3 text-gray-900 font-medium">{ptLabel}</td>
-                                <td className="px-5 py-3 text-gray-900 font-semibold">{fmtLKR(pmt.amount)}</td>
-                                <td className="px-5 py-3 text-gray-600">{pmt.recordedByName||pmt.recordedBy||'-'}</td>
-                                <td className="px-5 py-3 text-gray-600">{fmtDT(pmt.paymentMadeDate)}</td>
-                                <td className="px-5 py-3 text-gray-500 text-xs">{pmt.notes||'-'}</td>
-                                {['Admin','Super Admin','Manager'].includes(user?.role) && (
+                          </thead>
+                          <tbody>
+                            {pd.officeItems.length === 0 ? (
+                              <tr><td colSpan={5} className="px-5 py-3 text-gray-400 text-xs italic">No office payments yet</td></tr>
+                            ) : pd.officeItems.map((item, i) => (
+                              <tr key={item.officePayItemId||i} className={`border-b border-gray-50 ${i%2===0?'bg-white':'bg-[#f8fafc]'}`}>
+                                <td className="px-5 py-3 text-gray-900 font-medium">{item.description||'-'}</td>
+                                <td className="px-5 py-3 text-gray-900 font-semibold">{fmtLKR(item.actualCost)}</td>
+                                <td className="px-5 py-3 text-gray-600">{item.paidByName||'-'}</td>
+                                <td className="px-5 py-3 text-gray-600">{fmtDT(item.paymentDate)}</td>
+                                {['Admin','Super Admin','Manager','Office Executive'].includes(user?.role) && (
                                   <td className="px-5 py-3">
                                     <button
-                                      onClick={() => setEditingAdvancePayment({ advancePaymentId: pmt.advancePaymentId, amount: String(pmt.amount || ''), paymentMadeDate: pmt.paymentMadeDate ? new Date(pmt.paymentMadeDate).toISOString().split('T')[0] : '', paymentType: pmt.paymentType || 'cash', checkNo: pmt.checkNo || '', notes: pmt.notes || '', jobId: viewJobModal.jobId })}
-                                      className={`p-1.5 rounded mr-1 transition ${pmt.isLegacy ? 'text-gray-300 cursor-not-allowed' : 'text-blue-600 hover:bg-blue-50'}`}
-                                      title={pmt.isLegacy ? 'Legacy records cannot be edited' : 'Edit'}
-                                      disabled={pmt.isLegacy}
+                                      onClick={() => setEditingOfficePayItem({ officePayItemId: item.officePayItemId, description: item.description || '', actualCost: String(item.actualCost || ''), jobId: viewJobModal.jobId })}
+                                      className="p-1.5 rounded text-blue-600 hover:bg-blue-50 transition mr-1" title="Edit"
                                     >
                                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
                                         <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                                       </svg>
                                     </button>
                                     <button
-                                      onClick={async () => { if (pmt.isLegacy || !pmt.advancePaymentId) return; if (!window.confirm('Are you sure you want to delete this advance payment?')) return; try { await apiClient.delete(`/jobs/${viewJobModal.jobId}/advance-payments/${pmt.advancePaymentId}`); fetchJobs(); fetchJobPayments(viewJobModal.jobId); } catch(err) { console.error('Delete error:', err); } }}
-                                      className={`p-1.5 rounded transition ${pmt.isLegacy ? 'text-gray-300 cursor-not-allowed' : 'text-red-500 hover:bg-red-50'}`}
-                                      title={pmt.isLegacy ? 'Legacy records cannot be deleted' : 'Delete'}
-                                      disabled={pmt.isLegacy}
+                                      onClick={async () => { if (!window.confirm('Are you sure you want to delete this office pay item?')) return; try { await apiClient.delete(`/office-pay-items/${item.officePayItemId}`); fetchJobs(); fetchJobPayments(viewJobModal.jobId); } catch(err) { console.error('Delete error:', err); } }}
+                                      className="p-1.5 rounded text-red-500 hover:bg-red-50 transition" title="Delete"
                                     >
                                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
                                         <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -1702,22 +1637,95 @@ function Jobs() {
                                   </td>
                                 )}
                               </tr>
-                            );
-                          })}
-                        </tbody>
-                        <tfoot>
-                          <tr className="bg-green-50 border-t border-green-200">
-                            <td colSpan={['Admin','Super Admin','Manager'].includes(user?.role) ? 5 : 4} className="px-5 py-2.5 text-right text-xs font-bold text-gray-600 uppercase tracking-wide">Total Advance Payments</td>
-                            <td className="px-5 py-2.5 text-green-700 font-bold text-sm">{fmtLKR(advanceTotal)}</td>
-                          </tr>
-                        </tfoot>
-                      </table>
-                    </div>
+                            ))}
+                          </tbody>
+                          <tfoot>
+                            <tr className="bg-blue-50 border-t border-blue-200">
+                              <td colSpan={['Admin','Super Admin','Manager','Office Executive'].includes(user?.role) ? 4 : 3} className="px-5 py-2.5 text-right text-xs font-bold text-gray-600 uppercase tracking-wide">Total Office Payments</td>
+                              <td className="px-5 py-2.5 text-blue-700 font-bold text-sm">{fmtLKR(officeTotal)}</td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    )}
+
+                    {/* Advance Payments sub-table */}
+                    {user?.role !== 'Waff Clerk' && (
+                      <div>
+                        <div className="px-5 py-2.5 bg-green-50 border-b border-green-200">
+                          <span className="text-xs font-bold text-green-700 uppercase tracking-wider">② Advance Payments</span>
+                        </div>
+                        <table className="w-full text-sm border-collapse">
+                          <thead>
+                            <tr className="bg-gray-50 border-b border-gray-100">
+                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Description</th>
+                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Amount</th>
+                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Paid By</th>
+                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Date</th>
+                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Notes</th>
+                              {['Admin','Super Admin','Manager'].includes(user?.role) && (
+                                <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Actions</th>
+                              )}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pd.advancePayments.length === 0 ? (
+                              <tr><td colSpan={6} className="px-5 py-3 text-gray-400 text-xs italic">No advance payments yet</td></tr>
+                            ) : pd.advancePayments.map((pmt, i) => {
+                              const ptLabel = (pmt.paymentType||'').toLowerCase() === 'check'
+                                ? `Advance Payment (Check #${pmt.checkNo||'-'})`
+                                : `Advance Payment (${pmt.paymentType||'-'})`;
+                              return (
+                                <tr key={pmt.advancePaymentId||i} className={`border-b border-gray-50 ${i%2===0?'bg-white':'bg-[#f8fafc]'}`}>
+                                  <td className="px-5 py-3 text-gray-900 font-medium">{ptLabel}</td>
+                                  <td className="px-5 py-3 text-gray-900 font-semibold">{fmtLKR(pmt.amount)}</td>
+                                  <td className="px-5 py-3 text-gray-600">{pmt.recordedByName||pmt.recordedBy||'-'}</td>
+                                  <td className="px-5 py-3 text-gray-600">{fmtDT(pmt.paymentMadeDate)}</td>
+                                  <td className="px-5 py-3 text-gray-500 text-xs">{pmt.notes||'-'}</td>
+                                  {['Admin','Super Admin','Manager'].includes(user?.role) && (
+                                    <td className="px-5 py-3">
+                                      <button
+                                        onClick={() => setEditingAdvancePayment({ advancePaymentId: pmt.advancePaymentId, amount: String(pmt.amount || ''), paymentMadeDate: pmt.paymentMadeDate ? new Date(pmt.paymentMadeDate).toISOString().split('T')[0] : '', paymentType: pmt.paymentType || 'cash', checkNo: pmt.checkNo || '', notes: pmt.notes || '', jobId: viewJobModal.jobId })}
+                                        className={`p-1.5 rounded mr-1 transition ${pmt.isLegacy ? 'text-gray-300 cursor-not-allowed' : 'text-blue-600 hover:bg-blue-50'}`}
+                                        title={pmt.isLegacy ? 'Legacy records cannot be edited' : 'Edit'}
+                                        disabled={pmt.isLegacy}
+                                      >
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                        </svg>
+                                      </button>
+                                      <button
+                                        onClick={async () => { if (pmt.isLegacy || !pmt.advancePaymentId) return; if (!window.confirm('Are you sure you want to delete this advance payment?')) return; try { await apiClient.delete(`/jobs/${viewJobModal.jobId}/advance-payments/${pmt.advancePaymentId}`); fetchJobs(); fetchJobPayments(viewJobModal.jobId); } catch(err) { console.error('Delete error:', err); } }}
+                                        className={`p-1.5 rounded transition ${pmt.isLegacy ? 'text-gray-300 cursor-not-allowed' : 'text-red-500 hover:bg-red-50'}`}
+                                        title={pmt.isLegacy ? 'Legacy records cannot be deleted' : 'Delete'}
+                                        disabled={pmt.isLegacy}
+                                      >
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                                          <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                        </svg>
+                                      </button>
+                                    </td>
+                                  )}
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                          <tfoot>
+                            <tr className="bg-green-50 border-t border-green-200">
+                              <td colSpan={['Admin','Super Admin','Manager'].includes(user?.role) ? 5 : 4} className="px-5 py-2.5 text-right text-xs font-bold text-gray-600 uppercase tracking-wide">Total Advance Payments</td>
+                              <td className="px-5 py-2.5 text-green-700 font-bold text-sm">{fmtLKR(advanceTotal)}</td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    )}
 
                     {/* Petty Cash Assignments section */}
-                    <div className="border-t border-gray-100">
+                    <div className={user?.role !== 'Waff Clerk' ? "border-t border-gray-100" : ""}>
                       <div className="px-5 py-2.5 bg-purple-50 border-b border-purple-200 flex items-center justify-between">
-                        <span className="text-xs font-bold text-purple-700 uppercase tracking-wider">③ Petty Cash Assignments</span>
+                        <span className="text-xs font-bold text-purple-700 uppercase tracking-wider">
+                          {user?.role === 'Waff Clerk' ? 'Petty Cash Assignments' : '③ Petty Cash Assignments'}
+                        </span>
                         {['Admin','Super Admin','Manager'].includes(user?.role) && (() => {
                           const assignments = viewJobModal.assignments || [];
                           const settledStatuses = ['Settled', 'Settled/Approved', 'Balance Returned', 'Overdue Collected', 'Settled / Balance Returned', 'Settled / Over Due Collected', 'Closed'];

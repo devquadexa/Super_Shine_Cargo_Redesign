@@ -34,10 +34,10 @@ class CreateBill {
 
     if (existingBill) {
       // If the existing bill is paid or partially paid, return a status message (not an error)
-      if (existingBill.paymentStatus === 'Paid' || existingBill.paymentStatus === 'Partially Paid') {
+      if (existingBill.paymentStatus === 'Paid' || existingBill.paymentStatus === 'Partially Paid' || parseFloat(existingBill.paidAmount || 0) > 0) {
         return { 
           blocked: true, 
-          message: `Bill is ${existingBill.paymentStatus.toLowerCase()}`,
+          message: `Bill is ${existingBill.paymentStatus.toLowerCase()} and cannot be updated`,
           billId: existingBill.billId,
           paymentStatus: existingBill.paymentStatus
         };
@@ -144,7 +144,7 @@ class CreateBill {
       billingAmount: billingAmount,
       advancePayment: advancePayment,
       grossTotal: billingAmount,
-      netTotal: billingAmount - advancePayment,
+      netTotal: Math.max(0, billingAmount - advancePayment),
       profit: billingAmount - actualCost,
       paymentStatus: 'Unpaid',
       invoiceNumber: billData.invoiceNumber || null,

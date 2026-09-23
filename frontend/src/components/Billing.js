@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { billingService } from '../api/services/billingService';
@@ -1186,6 +1186,9 @@ function Billing() {
     setExistingCheques([]);
     setPaymentMode('full');
     setPartialPaymentAmount('');
+    if (bill?.customerId) {
+      loadExistingCheques(bill.customerId);
+    }
   };
 
   // Load existing cheques with balance for this customer
@@ -3185,6 +3188,9 @@ function Billing() {
                         setChequeAutoFillData(null);
                         setChequeType('new');
                         setExistingCheques([]);
+                        if (m === 'Cheque' && selectedBillForPayment?.customerId) {
+                          loadExistingCheques(selectedBillForPayment.customerId);
+                        }
                       }}
                     >
                       {m === 'Cash' && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/></svg>}
@@ -3209,11 +3215,71 @@ function Billing() {
                 {/* Cheque */}
                 {paymentMethod === 'Cheque' && (
                   <>
-                    <p className="text-sm font-bold text-gray-700 mb-3">Cheque Details</p>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-sm font-bold text-gray-700">Cheque Details</p>
+                      {loadingExistingCheques && (
+                        <span className="text-xs text-blue-600">Loading saved cheques...</span>
+                      )}
+                    </div>
                     <div className="space-y-3">
+                      {/* Saved Cheques Slot */}
                       <div>
-                        <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Cheque Number <span className="text-red-600">*</span></label>
-                        <input type="text" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-xs font-bold text-gray-600 uppercase">Saved Cheques Slot</label>
+                          {existingCheques.length > 0 && (
+                            <span className="text-[11px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                              {existingCheques.length} available
+                            </span>
+                          )}
+                        </div>
+                        <select
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
+                          value={chequeNumber}
+                          onChange={e => handleExistingChequeSelect(e.target.value)}
+                        >
+                          <option value="">✨ -- Enter New Cheque --</option>
+                          {existingCheques.map(c => (
+                            <option key={c.chequeNumber} value={c.chequeNumber}>
+                              Cheque #{c.chequeNumber} — Price: LKR {formatAmount(c.chequeAmount)} (Available: LKR {formatAmount(c.remainingBalance)}){c.bankName ? ` - ${c.bankName}` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Active Cheque Info Banner */}
+                      {chequeAutoFilled && (
+                        <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 flex items-center justify-between">
+                          <div>
+                            <span className="font-semibold">✓ Cheque #{chequeNumber} Selected</span>
+                            {chequeAutoFillData?.remainingBalance != null && (
+                              <p className="text-[11px] text-emerald-700 mt-0.5">
+                                Available Balance: <strong className="text-emerald-900">LKR {formatAmount(chequeAutoFillData.remainingBalance)}</strong>
+                              </p>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleExistingChequeSelect('')}
+                            className="text-[11px] text-emerald-700 hover:text-emerald-900 underline font-medium"
+                          >
+                            New
+                          </button>
+                        </div>
+                      )}
+
+                      <div>
+                        <label className="block text-xs font-bold text-gray-600 uppercase mb-1">
+                          Cheque Number <span className="text-red-600">*</span>
+                          {chequeAutoFilled && <span className="text-emerald-600 font-normal ml-1 normal-case">(Saved)</span>}
+                        </label>
+                        <input
+                          type="text"
+                          readOnly={chequeAutoFilled}
+                          className={`w-full px-3 py-2 border rounded-lg text-sm outline-none transition ${
+                            chequeAutoFilled
+                              ? 'bg-gray-100 text-gray-500 cursor-not-allowed border-gray-200'
+                              : 'bg-white text-gray-900 border-gray-300 focus:ring-2 focus:ring-blue-500'
+                          }`}
                           value={chequeNumber}
                           onChange={e => { setChequeNumber(e.target.value); setChequeAutoFilled(false); }}
                           onBlur={e => handleChequeNumberBlur && handleChequeNumberBlur(e.target.value)}
@@ -3221,23 +3287,57 @@ function Billing() {
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Cheque Date <span className="text-red-600">*</span></label>
-                        <input type="date" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        <label className="block text-xs font-bold text-gray-600 uppercase mb-1">
+                          Cheque Date <span className="text-red-600">*</span>
+                          {chequeAutoFilled && <span className="text-emerald-600 font-normal ml-1 normal-case">(Saved)</span>}
+                        </label>
+                        <input
+                          type="date"
+                          readOnly={chequeAutoFilled}
+                          disabled={chequeAutoFilled}
+                          className={`w-full px-3 py-2 border rounded-lg text-sm outline-none transition ${
+                            chequeAutoFilled
+                              ? 'bg-gray-100 text-gray-500 cursor-not-allowed border-gray-200'
+                              : 'bg-white text-gray-900 border-gray-300 focus:ring-2 focus:ring-blue-500'
+                          }`}
                           value={chequeDate}
                           onChange={e => setChequeDate(e.target.value)}
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Cheque Amount (LKR) <span className="text-red-600">*</span></label>
-                        <input type="number" step="0.01" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        <label className="block text-xs font-bold text-gray-600 uppercase mb-1">
+                          Cheque Amount / Price (LKR) <span className="text-red-600">*</span>
+                          {chequeAutoFilled && <span className="text-emerald-600 font-normal ml-1 normal-case">(Saved)</span>}
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          readOnly={chequeAutoFilled}
+                          className={`w-full px-3 py-2 border rounded-lg text-sm outline-none transition ${
+                            chequeAutoFilled
+                              ? 'bg-gray-100 text-gray-500 cursor-not-allowed border-gray-200'
+                              : 'bg-white text-gray-900 border-gray-300 focus:ring-2 focus:ring-blue-500'
+                          }`}
                           value={chequeAmount}
                           onChange={e => setChequeAmount(e.target.value)}
                           placeholder="0.00"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Bank Name</label>
-                        <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" value={bankName} onChange={e => setBankName(e.target.value)}>
+                        <label className="block text-xs font-bold text-gray-600 uppercase mb-1">
+                          Bank Name
+                          {chequeAutoFilled && <span className="text-emerald-600 font-normal ml-1 normal-case">(Saved)</span>}
+                        </label>
+                        <select
+                          disabled={chequeAutoFilled}
+                          className={`w-full px-3 py-2 border rounded-lg text-sm outline-none transition ${
+                            chequeAutoFilled
+                              ? 'bg-gray-100 text-gray-500 cursor-not-allowed border-gray-200'
+                              : 'bg-white text-gray-900 border-gray-300 focus:ring-2 focus:ring-blue-500'
+                          }`}
+                          value={bankName}
+                          onChange={e => setBankName(e.target.value)}
+                        >
                           <option>Commercial Bank</option>
                           <option>Peoples Bank</option>
                           <option>Bank of Ceylon</option>

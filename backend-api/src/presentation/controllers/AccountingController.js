@@ -9,8 +9,9 @@ class AccountingController {
 
   async getDashboard(req, res) {
     try {
-      console.log('📊 Getting accounting dashboard... User:', req.user?.username, 'Role:', req.user?.role);
-      const data = await this.getAccountingDashboard.execute();
+      const { fromDate, toDate } = req.query;
+      console.log('📊 Getting accounting dashboard... User:', req.user?.username, 'Role:', req.user?.role, 'Filters:', { fromDate, toDate });
+      const data = await this.getAccountingDashboard.execute({ fromDate, toDate });
       console.log('✅ Accounting dashboard data retrieved');
       res.json(data);
     } catch (error) {

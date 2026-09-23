@@ -3,10 +3,34 @@
  * Handles HTTP requests for transporter payment operations
  */
 class TransporterPaymentController {
-  constructor(createTransporterPayment, getTransporterPayments, updateTransporterPaymentStatus) {
+  constructor(createTransporterPayment, getTransporterPayments, updateTransporterPaymentStatus, transporterPaymentRepository) {
     this.createTransporterPayment = createTransporterPayment;
     this.getTransporterPayments = getTransporterPayments;
     this.updateTransporterPaymentStatus = updateTransporterPaymentStatus;
+    this.transporterPaymentRepository = transporterPaymentRepository;
+  }
+
+  async getAll(req, res) {
+    try {
+      const { status, fromDate, toDate, method } = req.query;
+      const payments = await this.transporterPaymentRepository.findAll({
+        status,
+        fromDate,
+        toDate,
+        method,
+      });
+
+      res.json({
+        success: true,
+        data: payments,
+      });
+    } catch (error) {
+      console.error('Error fetching all transporter payments:', error);
+      res.status(500).json({
+        success: false,
+        message: error.message || 'Error fetching transporter payments',
+      });
+    }
   }
 
   async create(req, res) {
