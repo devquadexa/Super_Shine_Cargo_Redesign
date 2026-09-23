@@ -263,9 +263,9 @@ function InvoiceReviewPage() {
                                 {review.payItems && review.payItems.length > 0 ? (
                                   review.payItems.map((item, idx) => (
                                     <tr key={idx} className="border-b border-gray-200 hover:bg-gray-50">
-                                      <td className="px-4 py-3 text-sm text-gray-900">{item.description || item.name || '-'}</td>
+                                      <td className="px-4 py-3 text-sm text-gray-900 font-medium">{item.itemName || item.description || item.name || item.item_name || item.title || '-'}</td>
                                       <td className="px-4 py-3 text-right text-sm text-blue-600 font-medium">LKR {formatAmount(item.actualCost || item.amount)}</td>
-                                      <td className="px-4 py-3 text-sm text-gray-900">{item.paidBy || '-'}</td>
+                                      <td className="px-4 py-3 text-sm text-gray-900">{item.paidByName || item.paidBy || '-'}</td>
                                     </tr>
                                   ))
                                 ) : (

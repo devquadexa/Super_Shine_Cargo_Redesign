@@ -39,7 +39,14 @@ function ReviewInvoiceModal({ show, onClose, job, assignedClerks, onSubmit, load
       jobId: job.jobId,
       clerkId: selectedClerk,
       reviewNotes: reviewNotes.trim(),
-      payItems: job.payItems || [],
+      payItems: (job.payItems || []).map(item => ({
+        ...item,
+        itemName: item.itemName || item.name || item.description || 'Pay Item',
+        description: item.description || item.itemName || item.name || 'Pay Item',
+        name: item.name || item.itemName || item.description || 'Pay Item',
+        paidBy: item.paidByName || item.paidBy || 'Office',
+        paidByName: item.paidByName || item.paidBy || 'Office'
+      })),
       invoiceDetails: {
         jobReference: job.jobId,
         customer: job.customerId,

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { jobService } from '../api/services/jobService';
@@ -1757,35 +1757,60 @@ function Jobs() {
                         <tbody>
                           {viewJobModal.assignments && viewJobModal.assignments.length > 0 ? (
                             (() => {
-                              // Group assignments by userId, but DON'T merge closed/final assignments with active ones
-                              const finalStatuses = ['Full Petty Cash Returned', 'Closed', 'Settled / Balance Returned', 'Settled / Over Due Collected', 'Settled/Approved'];
+                              // Group assignments by groupId (matching PettyCash.js so grouped sub-assignments stay unified)
                               const filtered = (viewJobModal.assignments || []).filter(a => user?.role === 'Waff Clerk' ? a.userId === user.userId : true);
                               const groupMap = new Map();
                               filtered.forEach(a => {
-                                // Use a different key for final/closed assignments so they don't merge with active ones
-                                const isFinal = finalStatuses.includes(a.status);
-                                const key = isFinal ? `${a.userId}_closed_${a.pettyAssignmentId}` : a.userId;
-                                if (!groupMap.has(key)) groupMap.set(key, []);
-                                groupMap.get(key).push(a);
+                                const gid = a.groupId || `${a.jobId || viewJobModal.jobId}_${a.userId}`;
+                                if (!groupMap.has(gid)) groupMap.set(gid, []);
+                                groupMap.get(gid).push(a);
                               });
                               
                               return Array.from(groupMap.values()).map((group, i) => {
                                 const assignedAmount = group.reduce((sum, a) => sum + parseFloat(a.assignedAmount || 0), 0);
                                 const settledAmount = group.reduce((sum, a) => sum + parseFloat(a.settledAmount || 0), 0);
                                 const balanceAmount = assignedAmount - settledAmount;
-                                // Find the sub-assignment that needs action (priority: Assigned > Balance To Be Return > Over Due)
+
+                                const anyAssigned = group.some(a => a.status === 'Assigned');
+                                const hasClosed = group.some(a => a.status === 'Closed');
+                                const pendingApprovalSub = group.find(a => 
+                                  a.status === 'Pending Approval / Balance' || 
+                                  a.status === 'Pending Approval / Over Due' || 
+                                  a.status === 'Pending Approval'
+                                );
+                                const allBalanceReturned = group.every(a => a.status === 'Settled / Balance Returned');
+                                const allOverDueCollected = group.every(a => a.status === 'Settled / Over Due Collected');
+                                const allApproved = group.every(a => a.status === 'Settled/Approved');
+                                const allFullReturned = group.every(a => a.status === 'Full Petty Cash Returned');
+
+                                // Overall display status matching PettyCash.js
+                                const displayStatus = anyAssigned 
+                                  ? 'Assigned'
+                                  : hasClosed
+                                  ? 'Closed'
+                                  : pendingApprovalSub
+                                  ? pendingApprovalSub.status
+                                  : allBalanceReturned
+                                  ? 'Settled / Balance Returned'
+                                  : allOverDueCollected
+                                  ? 'Settled / Over Due Collected'
+                                  : allApproved
+                                  ? 'Settled/Approved'
+                                  : allFullReturned
+                                  ? 'Full Petty Cash Returned'
+                                  : balanceAmount > 0
+                                  ? 'Balance To Be Return'
+                                  : balanceAmount < 0
+                                  ? 'Over Due'
+                                  : 'Settled';
+
+                                const isAssigned = anyAssigned;
                                 const assignedSub = group.find(a => a.status === 'Assigned');
-                                const balanceReturnSub = group.find(a => a.status === 'Balance To Be Return');
-                                const overDueSub = group.find(a => a.status === 'Over Due');
-                                const isAssigned = !!assignedSub;
+                                const canReturnBalance = !anyAssigned && !pendingApprovalSub && displayStatus === 'Balance To Be Return' && balanceAmount > 0;
+                                const canCollectOverdue = !anyAssigned && !pendingApprovalSub && displayStatus === 'Over Due' && balanceAmount < 0;
+
                                 // Use first assignment for display fields
                                 const a = group[0];
-                                // Determine overall status for display
-                                const displayStatus = assignedSub 
-                                  ? 'Assigned'
-                                  : balanceReturnSub ? 'Balance To Be Return' 
-                                  : overDueSub ? 'Over Due' 
-                                  : group[group.length - 1].status;
                               return (
                                 <tr key={a.pettyAssignmentId||i} className={`border-b border-gray-50 ${i%2===0?'bg-white':'bg-[#f8fafc]'}`}>
                                   <td className="px-5 py-3 text-gray-900 font-medium">{a.userName || a.waff_clerk_name || getUserFullName(a.userId)}</td>
@@ -1803,6 +1828,10 @@ function Jobs() {
                                       displayStatus === 'Settled / Over Due Collected' ? 'bg-green-100 text-green-800' :
                                       displayStatus === 'Full Petty Cash Returned' ? 'bg-gray-100 text-gray-800' :
                                       displayStatus === 'Closed' ? 'bg-gray-100 text-gray-800' :
+                                      displayStatus === 'Pending Approval / Balance' ? 'bg-purple-100 text-purple-800' :
+                                      displayStatus === 'Pending Approval / Over Due' ? 'bg-purple-100 text-purple-800' :
+                                      displayStatus === 'Pending Approval' ? 'bg-purple-100 text-purple-800' :
+                                      displayStatus === 'Over Due' ? 'bg-red-100 text-red-800' :
                                       'bg-yellow-100 text-yellow-800'
                                     }`}>
                                       {displayStatus || 'Assigned'}
@@ -1832,22 +1861,41 @@ function Jobs() {
                                             Settle
                                           </button>
                                         )}
-                                        {!!balanceReturnSub && !assignedSub && (
+                                        {canReturnBalance && (
                                           <button
                                             onClick={async () => {
                                               try {
+                                                const relatedIds = group.map(g => g.pettyAssignmentId).filter(Boolean);
                                                 await apiClient.post('/cash-balance-settlements', {
                                                   settlementType: 'BALANCE_RETURN',
                                                   amount: Math.abs(balanceAmount),
                                                   notes: `Balance return for Job #${viewJobModal.jobId}`,
-                                                  relatedAssignments: [balanceReturnSub.pettyAssignmentId]
+                                                  relatedAssignments: relatedIds
                                                 });
                                                 setMessage('✅ Balance return request submitted!');
+
+                                                // Optimistically update local modal assignments so status updates immediately
+                                                setViewJobModal(prev => {
+                                                  if (!prev) return prev;
+                                                  const updatedAssignments = (prev.assignments || []).map(asgn => 
+                                                    relatedIds.includes(asgn.pettyAssignmentId)
+                                                      ? { ...asgn, status: 'Pending Approval / Balance' }
+                                                      : asgn
+                                                  );
+                                                  return { ...prev, assignments: updatedAssignments };
+                                                });
+
+                                                // Refresh jobs and job details
+                                                try {
+                                                  const freshJob = await jobService.getById(viewJobModal.jobId);
+                                                  if (freshJob) setViewJobModal(freshJob);
+                                                } catch (e) {
+                                                  const data = await jobService.getAll();
+                                                  const updatedJob = data.find(j => j.jobId === viewJobModal.jobId);
+                                                  if (updatedJob) setViewJobModal(updatedJob);
+                                                }
+
                                                 fetchJobs();
-                                                // Refresh the view modal data
-                                                const data = await jobService.getAll();
-                                                const updatedJob = data.find(j => j.jobId === viewJobModal.jobId);
-                                                if (updatedJob) setViewJobModal(updatedJob);
                                                 setTimeout(() => setMessage(''), 3000);
                                               } catch (err) {
                                                 setMessage(`❌ ${err.response?.data?.message || 'Error submitting balance return'}`);
@@ -1860,22 +1908,41 @@ function Jobs() {
                                             Return Balance
                                           </button>
                                         )}
-                                        {!!overDueSub && !assignedSub && (
+                                        {canCollectOverdue && (
                                           <button
                                             onClick={async () => {
                                               try {
+                                                const relatedIds = group.map(g => g.pettyAssignmentId).filter(Boolean);
                                                 await apiClient.post('/cash-balance-settlements', {
                                                   settlementType: 'OVERDUE_COLLECTION',
                                                   amount: Math.abs(balanceAmount),
                                                   notes: `Overdue collection for Job #${viewJobModal.jobId}`,
-                                                  relatedAssignments: [overDueSub.pettyAssignmentId]
+                                                  relatedAssignments: relatedIds
                                                 });
                                                 setMessage('✅ Overdue collection request submitted!');
+
+                                                // Optimistically update local modal assignments so status updates immediately
+                                                setViewJobModal(prev => {
+                                                  if (!prev) return prev;
+                                                  const updatedAssignments = (prev.assignments || []).map(asgn => 
+                                                    relatedIds.includes(asgn.pettyAssignmentId)
+                                                      ? { ...asgn, status: 'Pending Approval / Over Due' }
+                                                      : asgn
+                                                  );
+                                                  return { ...prev, assignments: updatedAssignments };
+                                                });
+
+                                                // Refresh jobs and job details
+                                                try {
+                                                  const freshJob = await jobService.getById(viewJobModal.jobId);
+                                                  if (freshJob) setViewJobModal(freshJob);
+                                                } catch (e) {
+                                                  const data = await jobService.getAll();
+                                                  const updatedJob = data.find(j => j.jobId === viewJobModal.jobId);
+                                                  if (updatedJob) setViewJobModal(updatedJob);
+                                                }
+
                                                 fetchJobs();
-                                                // Refresh the view modal data
-                                                const data = await jobService.getAll();
-                                                const updatedJob = data.find(j => j.jobId === viewJobModal.jobId);
-                                                if (updatedJob) setViewJobModal(updatedJob);
                                                 setTimeout(() => setMessage(''), 3000);
                                               } catch (err) {
                                                 setMessage(`❌ ${err.response?.data?.message || 'Error submitting overdue request'}`);
