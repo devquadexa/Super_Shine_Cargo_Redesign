@@ -10,7 +10,12 @@ class MySQLContactPersonRepository extends BaseMySQLRepository {
   async create(contactPerson) {
     const id = parseInt(contactPerson.contactPersonId, 10);
     await this.prisma.contactpersons.upsert({
-      where: { contactPersonId: id },
+      where: {
+        customerId_contactPersonId: {
+          customerId: contactPerson.customerId,
+          contactPersonId: id
+        }
+      },
       update: {
         name: contactPerson.name,
         phone: contactPerson.phone,

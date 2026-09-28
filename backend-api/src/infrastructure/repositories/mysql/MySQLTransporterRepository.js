@@ -12,7 +12,7 @@ class MySQLTransporterRepository extends BaseMySQLRepository {
       data: {
         transporterId: transporter.transporterId,
         name: transporter.name,
-        phone: transporter.mainPhone,
+        phone: transporter.mainPhone || transporter.phone || '',
         email: transporter.email || null,
         address: transporter.getFormattedAddress ? transporter.getFormattedAddress() : transporter.address,
         vehicleNumber: transporter.vehicleNumber || null,
@@ -64,7 +64,7 @@ class MySQLTransporterRepository extends BaseMySQLRepository {
       where: { transporterId },
       data: {
         name: transporter.name,
-        phone: transporter.mainPhone,
+        phone: transporter.mainPhone || transporter.phone || '',
         email: transporter.email || null,
         address: transporter.getFormattedAddress ? transporter.getFormattedAddress() : transporter.address,
         vehicleNumber: transporter.vehicleNumber || null,

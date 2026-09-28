@@ -513,7 +513,7 @@ class MySQLJobRepository extends BaseMySQLRepository {
         waff_clerk_name: pa.users_pettycashassignments_assignedToTousers?.fullName || null,
         assignedAmount: parseFloat(pa.assignedAmount || 0),
         settledAmount: parseFloat(pa.actualSpent || 0),
-        status: pa.status,
+        status: (pa.status && pa.status.toUpperCase() === 'ASSIGNED') ? 'Assigned' : pa.status,
         groupId: pa.groupId,
         assignedDate: pa.assignedDate,
         notes: pa.notes

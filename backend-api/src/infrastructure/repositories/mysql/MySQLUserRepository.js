@@ -106,8 +106,8 @@ class MySQLUserRepository extends BaseMySQLRepository {
       where: { userId },
       data: {
         password: hashedPassword,
-        isTemporaryPassword: Boolean(isTemporaryPassword),
-        passwordResetRequired: Boolean(passwordResetRequired),
+        isTemporaryPassword: isTemporaryPassword ? '1' : '0',
+        passwordResetRequired: passwordResetRequired ? '1' : '0',
         lastPasswordChange: new Date()
       }
     });
@@ -123,8 +123,8 @@ class MySQLUserRepository extends BaseMySQLRepository {
       email: row.email,
       createdDate: row.createdDate,
       isActive: Boolean(row.isActive),
-      isTemporaryPassword: Boolean(row.isTemporaryPassword),
-      passwordResetRequired: Boolean(row.passwordResetRequired),
+      isTemporaryPassword: row.isTemporaryPassword === '1' || row.isTemporaryPassword === true || row.isTemporaryPassword === 'true',
+      passwordResetRequired: row.passwordResetRequired === '1' || row.passwordResetRequired === true || row.passwordResetRequired === 'true',
       lastPasswordChange: row.lastPasswordChange
     });
   }

@@ -42,7 +42,7 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
         assignedAmount: assignmentData.assignedAmount,
         notes: assignmentData.notes || null,
         groupId,
-        status: 'ASSIGNED',
+        status: 'Assigned',
         assignedDate: new Date(),
         isMainAssignment: true
       },
@@ -54,7 +54,7 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
 
     await this.prisma.jobs.update({
       where: { jobId: assignmentData.jobId },
-      data: { pettyCashStatus: 'ASSIGNED' }
+      data: { pettyCashStatus: 'Assigned' }
     }).catch(() => null);
 
     return this.mapToEntity({ ...created, groupId, settlementItems: [] });
@@ -532,7 +532,7 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
         groupId: assignmentData.groupId,
         parentAssignmentId: assignmentData.parentAssignmentId ? parseInt(assignmentData.parentAssignmentId, 10) : null,
         isMainAssignment: false,
-        status: 'ASSIGNED',
+        status: 'Assigned',
         assignedDate: new Date()
       }
     });
@@ -673,6 +673,8 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
       }));
     }
 
+    const status = (row.status && row.status.toUpperCase() === 'ASSIGNED') ? 'Assigned' : row.status;
+
     return new PettyCashAssignment({
       assignmentId: row.assignmentId,
       jobId: row.jobId,
@@ -680,7 +682,7 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
       assignedBy: row.assignedBy,
       assignedAmount: Number(row.assignedAmount) || 0,
       assignedDate: row.assignedDate,
-      status: row.status,
+      status,
       settlementDate: row.settlementDate,
       actualSpent: Number(row.actualSpent) || 0,
       balanceAmount: Number(row.balanceAmount) || 0,
