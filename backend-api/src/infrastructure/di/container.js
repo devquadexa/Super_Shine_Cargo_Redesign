@@ -2,26 +2,9 @@
  * Dependency Injection Container
  * Wires up all dependencies following Clean Architecture
  */
-const { getConnection, sql } = require('../../config/database');
+// Database driver selection
+const isMySQL = (process.env.DB_TYPE || 'mysql').toLowerCase() === 'mysql';
 
-// Repositories
-const MSSQLCustomerRepository = require('../repositories/MSSQLCustomerRepository');
-const MSSQLJobRepository = require('../repositories/MSSQLJobRepository');
-const MSSQLJobAssignmentRepository = require('../repositories/MSSQLJobAssignmentRepository');
-const MSSQLUserRepository = require('../repositories/MSSQLUserRepository');
-const MSSQLBillRepository = require('../repositories/MSSQLBillRepository');
-const MSSQLPettyCashRepository = require('../repositories/MSSQLPettyCashRepository');
-const MSSQLContactPersonRepository = require('../repositories/MSSQLContactPersonRepository');
-const MSSQLCategoryRepository = require('../repositories/MSSQLCategoryRepository');
-const MSSQLPayItemTemplateRepository = require('../repositories/MSSQLPayItemTemplateRepository');
-const MSSQLPettyCashAssignmentRepository = require('../repositories/MSSQLPettyCashAssignmentRepository');
-const MSSQLOfficePayItemRepository = require('../repositories/MSSQLOfficePayItemRepository');
-const MSSQLTransporterRepository = require('../repositories/MSSQLTransporterRepository');
-const MSSQLCashBalanceSettlementRepository = require('../repositories/MSSQLCashBalanceSettlementRepository');
-const MSSQLOldInvoiceRepository = require('../repositories/MSSQLOldInvoiceRepository');
-const MSSQLPaymentRepository = require('../repositories/MSSQLPaymentRepository');
-const MSSQLCashWithdrawalRepository = require('../repositories/MSSQLCashWithdrawalRepository');
-const MSSQLNotificationRepository = require('../repositories/MSSQLNotificationRepository');
 
 // Customer Use Cases
 const CreateCustomer = require('../../application/use-cases/customer/CreateCustomer');
@@ -32,6 +15,9 @@ const CreateTransporter = require('../../application/use-cases/transporter/Creat
 const GetAllTransporters = require('../../application/use-cases/transporter/GetAllTransporters');
 const UpdateTransporter = require('../../application/use-cases/transporter/UpdateTransporter');
 const DeleteTransporter = require('../../application/use-cases/transporter/DeleteTransporter');
+const CreateTransporterPayment = require('../../application/use-cases/transporter/CreateTransporterPayment');
+const GetTransporterPayments = require('../../application/use-cases/transporter/GetTransporterPayments');
+const UpdateTransporterPaymentStatus = require('../../application/use-cases/transporter/UpdateTransporterPaymentStatus');
 
 // Job Use Cases
 const CreateJob = require('../../application/use-cases/job/CreateJob');
@@ -133,9 +119,6 @@ const GetUnreadNotifications = require('../../application/use-cases/notification
 const MarkNotificationAsRead = require('../../application/use-cases/notification/MarkNotificationAsRead');
 const MarkAllNotificationsAsRead = require('../../application/use-cases/notification/MarkAllNotificationsAsRead');
 
-// Repositories
-const MSSQLPasswordResetRepository = require('../repositories/MSSQLPasswordResetRepository');
-
 // Controllers
 const CashBalanceSettlementController = require('../../presentation/controllers/CashBalanceSettlementController');
 
@@ -147,30 +130,112 @@ class Container {
   }
 
   setupRepositories() {
-    // Repository instances
-    this.dependencies.contactPersonRepository = new MSSQLContactPersonRepository(getConnection, sql);
-    this.dependencies.categoryRepository = new MSSQLCategoryRepository(getConnection, sql);
-    this.dependencies.customerRepository = new MSSQLCustomerRepository(
-      getConnection, 
-      sql, 
-      this.dependencies.contactPersonRepository,
-      this.dependencies.categoryRepository
-    );
-    this.dependencies.jobRepository = new MSSQLJobRepository(getConnection, sql);
-    this.dependencies.jobAssignmentRepository = new MSSQLJobAssignmentRepository(getConnection, sql);
-    this.dependencies.userRepository = new MSSQLUserRepository(getConnection, sql);
-    this.dependencies.passwordResetRepository = new MSSQLPasswordResetRepository(getConnection, sql);
-    this.dependencies.billRepository = new MSSQLBillRepository(getConnection, sql);
-    this.dependencies.pettyCashRepository = new MSSQLPettyCashRepository(getConnection, sql);
-    this.dependencies.payItemTemplateRepository = new MSSQLPayItemTemplateRepository(getConnection, sql);
-    this.dependencies.pettyCashAssignmentRepository = new MSSQLPettyCashAssignmentRepository(getConnection, sql);
-    this.dependencies.officePayItemRepository = new MSSQLOfficePayItemRepository(getConnection, sql);
-    this.dependencies.transporterRepository = new MSSQLTransporterRepository(getConnection, sql);
-    this.dependencies.cashBalanceSettlementRepository = new MSSQLCashBalanceSettlementRepository(getConnection, sql);
-    this.dependencies.oldInvoiceRepository = new MSSQLOldInvoiceRepository(getConnection, sql);
-    this.dependencies.paymentRepository = new MSSQLPaymentRepository(getConnection, sql);
-    this.dependencies.cashWithdrawalRepository = new MSSQLCashWithdrawalRepository(getConnection, sql);
-    this.dependencies.notificationRepository = new MSSQLNotificationRepository(getConnection, sql);
+    if (isMySQL) {
+      console.log('🔌 DI Container: Initializing MySQL Repositories');
+      const mysqlDb = require('../../config/mysqlDatabase');
+      const {
+        MySQLUserRepository,
+        MySQLCustomerRepository,
+        MySQLContactPersonRepository,
+        MySQLCategoryRepository,
+        MySQLJobRepository,
+        MySQLJobAssignmentRepository,
+        MySQLBillRepository,
+        MySQLPaymentRepository,
+        MySQLOfficePayItemRepository,
+        MySQLPettyCashRepository,
+        MySQLPettyCashAssignmentRepository,
+        MySQLCashBalanceSettlementRepository,
+        MySQLCashWithdrawalRepository,
+        MySQLTransporterRepository,
+        MySQLTransporterPaymentRepository,
+        MySQLPayItemTemplateRepository,
+        MySQLOldInvoiceRepository,
+        MySQLOtherExpenseRepository,
+        MySQLNotificationRepository,
+        MySQLPasswordResetRepository,
+        MySQLInvoiceReviewRepository
+      } = require('../repositories/mysql');
+
+      const db = mysqlDb.getPool;
+
+      this.dependencies.contactPersonRepository = new MySQLContactPersonRepository(db);
+      this.dependencies.categoryRepository = new MySQLCategoryRepository(db);
+      this.dependencies.customerRepository = new MySQLCustomerRepository(
+        db, 
+        this.dependencies.contactPersonRepository,
+        this.dependencies.categoryRepository
+      );
+      this.dependencies.jobRepository = new MySQLJobRepository(db);
+      this.dependencies.jobAssignmentRepository = new MySQLJobAssignmentRepository(db);
+      this.dependencies.userRepository = new MySQLUserRepository(db);
+      this.dependencies.passwordResetRepository = new MySQLPasswordResetRepository(db);
+      this.dependencies.billRepository = new MySQLBillRepository(db);
+      this.dependencies.pettyCashRepository = new MySQLPettyCashRepository(db);
+      this.dependencies.payItemTemplateRepository = new MySQLPayItemTemplateRepository(db);
+      this.dependencies.pettyCashAssignmentRepository = new MySQLPettyCashAssignmentRepository(db);
+      this.dependencies.officePayItemRepository = new MySQLOfficePayItemRepository(db);
+      this.dependencies.transporterRepository = new MySQLTransporterRepository(db);
+      this.dependencies.transporterPaymentRepository = new MySQLTransporterPaymentRepository(db);
+      this.dependencies.cashBalanceSettlementRepository = new MySQLCashBalanceSettlementRepository(db);
+      this.dependencies.oldInvoiceRepository = new MySQLOldInvoiceRepository(db);
+      this.dependencies.paymentRepository = new MySQLPaymentRepository(db);
+      this.dependencies.cashWithdrawalRepository = new MySQLCashWithdrawalRepository(db);
+      this.dependencies.notificationRepository = new MySQLNotificationRepository(db);
+      this.dependencies.otherExpenseRepository = new MySQLOtherExpenseRepository(db);
+      this.dependencies.invoiceReviewRepository = new MySQLInvoiceReviewRepository(db);
+    } else {
+      console.log('🔌 DI Container: Initializing MSSQL Repositories');
+      const { getConnection, sql } = require('../../config/database');
+      const MSSQLCustomerRepository = require('../repositories/MSSQLCustomerRepository');
+      const MSSQLJobRepository = require('../repositories/MSSQLJobRepository');
+      const MSSQLJobAssignmentRepository = require('../repositories/MSSQLJobAssignmentRepository');
+      const MSSQLUserRepository = require('../repositories/MSSQLUserRepository');
+      const MSSQLBillRepository = require('../repositories/MSSQLBillRepository');
+      const MSSQLPettyCashRepository = require('../repositories/MSSQLPettyCashRepository');
+      const MSSQLContactPersonRepository = require('../repositories/MSSQLContactPersonRepository');
+      const MSSQLCategoryRepository = require('../repositories/MSSQLCategoryRepository');
+      const MSSQLPayItemTemplateRepository = require('../repositories/MSSQLPayItemTemplateRepository');
+      const MSSQLPettyCashAssignmentRepository = require('../repositories/MSSQLPettyCashAssignmentRepository');
+      const MSSQLOfficePayItemRepository = require('../repositories/MSSQLOfficePayItemRepository');
+      const MSSQLTransporterRepository = require('../repositories/MSSQLTransporterRepository');
+      const MSSQLTransporterPaymentRepository = require('../repositories/MSSQLTransporterPaymentRepository');
+      const MSSQLCashBalanceSettlementRepository = require('../repositories/MSSQLCashBalanceSettlementRepository');
+      const MSSQLOldInvoiceRepository = require('../repositories/MSSQLOldInvoiceRepository');
+      const MSSQLPaymentRepository = require('../repositories/MSSQLPaymentRepository');
+      const MSSQLCashWithdrawalRepository = require('../repositories/MSSQLCashWithdrawalRepository');
+      const MSSQLNotificationRepository = require('../repositories/MSSQLNotificationRepository');
+      const MSSQLPasswordResetRepository = require('../repositories/MSSQLPasswordResetRepository');
+      const MSSQLOtherExpenseRepository = require('../repositories/MSSQLOtherExpenseRepository');
+      const MSSQLInvoiceReviewRepository = require('../repositories/MSSQLInvoiceReviewRepository');
+
+      this.dependencies.contactPersonRepository = new MSSQLContactPersonRepository(getConnection, sql);
+      this.dependencies.categoryRepository = new MSSQLCategoryRepository(getConnection, sql);
+      this.dependencies.customerRepository = new MSSQLCustomerRepository(
+        getConnection, 
+        sql, 
+        this.dependencies.contactPersonRepository,
+        this.dependencies.categoryRepository
+      );
+      this.dependencies.jobRepository = new MSSQLJobRepository(getConnection, sql);
+      this.dependencies.jobAssignmentRepository = new MSSQLJobAssignmentRepository(getConnection, sql);
+      this.dependencies.userRepository = new MSSQLUserRepository(getConnection, sql);
+      this.dependencies.passwordResetRepository = new MSSQLPasswordResetRepository(getConnection, sql);
+      this.dependencies.billRepository = new MSSQLBillRepository(getConnection, sql);
+      this.dependencies.pettyCashRepository = new MSSQLPettyCashRepository(getConnection, sql);
+      this.dependencies.payItemTemplateRepository = new MSSQLPayItemTemplateRepository(getConnection, sql);
+      this.dependencies.pettyCashAssignmentRepository = new MSSQLPettyCashAssignmentRepository(getConnection, sql);
+      this.dependencies.officePayItemRepository = new MSSQLOfficePayItemRepository(getConnection, sql);
+      this.dependencies.transporterRepository = new MSSQLTransporterRepository(getConnection, sql);
+      this.dependencies.transporterPaymentRepository = new MSSQLTransporterPaymentRepository(getConnection, sql);
+      this.dependencies.cashBalanceSettlementRepository = new MSSQLCashBalanceSettlementRepository(getConnection, sql);
+      this.dependencies.oldInvoiceRepository = new MSSQLOldInvoiceRepository(getConnection, sql);
+      this.dependencies.paymentRepository = new MSSQLPaymentRepository(getConnection, sql);
+      this.dependencies.cashWithdrawalRepository = new MSSQLCashWithdrawalRepository(getConnection, sql);
+      this.dependencies.notificationRepository = new MSSQLNotificationRepository(getConnection, sql);
+      this.dependencies.otherExpenseRepository = new MSSQLOtherExpenseRepository(getConnection, sql);
+      this.dependencies.invoiceReviewRepository = new MSSQLInvoiceReviewRepository(getConnection, sql);
+    }
   }
 
   setupUseCases() {
@@ -200,6 +265,19 @@ class Container {
     this.dependencies.getAllTransporters = new GetAllTransporters(transporterRepository);
     this.dependencies.updateTransporter = new UpdateTransporter(transporterRepository);
     this.dependencies.deleteTransporter = new DeleteTransporter(transporterRepository);
+    
+    // Transporter Payment use cases
+    this.dependencies.createTransporterPayment = new CreateTransporterPayment(
+      this.dependencies.transporterPaymentRepository,
+      jobRepository,
+      transporterRepository
+    );
+    this.dependencies.getTransporterPayments = new GetTransporterPayments(
+      this.dependencies.transporterPaymentRepository
+    );
+    this.dependencies.updateTransporterPaymentStatus = new UpdateTransporterPaymentStatus(
+      this.dependencies.transporterPaymentRepository
+    );
     
     // Job use cases
     this.dependencies.createJob = new CreateJob(jobRepository, customerRepository);
@@ -316,7 +394,6 @@ class Container {
     this.dependencies.deletePaymentFromOldInvoice = new DeletePaymentFromOldInvoice(oldInvoiceRepository);
     
     // Other Expense use cases
-    const MSSQLOtherExpenseRepository = require('../repositories/MSSQLOtherExpenseRepository');
     const CreateOtherExpense = require('../../application/use-cases/otherexpense/CreateOtherExpense');
     const GetAllOtherExpenses = require('../../application/use-cases/otherexpense/GetAllOtherExpenses');
     const UpdateOtherExpense = require('../../application/use-cases/otherexpense/UpdateOtherExpense');
@@ -329,7 +406,7 @@ class Container {
     const ExportCashSummaryReportPDF = require('../../application/use-cases/cashsummary/ExportCashSummaryReportPDF');
     const ExportCashSummaryReportExcel = require('../../application/use-cases/cashsummary/ExportCashSummaryReportExcel');
     
-    const otherExpenseRepository = new MSSQLOtherExpenseRepository(getConnection, sql);
+    const otherExpenseRepository = this.dependencies.otherExpenseRepository;
     this.dependencies.createOtherExpense = new CreateOtherExpense(otherExpenseRepository);
     this.dependencies.getAllOtherExpenses = new GetAllOtherExpenses(otherExpenseRepository);
     this.dependencies.updateOtherExpense = new UpdateOtherExpense(otherExpenseRepository);

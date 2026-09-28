@@ -1779,8 +1779,8 @@ function Jobs() {
                                 const settledAmount = group.reduce((sum, a) => sum + parseFloat(a.settledAmount || 0), 0);
                                 const balanceAmount = assignedAmount - settledAmount;
 
-                                const anyAssigned = group.some(a => a.status === 'Assigned');
-                                const hasClosed = group.some(a => a.status === 'Closed');
+                                const anyAssigned = group.some(a => a.status === 'Assigned' || a.status?.toUpperCase() === 'ASSIGNED');
+                                const hasClosed = group.some(a => a.status === 'Closed' || a.status?.toUpperCase() === 'CLOSED');
                                 const pendingApprovalSub = group.find(a => 
                                   a.status === 'Pending Approval / Balance' || 
                                   a.status === 'Pending Approval / Over Due' || 
@@ -1813,7 +1813,7 @@ function Jobs() {
                                   : 'Settled';
 
                                 const isAssigned = anyAssigned;
-                                const assignedSub = group.find(a => a.status === 'Assigned');
+                                const assignedSub = group.find(a => a.status === 'Assigned' || a.status?.toUpperCase() === 'ASSIGNED');
                                 const canReturnBalance = !anyAssigned && !pendingApprovalSub && displayStatus === 'Balance To Be Return' && balanceAmount > 0;
                                 const canCollectOverdue = !anyAssigned && !pendingApprovalSub && displayStatus === 'Over Due' && balanceAmount < 0;
 

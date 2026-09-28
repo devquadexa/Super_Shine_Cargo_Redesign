@@ -5,14 +5,26 @@
 const express = require('express');
 const router = express.Router();
 const { auth } = require('../../middleware/auth');
-const sql = require('mssql');
-const dbConfig = require('../../config/database');
+
+const isMySQL = (process.env.DB_TYPE || 'mysql').toLowerCase() === 'mysql';
 
 // Get all districts
 router.get('/districts', auth, async (req, res) => {
   try {
+    if (isMySQL) {
+      const mysqlDb = require('../../config/mysqlDatabase');
+      const rows = await mysqlDb.query(`
+        SELECT districtId, districtName, province 
+        FROM Districts 
+        WHERE isActive = 1 
+        ORDER BY districtName
+      `);
+      return res.json(rows);
+    }
+
+    const sql = require('mssql');
+    const dbConfig = require('../../config/database');
     const pool = await sql.connect(dbConfig);
-    
     const result = await pool.request()
       .query(`
         SELECT districtId, districtName, province 
@@ -20,7 +32,6 @@ router.get('/districts', auth, async (req, res) => {
         WHERE isActive = 1 
         ORDER BY districtName
       `);
-    
     res.json(result.recordset);
   } catch (error) {
     console.error('Error fetching districts:', error);
@@ -32,8 +43,21 @@ router.get('/districts', auth, async (req, res) => {
 router.get('/cities/:districtId', auth, async (req, res) => {
   try {
     const { districtId } = req.params;
+
+    if (isMySQL) {
+      const mysqlDb = require('../../config/mysqlDatabase');
+      const rows = await mysqlDb.query(`
+        SELECT cityId, cityName 
+        FROM Cities 
+        WHERE districtId = ? AND isActive = 1 
+        ORDER BY cityName
+      `, [districtId]);
+      return res.json(rows);
+    }
+
+    const sql = require('mssql');
+    const dbConfig = require('../../config/database');
     const pool = await sql.connect(dbConfig);
-    
     const result = await pool.request()
       .input('districtId', sql.Int, districtId)
       .query(`
@@ -42,7 +66,6 @@ router.get('/cities/:districtId', auth, async (req, res) => {
         WHERE districtId = @districtId AND isActive = 1 
         ORDER BY cityName
       `);
-    
     res.json(result.recordset);
   } catch (error) {
     console.error('Error fetching cities:', error);
@@ -53,8 +76,21 @@ router.get('/cities/:districtId', auth, async (req, res) => {
 // Get all cities (for search/autocomplete)
 router.get('/cities', auth, async (req, res) => {
   try {
+    if (isMySQL) {
+      const mysqlDb = require('../../config/mysqlDatabase');
+      const rows = await mysqlDb.query(`
+        SELECT c.cityId, c.cityName, c.districtId, d.districtName, d.province
+        FROM Cities c
+        JOIN Districts d ON c.districtId = d.districtId
+        WHERE c.isActive = 1 AND d.isActive = 1
+        ORDER BY c.cityName
+      `);
+      return res.json(rows);
+    }
+
+    const sql = require('mssql');
+    const dbConfig = require('../../config/database');
     const pool = await sql.connect(dbConfig);
-    
     const result = await pool.request()
       .query(`
         SELECT c.cityId, c.cityName, c.districtId, d.districtName, d.province
@@ -63,7 +99,6 @@ router.get('/cities', auth, async (req, res) => {
         WHERE c.isActive = 1 AND d.isActive = 1
         ORDER BY c.cityName
       `);
-    
     res.json(result.recordset);
   } catch (error) {
     console.error('Error fetching all cities:', error);
@@ -75,6 +110,32 @@ router.get('/cities', auth, async (req, res) => {
 router.get('/address-info', auth, async (req, res) => {
   try {
     const { cityId, districtId } = req.query;
+
+    if (isMySQL) {
+      const mysqlDb = require('../../config/mysqlDatabase');
+      let query = `
+        SELECT 
+          d.districtId, d.districtName, d.province,
+          c.cityId, c.cityName
+        FROM Districts d
+        LEFT JOIN Cities c ON d.districtId = c.districtId
+        WHERE d.isActive = 1
+      `;
+      const params = [];
+      if (cityId) {
+        query += ` AND c.cityId = ?`;
+        params.push(cityId);
+      }
+      if (districtId) {
+        query += ` AND d.districtId = ?`;
+        params.push(districtId);
+      }
+      const rows = await mysqlDb.query(query, params);
+      return res.json(rows[0] || null);
+    }
+
+    const sql = require('mssql');
+    const dbConfig = require('../../config/database');
     const pool = await sql.connect(dbConfig);
     
     let query = `
@@ -87,19 +148,16 @@ router.get('/address-info', auth, async (req, res) => {
     `;
     
     const request = pool.request();
-    
     if (cityId) {
       query += ` AND c.cityId = @cityId`;
       request.input('cityId', sql.Int, cityId);
     }
-    
     if (districtId) {
       query += ` AND d.districtId = @districtId`;
       request.input('districtId', sql.Int, districtId);
     }
     
     const result = await request.query(query);
-    
     res.json(result.recordset[0] || null);
   } catch (error) {
     console.error('Error fetching address info:', error);
