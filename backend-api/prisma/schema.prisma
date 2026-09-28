@@ -1,0 +1,565 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model bills {
+  billId           String     @id @db.VarChar(50)
+  jobId            String     @db.VarChar(50)
+  customerId       String     @db.VarChar(20)
+  amount           Decimal    @default(0.00) @db.Decimal(10, 2)
+  tax              Decimal    @default(0.00) @db.Decimal(10, 2)
+  total            Decimal    @default(0.00) @db.Decimal(10, 2)
+  paymentStatus    String?    @default("Pending") @db.VarChar(50)
+  createdDate      DateTime?  @default(now()) @db.DateTime(0)
+  actualCost       Decimal?   @db.Decimal(10, 2)
+  billingAmount    Decimal?   @db.Decimal(10, 2)
+  profit           Decimal?   @db.Decimal(10, 2)
+  billDate         DateTime?  @db.DateTime(0)
+  invoiceNumber    String?    @db.VarChar(50)
+  shipmentCategory String?    @db.VarChar(50)
+  pettyCashSettled Boolean    @default(false)
+  invoiceDate      DateTime?  @db.DateTime(0)
+  dueDate          DateTime?  @db.DateTime(0)
+  isOverdue        Boolean?   @default(false)
+  advancePayment   Decimal?   @default(0.00) @db.Decimal(18, 2)
+  grossTotal       Decimal?   @db.Decimal(18, 2)
+  netTotal         Decimal?   @db.Decimal(18, 2)
+  paidAmount       Decimal?   @default(0.00) @db.Decimal(18, 2)
+  balanceAmount    Decimal?   @default(0.00) @db.Decimal(18, 2)
+  chequeStatus     String?    @db.VarChar(50)
+  paymentDetails   String?    @db.LongText
+  paymentMethod    String?    @db.Text
+  chequeNumber     String?    @db.Text
+  chequeDate       String?    @db.Text
+  chequeAmount     String?    @db.Text
+  bankName         String?    @db.Text
+  paidDate         DateTime?  @db.DateTime(0)
+  remainingAmount  Int?
+  customers        customers  @relation(fields: [customerId], references: [customerId], onDelete: NoAction, onUpdate: NoAction, map: "fk_bills_customers")
+  jobs             jobs       @relation(fields: [jobId], references: [jobId], onDelete: NoAction, onUpdate: NoAction, map: "fk_bills_jobs")
+  payments         payments[]
+
+  @@index([customerId], map: "idx_bills_customer")
+  @@index([invoiceNumber], map: "idx_bills_invoiceNumber")
+  @@index([jobId], map: "idx_bills_job")
+}
+
+model cashbalancesettlements {
+  settlementId       String    @id @db.VarChar(50)
+  userId             String    @db.VarChar(50)
+  userName           String?   @db.VarChar(200)
+  managerId          String?   @db.VarChar(50)
+  managerName        String?   @db.VarChar(200)
+  settlementType     String    @db.VarChar(50)
+  amount             Decimal   @db.Decimal(18, 2)
+  status             String    @default("PENDING") @db.VarChar(50)
+  requestDate        DateTime  @default(now()) @db.DateTime(0)
+  approvedDate       DateTime? @db.DateTime(0)
+  completedDate      DateTime? @db.DateTime(0)
+  notes              String?   @db.LongText
+  managerNotes       String?   @db.LongText
+  relatedAssignments String?   @db.LongText
+  createdBy          String?   @db.VarChar(50)
+  createdDate        DateTime? @default(now()) @db.DateTime(0)
+  updatedBy          String?   @db.VarChar(50)
+  updatedDate        DateTime? @db.DateTime(0)
+  users              users     @relation(fields: [userId], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_cbs_users")
+
+  @@index([userId], map: "idx_cbs_user")
+}
+
+model cashwithdrawals {
+  withdrawalId    String    @id @db.VarChar(50)
+  amount          Decimal   @db.Decimal(18, 2)
+  bankName        String?   @db.VarChar(200)
+  withdrawalDate  DateTime  @db.DateTime(0)
+  notes           String?   @db.VarChar(500)
+  transactionType String?   @db.VarChar(50)
+  createdBy       String?   @db.VarChar(50)
+  createdAt       DateTime? @default(now()) @db.DateTime(0)
+  users           users?    @relation(fields: [createdBy], references: [userId], onUpdate: NoAction, map: "fk_cashwithdrawals_users")
+
+  @@index([createdBy], map: "fk_cashwithdrawals_users")
+}
+
+model categories {
+  categoryId         Int                  @id @default(autoincrement())
+  categoryName       String               @db.VarChar(100)
+  customercategories customercategories[]
+}
+
+model cities {
+  cityId      Int       @id @default(autoincrement())
+  cityName    String    @db.VarChar(100)
+  districtId  Int
+  isActive    Boolean?  @default(true)
+  createdDate DateTime? @default(now()) @db.DateTime(0)
+  districts   districts @relation(fields: [districtId], references: [districtId], onUpdate: NoAction, map: "fk_cities_districts")
+
+  @@index([districtId], map: "idx_cities_district")
+}
+
+model contactpersons {
+  contactPersonId Int
+  customerId      String    @db.VarChar(20)
+  name            String    @db.VarChar(255)
+  phone           String    @db.VarChar(50)
+  email           String?   @db.VarChar(255)
+  designation     String?   @db.VarChar(100)
+  customers       customers @relation(fields: [customerId], references: [customerId], onDelete: Cascade, onUpdate: NoAction, map: "fk_contactpersons_customers")
+
+  @@id([customerId, contactPersonId])
+}
+
+model customercategories {
+  customerId String     @db.VarChar(20)
+  categoryId Int
+  categories categories @relation(fields: [categoryId], references: [categoryId], onDelete: Cascade, onUpdate: NoAction, map: "fk_customercats_categories")
+  customers  customers  @relation(fields: [customerId], references: [customerId], onDelete: Cascade, onUpdate: NoAction, map: "fk_customercats_customers")
+
+  @@id([customerId, categoryId])
+  @@index([categoryId], map: "fk_customercats_categories")
+}
+
+model customers {
+  customerId            String               @id @db.VarChar(20)
+  name                  String               @db.VarChar(255)
+  mainPhone             String               @db.VarChar(50)
+  email                 String?              @db.VarChar(255)
+  isSameLocation        Boolean?             @default(true)
+  website               String?              @db.VarChar(255)
+  registrationDate      DateTime?            @default(now()) @db.DateTime(0)
+  isActive              Boolean?             @default(true)
+  creditPeriodDays      Int?                 @default(30)
+  cityId                Int?
+  districtId            Int?
+  addressNumber         String?              @db.VarChar(20)
+  addressStreet1        String?              @db.VarChar(200)
+  addressStreet2        String?              @db.VarChar(200)
+  addressCity           String?              @db.VarChar(100)
+  addressDistrict       String?              @db.VarChar(100)
+  officeAddressNumber   String?              @db.VarChar(20)
+  officeAddressStreet1  String?              @db.VarChar(200)
+  officeAddressStreet2  String?              @db.VarChar(200)
+  officeAddressCity     String?              @db.VarChar(100)
+  officeAddressDistrict String?              @db.VarChar(100)
+  isOfficeAddressSame   Boolean?             @default(true)
+  addressCountry        String?              @default("Sri Lanka") @db.VarChar(100)
+  officeAddressCountry  String?              @default("Sri Lanka") @db.VarChar(100)
+  bills                 bills[]
+  contactpersons        contactpersons[]
+  customercategories    customercategories[]
+  jobs                  jobs[]
+  oldinvoices           oldinvoices[]
+  payments              payments[]
+}
+
+model districts {
+  districtId   Int       @id @default(autoincrement())
+  districtName String    @db.VarChar(100)
+  province     String    @db.VarChar(50)
+  isActive     Boolean?  @default(true)
+  createdDate  DateTime? @default(now()) @db.DateTime(0)
+  cities       cities[]
+}
+
+model invoice_reviews {
+  reviewId                             String    @id @db.VarChar(50)
+  jobId                                String    @db.VarChar(50)
+  clerkId                              String    @db.VarChar(50)
+  sentBy                               String    @db.VarChar(50)
+  reviewNotes                          String    @db.LongText
+  payItems                             String?   @db.LongText
+  invoiceDetails                       String?   @db.LongText
+  status                               String?   @default("Pending") @db.VarChar(20)
+  rejectionReason                      String?   @db.LongText
+  createdDate                          DateTime? @default(now()) @db.DateTime(0)
+  updatedDate                          DateTime? @default(now()) @db.DateTime(0)
+  users_invoice_reviews_clerkIdTousers users     @relation("invoice_reviews_clerkIdTousers", fields: [clerkId], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_invrev_clerks")
+  jobs                                 jobs      @relation(fields: [jobId], references: [jobId], onDelete: NoAction, onUpdate: NoAction, map: "fk_invrev_jobs")
+  users_invoice_reviews_sentByTousers  users     @relation("invoice_reviews_sentByTousers", fields: [sentBy], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_invrev_sentby")
+
+  @@index([clerkId], map: "fk_invrev_clerks")
+  @@index([jobId], map: "fk_invrev_jobs")
+  @@index([sentBy], map: "fk_invrev_sentby")
+}
+
+model jobadvancepayments {
+  advancePaymentId Int       @id @default(autoincrement())
+  jobId            String    @db.VarChar(50)
+  amount           Decimal   @db.Decimal(18, 2)
+  paymentMadeDate  DateTime  @db.DateTime(0)
+  paymentType      String?   @db.VarChar(50)
+  checkNo          String?   @db.VarChar(100)
+  notes            String?   @db.LongText
+  recordedBy       String?   @db.VarChar(50)
+  recordedDate     DateTime? @default(now()) @db.DateTime(0)
+  jobs             jobs      @relation(fields: [jobId], references: [jobId], onDelete: Cascade, onUpdate: NoAction, map: "fk_jap_jobs")
+
+  @@index([jobId], map: "idx_jap_job")
+}
+
+model jobassignments {
+  assignmentId Int       @id @default(autoincrement())
+  jobId        String    @db.VarChar(50)
+  userId       String    @db.VarChar(50)
+  assignedDate DateTime? @default(now()) @db.DateTime(0)
+  assignedBy   String?   @db.VarChar(50)
+  isActive     Boolean?  @default(true)
+  notes        String?   @db.VarChar(500)
+  jobs         jobs      @relation(fields: [jobId], references: [jobId], onDelete: Cascade, onUpdate: NoAction, map: "fk_jobassignments_jobs")
+  users        users     @relation(fields: [userId], references: [userId], onUpdate: NoAction, map: "fk_jobassignments_users")
+
+  @@index([jobId], map: "idx_jobassignments_job")
+  @@index([userId], map: "idx_jobassignments_user")
+}
+
+model jobs {
+  jobId                    String                 @id @db.VarChar(50)
+  customerId               String                 @db.VarChar(20)
+  blNumber                 String?                @db.VarChar(100)
+  cusdecNumber             String?                @db.VarChar(100)
+  openDate                 DateTime?              @db.Date
+  shipmentCategory         String?                @db.VarChar(100)
+  status                   String?                @default("Pending") @db.VarChar(50)
+  createdDate              DateTime?              @default(now()) @db.DateTime(0)
+  createdBy                String?                @db.VarChar(50)
+  completedDate            DateTime?              @db.DateTime(0)
+  exporter                 String?                @db.VarChar(500)
+  lcNumber                 String?                @db.VarChar(100)
+  containerNumber          String?                @db.VarChar(100)
+  pettyCashStatus          String?                @default("Pending") @db.VarChar(20)
+  transporter              String?                @db.VarChar(200)
+  assignedTo               String?                @db.VarChar(50)
+  advancePayment           Decimal?               @default(0.00) @db.Decimal(18, 2)
+  advancePaymentDate       DateTime?              @db.DateTime(0)
+  advancePaymentNotes      String?                @db.VarChar(500)
+  advancePaymentRecordedBy String?                @db.VarChar(50)
+  payItems                 String?                @db.LongText
+  assignedUsers            String?                @db.LongText
+  officePayItems           String?                @db.LongText
+  metadata                 String?                @db.LongText
+  advancePaymentType       String?                @db.VarChar(50)
+  advancePaymentCheckNo    String?                @db.VarChar(100)
+  chassisNumber            String?                @db.Text
+  CUSDECDate               DateTime?              @db.DateTime(0)
+  TransportDeliveryDate    String?                @db.Text
+  bills                    bills[]
+  invoice_reviews          invoice_reviews[]
+  jobadvancepayments       jobadvancepayments[]
+  jobassignments           jobassignments[]
+  customers                customers              @relation(fields: [customerId], references: [customerId], onUpdate: NoAction, map: "fk_jobs_customers")
+  officepayitems           officepayitems[]
+  payitems                 payitems[]
+  payments                 payments[]
+  pettycashassignments     pettycashassignments[]
+  transporterpayments      transporterpayments[]
+
+  @@index([customerId], map: "idx_jobs_customer")
+  @@index([status], map: "idx_jobs_status")
+}
+
+model notifications {
+  notificationId String    @id @db.VarChar(50)
+  userId         String    @db.VarChar(50)
+  type           String    @db.VarChar(50)
+  title          String    @db.VarChar(255)
+  message        String    @db.LongText
+  relatedId      String?   @db.VarChar(50)
+  relatedType    String?   @db.VarChar(50)
+  isRead         Boolean?  @default(false)
+  readDate       DateTime? @db.DateTime(0)
+  metadata       String?   @db.LongText
+  createdDate    DateTime  @default(now()) @db.DateTime(0)
+  createdBy      String?   @db.VarChar(50)
+  users          users     @relation(fields: [userId], references: [userId], onDelete: Cascade, onUpdate: NoAction, map: "fk_notifications_users")
+
+  @@index([userId], map: "idx_notifications_user")
+}
+
+model officepayitems {
+  officePayItemId String    @id @db.VarChar(50)
+  jobId           String    @db.VarChar(50)
+  description     String    @db.VarChar(200)
+  actualCost      Decimal   @db.Decimal(18, 2)
+  billingAmount   Decimal?  @db.Decimal(18, 2)
+  paidBy          String    @db.VarChar(50)
+  paymentDate     DateTime? @db.DateTime(0)
+  notes           String?   @db.VarChar(500)
+  createdDate     DateTime? @default(now()) @db.DateTime(0)
+  updatedDate     DateTime? @db.DateTime(0)
+  hasBill         Boolean?  @default(false)
+  jobs            jobs      @relation(fields: [jobId], references: [jobId], onDelete: Cascade, onUpdate: NoAction, map: "fk_officepayitems_jobs")
+
+  @@index([jobId], map: "idx_officepayitems_job")
+}
+
+model oldinvoicepayments {
+  paymentId     Int         @id @default(autoincrement())
+  oldInvoiceId  Int
+  paymentAmount Decimal     @db.Decimal(18, 2)
+  paymentMethod String      @db.VarChar(50)
+  receivedDate  DateTime    @db.Date
+  notes         String?     @db.VarChar(500)
+  createdAt     DateTime?   @default(now()) @db.DateTime(0)
+  createdBy     String?     @db.VarChar(50)
+  chequeNumber  String?     @db.Text
+  chequeDate    String?     @db.Text
+  chequeAmount  String?     @db.Text
+  bankName      String?     @db.Text
+  oldinvoices   oldinvoices @relation(fields: [oldInvoiceId], references: [oldInvoiceId], onDelete: Cascade, onUpdate: NoAction, map: "fk_oldinvp_invoices")
+
+  @@index([oldInvoiceId], map: "idx_oldinvp_invoice")
+}
+
+model oldinvoices {
+  oldInvoiceId       Int                  @id @default(autoincrement())
+  customerId         String               @db.VarChar(20)
+  cusdecNumber       String?              @db.VarChar(100)
+  cusdecDate         DateTime?            @db.Date
+  invoiceDate        DateTime             @db.Date
+  invoiceNumber      String               @unique(map: "invoiceNumber") @db.VarChar(100)
+  totalAmount        Decimal              @db.Decimal(18, 2)
+  amountReceived     Decimal?             @default(0.00) @db.Decimal(18, 2)
+  balance            Decimal              @db.Decimal(18, 2)
+  status             String?              @default("Pending") @db.VarChar(50)
+  settleDate         DateTime?            @db.Date
+  daysAfterInvoice   Int?
+  createdAt          DateTime?            @default(now()) @db.DateTime(0)
+  createdBy          String?              @db.VarChar(50)
+  updatedAt          DateTime?            @db.DateTime(0)
+  oldinvoicepayments oldinvoicepayments[]
+  customers          customers            @relation(fields: [customerId], references: [customerId], onDelete: NoAction, onUpdate: NoAction, map: "fk_oldinv_customers")
+
+  @@index([customerId], map: "idx_oldinv_customer")
+}
+
+model otherexpenses {
+  expenseId       String    @id @db.VarChar(50)
+  category        String    @db.VarChar(100)
+  description     String    @db.VarChar(500)
+  amount          Decimal   @db.Decimal(18, 2)
+  expenseDate     DateTime  @db.Date
+  paymentMethod   String    @db.VarChar(50)
+  referenceNumber String?   @db.VarChar(100)
+  notes           String?   @db.LongText
+  recordedBy      String?   @db.VarChar(50)
+  createdDate     DateTime? @default(now()) @db.DateTime(0)
+  attachmentUrl   String?   @db.VarChar(500)
+  users           users?    @relation(fields: [recordedBy], references: [userId], onUpdate: NoAction, map: "fk_otherexp_users")
+
+  @@index([recordedBy], map: "fk_otherexp_users")
+}
+
+model passwordresetrequests {
+  requestId                                      String    @id @db.VarChar(50)
+  userId                                         String    @db.VarChar(50)
+  requestedBy                                    String    @db.VarChar(50)
+  requestDate                                    DateTime  @default(now()) @db.DateTime(0)
+  status                                         String    @default("Pending") @db.VarChar(20)
+  resolvedBy                                     String?   @db.VarChar(50)
+  resolvedDate                                   DateTime? @db.DateTime(0)
+  notes                                          String?   @db.VarChar(500)
+  users_passwordresetrequests_requestedByTousers users     @relation("passwordresetrequests_requestedByTousers", fields: [requestedBy], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_pwreset_requestedby")
+  users_passwordresetrequests_userIdTousers      users     @relation("passwordresetrequests_userIdTousers", fields: [userId], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_pwreset_user")
+
+  @@index([requestedBy], map: "fk_pwreset_requestedby")
+  @@index([userId], map: "fk_pwreset_user")
+}
+
+model payitems {
+  payItemId     String    @id @db.VarChar(50)
+  jobId         String    @db.VarChar(50)
+  description   String    @db.VarChar(500)
+  actualCost    Decimal   @default(0.00) @db.Decimal(10, 2)
+  addedBy       String    @db.VarChar(50)
+  addedDate     DateTime? @default(now()) @db.DateTime(0)
+  billingAmount Decimal?  @db.Decimal(10, 2)
+  isCustomItem  Boolean   @default(false)
+  jobs          jobs      @relation(fields: [jobId], references: [jobId], onDelete: Cascade, onUpdate: NoAction, map: "fk_payitems_jobs")
+
+  @@index([jobId], map: "idx_payitems_job")
+}
+
+model payitemtemplates {
+  templateId       Int      @id @default(autoincrement())
+  shipmentCategory String   @db.VarChar(50)
+  itemName         String   @db.VarChar(200)
+  itemOrder        Int      @default(0)
+  isActive         Boolean  @default(true)
+  createdDate      DateTime @default(now()) @db.DateTime(0)
+}
+
+model payments {
+  paymentId       String    @id @db.VarChar(50)
+  jobId           String    @db.VarChar(50)
+  customerId      String    @db.VarChar(20)
+  customerName    String?   @db.VarChar(255)
+  invoiceNumber   String?   @db.VarChar(50)
+  billId          String?   @db.VarChar(50)
+  paymentMethod   String    @db.VarChar(50)
+  paymentDate     DateTime  @default(now()) @db.DateTime(0)
+  amount          Decimal   @db.Decimal(18, 2)
+  status          String    @default("Pending") @db.VarChar(50)
+  chequeNumber    String?   @db.VarChar(100)
+  chequeDate      DateTime? @db.Date
+  bankName        String?   @db.VarChar(255)
+  referenceNumber String?   @db.VarChar(100)
+  clearedDate     DateTime? @db.DateTime(0)
+  bouncedDate     DateTime? @db.DateTime(0)
+  notes           String?   @db.LongText
+  createdBy       String?   @db.VarChar(50)
+  createdDate     DateTime  @default(now()) @db.DateTime(0)
+  updatedDate     DateTime? @db.DateTime(0)
+  IsPartial       Boolean?  @default(false)
+  ChequeAmount    String?   @db.Text
+  bills           bills?    @relation(fields: [billId], references: [billId], onUpdate: NoAction, map: "fk_payments_bills")
+  customers       customers @relation(fields: [customerId], references: [customerId], onDelete: NoAction, onUpdate: NoAction, map: "fk_payments_customers")
+  jobs            jobs      @relation(fields: [jobId], references: [jobId], onDelete: NoAction, onUpdate: NoAction, map: "fk_payments_jobs")
+
+  @@index([billId], map: "idx_payments_bill")
+  @@index([customerId], map: "idx_payments_customer")
+  @@index([jobId], map: "idx_payments_job")
+}
+
+model pettycash {
+  entryId      String    @id @db.VarChar(50)
+  description  String    @db.VarChar(500)
+  amount       Decimal   @db.Decimal(10, 2)
+  entryType    String    @db.VarChar(50)
+  jobId        String?   @db.VarChar(50)
+  createdBy    String    @db.VarChar(50)
+  balanceAfter Decimal   @db.Decimal(10, 2)
+  date         DateTime? @default(now()) @db.DateTime(0)
+
+  @@index([jobId], map: "idx_pettycash_job")
+}
+
+model pettycashassignments {
+  assignmentId                                 Int                        @id @default(autoincrement())
+  jobId                                        String                     @db.VarChar(50)
+  assignedTo                                   String                     @db.VarChar(50)
+  assignedBy                                   String                     @db.VarChar(50)
+  assignedAmount                               Decimal                    @db.Decimal(18, 2)
+  assignedDate                                 DateTime                   @default(now()) @db.DateTime(0)
+  status                                       String                     @default("ASSIGNED") @db.VarChar(100)
+  settlementDate                               DateTime?                  @db.DateTime(0)
+  actualSpent                                  Decimal?                   @default(0.00) @db.Decimal(18, 2)
+  balanceAmount                                Decimal?                   @default(0.00) @db.Decimal(18, 2)
+  overAmount                                   Decimal?                   @default(0.00) @db.Decimal(18, 2)
+  notes                                        String?                    @db.VarChar(500)
+  groupId                                      String?                    @db.VarChar(100)
+  parentAssignmentId                           Int?
+  isMainAssignment                             Boolean?                   @default(true)
+  users_pettycashassignments_assignedByTousers users                      @relation("pettycashassignments_assignedByTousers", fields: [assignedBy], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_pca_assigned_by")
+  users_pettycashassignments_assignedToTousers users                      @relation("pettycashassignments_assignedToTousers", fields: [assignedTo], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_pca_assigned_to")
+  jobs                                         jobs                       @relation(fields: [jobId], references: [jobId], onDelete: NoAction, onUpdate: NoAction, map: "fk_pca_jobs")
+  pettycashsettlementitems                     pettycashsettlementitems[]
+
+  @@index([assignedBy], map: "fk_pca_assigned_by")
+  @@index([groupId], map: "idx_pca_group")
+  @@index([jobId], map: "idx_pca_job")
+  @@index([parentAssignmentId], map: "idx_pca_parent")
+  @@index([assignedTo], map: "idx_pca_user")
+}
+
+model pettycashbalance {
+  id          Int       @id
+  balance     Decimal?  @default(0.00) @db.Decimal(10, 2)
+  lastUpdated DateTime? @default(now()) @db.DateTime(0)
+}
+
+model pettycashsettlementitems {
+  settlementItemId     Int                  @id @default(autoincrement())
+  assignmentId         Int
+  itemName             String               @db.VarChar(200)
+  actualCost           Decimal              @db.Decimal(18, 2)
+  isCustomItem         Boolean              @default(false)
+  createdDate          DateTime             @default(now()) @db.DateTime(0)
+  paidBy               String?              @db.VarChar(50)
+  hasBill              Boolean              @default(false)
+  pettycashassignments pettycashassignments @relation(fields: [assignmentId], references: [assignmentId], onDelete: Cascade, onUpdate: NoAction, map: "fk_pcsi_assignments")
+
+  @@index([assignmentId], map: "idx_pcsi_assignment")
+}
+
+model transporterpayments {
+  paymentId     String       @id @db.VarChar(50)
+  jobId         String       @db.VarChar(50)
+  transporterId String       @db.VarChar(50)
+  amount        Decimal      @db.Decimal(18, 2)
+  paymentMethod String       @db.VarChar(50)
+  paymentDate   DateTime     @default(now()) @db.DateTime(0)
+  status        String       @default("Pending") @db.VarChar(50)
+  chequeNumber  String?      @db.VarChar(100)
+  chequeDate    DateTime?    @db.Date
+  chequeAmount  Decimal?     @db.Decimal(18, 2)
+  bankName      String?      @db.VarChar(255)
+  clearedDate   DateTime?    @db.DateTime(0)
+  notes         String?      @db.LongText
+  paidBy        String?      @db.VarChar(50)
+  paidByName    String?      @db.VarChar(255)
+  createdDate   DateTime     @default(now()) @db.DateTime(0)
+  updatedDate   DateTime?    @db.DateTime(0)
+  jobs          jobs         @relation(fields: [jobId], references: [jobId], onDelete: NoAction, onUpdate: NoAction, map: "fk_tp_jobs")
+  transporters  transporters @relation(fields: [transporterId], references: [transporterId], onDelete: NoAction, onUpdate: NoAction, map: "fk_tp_transporters")
+
+  @@index([jobId], map: "idx_tp_job")
+  @@index([transporterId], map: "idx_tp_transporter")
+}
+
+model transporters {
+  transporterId       String                @id @db.VarChar(50)
+  name                String                @db.VarChar(200)
+  contactPerson       String?               @db.VarChar(150)
+  phone               String                @db.VarChar(20)
+  email               String?               @db.VarChar(100)
+  address             String?               @db.VarChar(500)
+  vehicleNumber       String?               @db.VarChar(100)
+  notes               String?               @db.LongText
+  createdDate         DateTime?             @default(now()) @db.DateTime(0)
+  isActive            Boolean?              @default(true)
+  registrationDate    DateTime?             @db.DateTime(0)
+  addressNumber       String?               @db.VarChar(100)
+  addressStreet1      String?               @db.VarChar(200)
+  addressStreet2      String?               @db.VarChar(200)
+  addressDistrict     String?               @db.VarChar(100)
+  addressCity         String?               @db.VarChar(100)
+  addressCountry      String?               @db.VarChar(100)
+  contactPersonsJson  String?               @db.LongText
+  lorryNumber         String?               @db.Text
+  transporterType     String?               @db.Text
+  driverName          String?               @db.Text
+  size                String?               @db.Text
+  transporterpayments transporterpayments[]
+}
+
+model users {
+  userId                                                         String                   @id @db.VarChar(50)
+  username                                                       String                   @unique(map: "username") @db.VarChar(100)
+  password                                                       String                   @db.VarChar(255)
+  fullName                                                       String                   @db.VarChar(200)
+  role                                                           String                   @db.VarChar(50)
+  email                                                          String                   @db.VarChar(200)
+  createdDate                                                    DateTime?                @default(now()) @db.DateTime(0)
+  isActive                                                       Boolean?                 @default(true)
+  isTemporaryPassword                                            String?                  @db.Text
+  passwordResetRequired                                          String?                  @db.Text
+  lastPasswordChange                                             DateTime?                @db.DateTime(0)
+  cashbalancesettlements                                         cashbalancesettlements[]
+  cashwithdrawals                                                cashwithdrawals[]
+  invoice_reviews_invoice_reviews_clerkIdTousers                 invoice_reviews[]        @relation("invoice_reviews_clerkIdTousers")
+  invoice_reviews_invoice_reviews_sentByTousers                  invoice_reviews[]        @relation("invoice_reviews_sentByTousers")
+  jobassignments                                                 jobassignments[]
+  notifications                                                  notifications[]
+  otherexpenses                                                  otherexpenses[]
+  passwordresetrequests_passwordresetrequests_requestedByTousers passwordresetrequests[]  @relation("passwordresetrequests_requestedByTousers")
+  passwordresetrequests_passwordresetrequests_userIdTousers      passwordresetrequests[]  @relation("passwordresetrequests_userIdTousers")
+  pettycashassignments_pettycashassignments_assignedByTousers    pettycashassignments[]   @relation("pettycashassignments_assignedByTousers")
+  pettycashassignments_pettycashassignments_assignedToTousers    pettycashassignments[]   @relation("pettycashassignments_assignedToTousers")
+}

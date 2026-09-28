@@ -4,22 +4,15 @@
 const express = require('express');
 const router = express.Router();
 const { auth, checkRole } = require('../../middleware/auth');
-const { getConnection, sql } = require('../../config/database');
-const MSSQLPaymentRepository = require('../../infrastructure/repositories/MSSQLPaymentRepository');
-const MSSQLCustomerRepository = require('../../infrastructure/repositories/MSSQLCustomerRepository');
-const MSSQLContactPersonRepository = require('../../infrastructure/repositories/MSSQLContactPersonRepository');
-const MSSQLCategoryRepository = require('../../infrastructure/repositories/MSSQLCategoryRepository');
-const MSSQLBillRepository = require('../../infrastructure/repositories/MSSQLBillRepository');
+const container = require('../../infrastructure/di/container');
 const CreatePayment = require('../../application/use-cases/payment/CreatePayment');
 const GetAllPayments = require('../../application/use-cases/payment/GetAllPayments');
 const UpdatePaymentStatus = require('../../application/use-cases/payment/UpdatePaymentStatus');
 const PaymentController = require('../controllers/PaymentController');
 
-const contactPersonRepository = new MSSQLContactPersonRepository(getConnection, sql);
-const categoryRepository = new MSSQLCategoryRepository(getConnection, sql);
-const customerRepository = new MSSQLCustomerRepository(getConnection, sql, contactPersonRepository, categoryRepository);
-const paymentRepository = new MSSQLPaymentRepository(getConnection, sql);
-const billRepository = new MSSQLBillRepository(getConnection, sql);
+const customerRepository = container.get('customerRepository');
+const paymentRepository = container.get('paymentRepository');
+const billRepository = container.get('billRepository');
 
 const createPayment = new CreatePayment(paymentRepository);
 const getAllPayments = new GetAllPayments(paymentRepository, customerRepository, billRepository);

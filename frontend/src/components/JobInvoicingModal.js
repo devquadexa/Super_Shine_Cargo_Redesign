@@ -41,7 +41,9 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
       billingAmount: '',
       sameAmount: false,
       hasBill: false,
-      isNewItem: true
+      isNewItem: true,
+      isCustomItem: true,
+      source: 'Custom'
     };
   };
 
@@ -64,7 +66,9 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
     billingAmount: '',
     sameAmount: false,
     hasBill: false,
-    isNewItem: true
+    isNewItem: true,
+    isCustomItem: true,
+    source: 'Custom'
   });
 
   const calculateTotals = () => {
@@ -199,69 +203,78 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
 
   const loadClerks = async () => {
     try {
-      const allUsers = await authService.getUsers();
-      const clerkUsers = (allUsers || []).filter(u => u.role === 'Waff Clerk' || u.role === 'Clerk');
-      const userMap = new Map();
-
-      // Priority 1: explicitly assigned users on job
-      if (job?.assignedUsers && Array.isArray(job.assignedUsers)) {
-        job.assignedUsers.forEach(u => {
-          if (u.userId) {
-            userMap.set(u.userId, {
-              userId: u.userId,
-              userName: u.userName || u.fullName || u.name,
-              fullName: u.fullName || u.userName || u.name
-            });
-          }
-        });
-      }
-
-      // Priority 2: job assignments (e.g. from petty cash or tasks)
-      if (job?.assignments && Array.isArray(job.assignments)) {
-        job.assignments.forEach(a => {
-          if (a.userId) {
-            userMap.set(a.userId, {
-              userId: a.userId,
-              userName: a.userName || a.waff_clerk_name || 'Clerk',
-              fullName: a.userName || a.waff_clerk_name || 'Clerk'
-            });
-          }
-        });
-      }
-
-      // Add any other Waff Clerks so there is always a clerk selectable
-      clerkUsers.forEach(u => {
-        if (!userMap.has(u.userId)) {
-          userMap.set(u.userId, {
-            userId: u.userId,
-            userName: u.fullName || u.username,
-            fullName: u.fullName || u.username
-          });
-        }
+      // 1. Fetch all users to verify roles
+      const allUsers = await authService.getUsers().catch(() => []);
+      const userMapById = new Map();
+      (allUsers || []).forEach(u => {
+        if (u.userId) userMapById.set(u.userId, u);
       });
 
-      // Fallback: if no clerks matched, show other users
-      if (userMap.size === 0 && Array.isArray(allUsers)) {
-        allUsers.forEach(u => {
-          userMap.set(u.userId, {
-            userId: u.userId,
-            userName: u.fullName || u.username,
-            fullName: u.fullName || u.username
+      // Helper: check if a user is a Waff Clerk
+      const isWaffClerkUser = (userId, fallbackObj = {}) => {
+        const fullUser = userMapById.get(userId) || fallbackObj;
+        const role = fullUser?.role;
+        return role === 'Waff Clerk' || role === 'Clerk';
+      };
+
+      const assignedClerkMap = new Map();
+
+      // 2. Fetch direct active job assignments from API for this job
+      try {
+        const assignmentsRes = await apiClient.get(`/job-assignments/jobs/${job.jobId}/assignments`);
+        const apiAssignments = assignmentsRes.data?.data || assignmentsRes.data || [];
+        if (Array.isArray(apiAssignments)) {
+          apiAssignments.forEach(a => {
+            const uId = a.userId;
+            if (uId && isWaffClerkUser(uId, a)) {
+              const fullUser = userMapById.get(uId);
+              assignedClerkMap.set(uId, {
+                userId: uId,
+                userName: fullUser?.fullName || fullUser?.username || a.fullName || a.userName || 'Waff Clerk',
+                fullName: fullUser?.fullName || fullUser?.username || a.fullName || a.userName || 'Waff Clerk'
+              });
+            }
           });
+        }
+      } catch (err) {
+        console.warn('Could not fetch job assignments from API:', err);
+      }
+
+      // 3. Check explicitly assigned users on job (job.assignedUsers)
+      if (job?.assignedUsers && Array.isArray(job.assignedUsers)) {
+        job.assignedUsers.forEach(u => {
+          const uId = u.userId;
+          if (uId && isWaffClerkUser(uId, u) && !assignedClerkMap.has(uId)) {
+            const fullUser = userMapById.get(uId);
+            assignedClerkMap.set(uId, {
+              userId: uId,
+              userName: fullUser?.fullName || fullUser?.username || u.userName || u.fullName || 'Waff Clerk',
+              fullName: fullUser?.fullName || fullUser?.username || u.fullName || u.userName || 'Waff Clerk'
+            });
+          }
         });
       }
 
-      setClerks(Array.from(userMap.values()));
+      // 4. Check job assignments from petty cash or tasks (job.assignments)
+      if (job?.assignments && Array.isArray(job.assignments)) {
+        job.assignments.forEach(a => {
+          const uId = a.userId;
+          if (uId && isWaffClerkUser(uId, a) && !assignedClerkMap.has(uId)) {
+            const fullUser = userMapById.get(uId);
+            assignedClerkMap.set(uId, {
+              userId: uId,
+              userName: fullUser?.fullName || fullUser?.username || a.userName || a.waff_clerk_name || 'Waff Clerk',
+              fullName: fullUser?.fullName || fullUser?.username || a.fullName || a.waff_clerk_name || 'Waff Clerk'
+            });
+          }
+        });
+      }
+
+      // ONLY set assigned Waff Clerks. Never include unassigned clerks or general users.
+      setClerks(Array.from(assignedClerkMap.values()));
     } catch (err) {
-      console.error('Error fetching clerks for invoice review:', err);
-      const fallback = [];
-      if (job?.assignedUsers) {
-        job.assignedUsers.forEach(u => fallback.push({ userId: u.userId, userName: u.userName || u.fullName, fullName: u.fullName || u.userName }));
-      }
-      if (job?.assignments) {
-        job.assignments.forEach(a => fallback.push({ userId: a.userId, userName: a.userName || a.waff_clerk_name, fullName: a.userName || a.waff_clerk_name }));
-      }
-      setClerks(fallback);
+      console.error('Error fetching assigned clerks for invoice review:', err);
+      setClerks([]);
     }
   };
 
@@ -312,18 +325,36 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
     try {
       let allPayItems = [];
       
+      // Parse job.payItems if it's a JSON string
+      let rawJobPayItems = job?.payItems;
+      if (typeof rawJobPayItems === 'string') {
+        try {
+          rawJobPayItems = JSON.parse(rawJobPayItems);
+        } catch (e) {
+          rawJobPayItems = [];
+        }
+      }
+
       // 1. First priority: Load from job.payItems (saved when invoice was created)
-      if (job?.payItems && Array.isArray(job.payItems) && job.payItems.length > 0) {
-        job.payItems.forEach(item => {
+      if (rawJobPayItems && Array.isArray(rawJobPayItems) && rawJobPayItems.length > 0) {
+        rawJobPayItems.forEach(item => {
+          const isCustom = item.isCustomItem === true ||
+                           item.source === 'Custom' ||
+                           (!item.isOfficePayItem && !item.isPettyCashItem && item.source !== 'Office Payment' && item.source !== 'Petty Cash');
           allPayItems.push({
-            name: item.description || item.name || '',
-            actualCost: item.actualCost || item.amount || 0,
+            name: item.description || item.name || item.itemName || '',
+            actualCost: item.actualCost !== undefined ? item.actualCost : (item.amount || 0),
             billingAmount: item.billingAmount || 0,
             sameAmount: false,
             paidBy: item.paidBy || 'Office',
             paidByName: item.paidByName || item.paidBy || 'Office',
-            hasBill: true,
-            source: item.source || 'Unknown',
+            hasBill: item.hasBill !== undefined ? item.hasBill : true,
+            source: item.source || (isCustom ? 'Custom' : 'Unknown'),
+            isCustomItem: isCustom,
+            isNewItem: isCustom,
+            isOfficePayItem: item.isOfficePayItem || item.source === 'Office Payment',
+            officePayItemId: item.officePayItemId,
+            isPettyCashItem: item.isPettyCashItem || item.source === 'Petty Cash',
             isReadOnly: false
           });
         });
@@ -467,18 +498,21 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
       }
 
       // 2. Prepare all pay items to persist in job.payItems
-      const updatedPayItemsData = payItems.map(p => ({
-        description: p.name,
-        name: p.name,
-        itemName: p.name,
-        amount: parseFloat(p.actualCost) || 0,
-        actualCost: parseFloat(p.actualCost) || 0,
-        billingAmount: parseFloat(p.billingAmount) || 0,
-        paidBy: p.paidByName || p.paidBy || 'Office',
-        paidByName: p.paidByName || p.paidBy || 'Office',
-        hasBill: p.hasBill !== undefined ? p.hasBill : true,
-        source: p.isOfficePayItem ? 'Office Payment' : p.isPettyCashItem ? 'Petty Cash' : 'Custom'
-      }));
+      const updatedPayItemsData = payItems
+        .filter(p => p.name && p.name.trim())
+        .map(p => ({
+          description: p.name.trim(),
+          name: p.name.trim(),
+          itemName: p.name.trim(),
+          amount: parseFloat(p.actualCost) || 0,
+          actualCost: parseFloat(p.actualCost) || 0,
+          billingAmount: parseFloat(p.billingAmount) || 0,
+          paidBy: p.paidByName || p.paidBy || 'Office',
+          paidByName: p.paidByName || p.paidBy || 'Office',
+          hasBill: p.hasBill !== undefined ? p.hasBill : true,
+          source: p.isOfficePayItem ? 'Office Payment' : p.isPettyCashItem ? 'Petty Cash' : 'Custom',
+          isCustomItem: p.isCustomItem || p.source === 'Custom' || (!p.isOfficePayItem && !p.isPettyCashItem)
+        }));
 
       await jobService.replacePayItems(job.jobId, updatedPayItemsData);
 
@@ -607,12 +641,17 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
       
       // Save pay items to job
       const newPayItemsData = validPayItems.map(item => ({
-        description: item.name,
-        amount: parseFloat(item.actualCost),
-        actualCost: parseFloat(item.actualCost),
-        billingAmount: parseFloat(item.billingAmount),
+        description: item.name.trim(),
+        name: item.name.trim(),
+        itemName: item.name.trim(),
+        amount: parseFloat(item.actualCost) || 0,
+        actualCost: parseFloat(item.actualCost) || 0,
+        billingAmount: parseFloat(item.billingAmount) || 0,
         paidBy: item.paidByName || item.paidBy || 'Office',
-        source: item.isOfficePayItem ? 'Office Payment' : item.isPettyCashItem ? 'Petty Cash' : 'Custom'
+        paidByName: item.paidByName || item.paidBy || 'Office',
+        hasBill: item.hasBill !== undefined ? item.hasBill : true,
+        source: item.isOfficePayItem ? 'Office Payment' : item.isPettyCashItem ? 'Petty Cash' : 'Custom',
+        isCustomItem: item.isCustomItem || item.source === 'Custom' || (!item.isOfficePayItem && !item.isPettyCashItem)
       }));
       
       await jobService.replacePayItems(job.jobId, newPayItemsData);
@@ -1493,41 +1532,93 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
     // This is no longer needed - editing is per-item now
   };
 
-const handleDeleteItem = async (index) => {
+  const handleDeleteItem = async (index) => {
     if (isInvoiceLocked) {
       setMessage('⚠️ This invoice is locked because payment has already been recorded.');
       setTimeout(() => setMessage(''), 4000);
       return;
     }
-    const itemName = payItems[index].name;
-    if (!window.confirm(`Delete "${itemName}"?`)) {
-      return;
+    const itemToDelete = payItems[index];
+    if (!itemToDelete) return;
+
+    const itemName = itemToDelete.name || itemToDelete.description || '';
+    if (itemName && itemName.trim()) {
+      if (!window.confirm(`Delete "${itemName}"?`)) {
+        return;
+      }
     }
 
     try {
       const updatedItems = payItems.filter((_, i) => i !== index);
       
+      // If item was an office pay item, also delete it from office pay items backend
+      if (itemToDelete.isOfficePayItem && itemToDelete.officePayItemId) {
+        try {
+          await fetch(`${API_BASE}/api/office-pay-items/${itemToDelete.officePayItemId}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+          });
+        } catch (delErr) {
+          console.warn('Could not delete office pay item backend record:', delErr);
+        }
+      }
+
       if (updatedItems.length === 0) {
-        // If no items left, save empty array
-        await jobService.replacePayItems(job.jobId, []);
+        // If no items left, save empty array if pay items were previously persisted
+        if (payItemsSaved || (job?.payItems && (Array.isArray(job.payItems) ? job.payItems.length > 0 : true))) {
+          await jobService.replacePayItems(job.jobId, []);
+        }
         setPayItems([]);
         setPayItemsSaved(false);
         setShowPayItemsRow(false);
-        setMessage('✅ All items deleted!');
+        setMessage('✅ Item deleted!');
       } else {
-        // Save remaining items
-        const newPayItemsData = updatedItems.map(item => ({
-          description: item.name,
-          amount: parseFloat(item.actualCost),
-          actualCost: parseFloat(item.actualCost),
-          billingAmount: parseFloat(item.billingAmount),
-          paidBy: item.paidByName || item.paidBy || 'Office',
-          source: item.isOfficePayItem ? 'Office Payment' : item.isPettyCashItem ? 'Petty Cash' : 'Custom'
-        }));
+        // Sanitize remaining valid items before saving to backend
+        const validItemsToSave = updatedItems
+          .filter(item => item.name && item.name.trim())
+          .map(item => ({
+            description: item.name.trim(),
+            name: item.name.trim(),
+            itemName: item.name.trim(),
+            amount: parseFloat(item.actualCost) || 0,
+            actualCost: parseFloat(item.actualCost) || 0,
+            billingAmount: parseFloat(item.billingAmount) || 0,
+            paidBy: item.paidByName || item.paidBy || 'Office',
+            paidByName: item.paidByName || item.paidBy || 'Office',
+            hasBill: item.hasBill !== undefined ? item.hasBill : true,
+            source: item.isOfficePayItem ? 'Office Payment' : item.isPettyCashItem ? 'Petty Cash' : 'Custom',
+            isCustomItem: item.isCustomItem || item.source === 'Custom' || (!item.isOfficePayItem && !item.isPettyCashItem)
+          }));
         
-        await jobService.replacePayItems(job.jobId, newPayItemsData);
+        // If items were previously saved, update the backend and unpaid bills
+        if (payItemsSaved || (job?.payItems && (Array.isArray(job.payItems) ? job.payItems.length > 0 : true))) {
+          await jobService.replacePayItems(job.jobId, validItemsToSave);
+
+          // Update unpaid bill totals if one exists
+          const totalActualCost = validItemsToSave.reduce((sum, it) => sum + (it.actualCost || 0), 0);
+          const totalBillingAmount = validItemsToSave.reduce((sum, it) => sum + (it.billingAmount || 0), 0);
+          if (bills && bills.length > 0) {
+            const unpaidBill = bills.find(b => b.paymentStatus === 'Unpaid' || !(parseFloat(b.paidAmount) > 0));
+            if (unpaidBill) {
+              try {
+                await billingService.createBill({
+                  jobId: job.jobId,
+                  customerId: job.customerId,
+                  actualCost: totalActualCost,
+                  billingAmount: totalBillingAmount,
+                  grossTotal: totalBillingAmount,
+                  netTotal: totalBillingAmount
+                });
+                await loadJobBills();
+              } catch (billErr) {
+                console.error('Error updating bill totals after item delete:', billErr);
+              }
+            }
+          }
+        }
+
         setPayItems(updatedItems);
-        setMessage(`✅ "${itemName}" deleted successfully!`);
+        setMessage(itemName ? `✅ "${itemName}" deleted successfully!` : '✅ Pay item deleted successfully!');
       }
       
       setTimeout(() => setMessage(''), 3000);
@@ -1537,7 +1628,8 @@ const handleDeleteItem = async (index) => {
       setTimeout(() => checkAllItemsHaveBillingAmounts(), 100);
     } catch (error) {
       console.error('Error deleting item:', error);
-      setMessage('Error deleting item');
+      const errMsg = error.response?.data?.message || error.message || 'Error deleting item';
+      setMessage(`❌ ${errMsg}`);
       setTimeout(() => setMessage(''), 5000);
     }
   };
@@ -1739,7 +1831,7 @@ const handleDeleteItem = async (index) => {
                                         </>
                                       )}
                                     </button>
-                                    {item.isNewItem && (
+                                    {(item.isCustomItem || item.isNewItem || item.source === 'Custom' || (!item.isOfficePayItem && !item.isPettyCashItem)) && (
                                       <button
                                         type="button"
                                         onClick={() => handleDeleteItem(idx)}

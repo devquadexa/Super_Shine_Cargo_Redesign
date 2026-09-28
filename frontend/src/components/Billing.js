@@ -140,10 +140,79 @@ function Billing() {
   };
 
   const getAssignedClerks = () => {
-    if (!selectedJob || !selectedJob.assignedUsers) {
-      return [];
+    return assignedClerks;
+  };
+
+  const loadAssignedClerksForJob = async (job) => {
+    if (!job?.jobId) {
+      setAssignedClerks([]);
+      return;
     }
-    return selectedJob.assignedUsers;
+    try {
+      const allUsersRes = await apiClient.get('/auth/users').catch(() => ({ data: [] }));
+      const allUsers = Array.isArray(allUsersRes.data) ? allUsersRes.data : [];
+      const userMapById = new Map();
+      allUsers.forEach(u => {
+        if (u.userId) userMapById.set(u.userId, u);
+      });
+
+      const isWaffClerk = (userId, fallbackObj = {}) => {
+        const u = userMapById.get(userId) || fallbackObj;
+        return u?.role === 'Waff Clerk' || u?.role === 'Clerk';
+      };
+
+      const clerkMap = new Map();
+
+      try {
+        const assignmentsRes = await apiClient.get(`/job-assignments/jobs/${job.jobId}/assignments`);
+        const apiAssignments = assignmentsRes.data?.data || assignmentsRes.data || [];
+        if (Array.isArray(apiAssignments)) {
+          apiAssignments.forEach(a => {
+            if (a.userId && isWaffClerk(a.userId, a)) {
+              const fullUser = userMapById.get(a.userId);
+              clerkMap.set(a.userId, {
+                userId: a.userId,
+                userName: fullUser?.fullName || fullUser?.username || a.fullName || a.userName || 'Waff Clerk',
+                fullName: fullUser?.fullName || fullUser?.username || a.fullName || a.userName || 'Waff Clerk'
+              });
+            }
+          });
+        }
+      } catch (e) {
+        console.warn('Could not fetch assignments for job:', e);
+      }
+
+      if (job.assignedUsers && Array.isArray(job.assignedUsers)) {
+        job.assignedUsers.forEach(u => {
+          if (u.userId && isWaffClerk(u.userId, u) && !clerkMap.has(u.userId)) {
+            const fullUser = userMapById.get(u.userId);
+            clerkMap.set(u.userId, {
+              userId: u.userId,
+              userName: fullUser?.fullName || fullUser?.username || u.userName || u.fullName || 'Waff Clerk',
+              fullName: fullUser?.fullName || fullUser?.username || u.fullName || u.userName || 'Waff Clerk'
+            });
+          }
+        });
+      }
+
+      if (job.assignments && Array.isArray(job.assignments)) {
+        job.assignments.forEach(a => {
+          if (a.userId && isWaffClerk(a.userId, a) && !clerkMap.has(a.userId)) {
+            const fullUser = userMapById.get(a.userId);
+            clerkMap.set(a.userId, {
+              userId: a.userId,
+              userName: fullUser?.fullName || fullUser?.username || a.userName || a.waff_clerk_name || 'Waff Clerk',
+              fullName: fullUser?.fullName || fullUser?.username || a.fullName || a.waff_clerk_name || 'Waff Clerk'
+            });
+          }
+        });
+      }
+
+      setAssignedClerks(Array.from(clerkMap.values()));
+    } catch (err) {
+      console.error('Error loading assigned clerks in Billing.js:', err);
+      setAssignedClerks([]);
+    }
   };
 
   const formatCusdecNumberForDisplay = (value) => {
@@ -167,6 +236,7 @@ function Billing() {
   const [customers, setCustomers] = useState([]);
   const [transporters, setTransporters] = useState([]);
   const [selectedJob, setSelectedJob] = useState(null);
+  const [assignedClerks, setAssignedClerks] = useState([]);
   const [message, setMessage] = useState('');
   const [showPayItemsRow, setShowPayItemsRow] = useState(false);
   const [payItems, setPayItems] = useState([]);
@@ -630,7 +700,12 @@ function Billing() {
 
   const removePayItemRow = (index) => {
     const newPayItems = payItems.filter((_, i) => i !== index);
-    setPayItems(newPayItems.length > 0 ? newPayItems : [getBlankPayItem()]);
+    if (newPayItems.length === 0) {
+      setShowPayItemsRow(false);
+      setPayItems([]);
+    } else {
+      setPayItems(newPayItems);
+    }
   };
 
   const handlePayItemChange = (index, field, value) => {
@@ -945,8 +1020,15 @@ function Billing() {
         billingAmount: newBillingAmount
       };
 
-      // Save to backend
-      await jobService.replacePayItems(selectedJob.jobId, updatedPayItems);
+      // Sanitize and save to backend
+      const sanitizedPayItems = updatedPayItems.map(item => ({
+        ...item,
+        description: (item.description || item.name || 'Pay Item').trim(),
+        amount: parseFloat(item.actualCost || item.amount) || 0,
+        actualCost: parseFloat(item.actualCost || item.amount) || 0,
+        billingAmount: parseFloat(item.billingAmount || item.amount) || 0
+      }));
+      await jobService.replacePayItems(selectedJob.jobId, sanitizedPayItems);
       
       // Update local state
       setSelectedJob({
@@ -2565,7 +2647,7 @@ function Billing() {
                               />
                             </td>
                             <td className="px-4 py-3 text-center" data-label="Action">
-                              {payItems.length > 1 && !item.paidByName && !(selectedJob?.shipmentCategory === 'FCL' && isTransporterCostLabel(item.name)) && (
+                              {!item.paidByName && !(selectedJob?.shipmentCategory === 'FCL' && isTransporterCostLabel(item.name)) && (
                                 <button
                                   type="button"
                                   onClick={() => removePayItemRow(index)}
@@ -3405,7 +3487,7 @@ function Billing() {
         show={showReviewInvoiceModal}
         onClose={() => setShowReviewInvoiceModal(false)}
         job={selectedJob}
-        assignedClerks={getAssignedClerks()}
+        assignedClerks={assignedClerks}
         onSubmit={handleReviewInvoiceSubmit}
         loading={reviewInvoiceLoading}
       />

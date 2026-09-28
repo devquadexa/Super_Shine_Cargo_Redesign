@@ -1,13 +1,17 @@
 const sql = require('mssql');
 
-// Validate required environment variables
-const requiredEnvVars = ['DB_USER', 'DB_PASSWORD', 'DB_SERVER', 'DB_DATABASE'];
-const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
+const isMSSQL = (process.env.DB_TYPE || '').toLowerCase() === 'mssql';
 
-if (missingEnvVars.length > 0) {
-  console.error('❌ Missing required environment variables:', missingEnvVars.join(', '));
-  console.error('Please check your .env file in backend-api folder');
-  process.exit(1);
+// Validate required environment variables only if running MSSQL
+if (isMSSQL) {
+  const requiredEnvVars = ['DB_USER', 'DB_PASSWORD', 'DB_SERVER', 'DB_DATABASE'];
+  const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
+
+  if (missingEnvVars.length > 0) {
+    console.error('❌ Missing required MSSQL environment variables:', missingEnvVars.join(', '));
+    console.error('Please check your .env file in backend-api folder');
+    process.exit(1);
+  }
 }
 
 const config = {

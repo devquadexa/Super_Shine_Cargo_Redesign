@@ -17,7 +17,7 @@ function ReviewInvoiceModal({ show, onClose, job, assignedClerks, onSubmit, load
     const newErrors = {};
     
     if (!selectedClerk) {
-      newErrors.selectedClerk = 'Please select a clerk to review the invoice';
+      newErrors.selectedClerk = 'Please select an assigned Waff Clerk to review the invoice';
     }
     
     if (!reviewNotes.trim()) {
@@ -100,7 +100,7 @@ function ReviewInvoiceModal({ show, onClose, job, assignedClerks, onSubmit, load
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-3">
-                Select Clerk for Review <span className="text-red-600">*</span>
+                Select Assigned Waff Clerk for Review <span className="text-red-600">*</span>
               </label>
               <select
                 id="clerk-select"
@@ -117,7 +117,7 @@ function ReviewInvoiceModal({ show, onClose, job, assignedClerks, onSubmit, load
                     : 'border-gray-300'
                 }`}
               >
-                <option value="">-- Select a clerk --</option>
+                <option value="">-- Select an assigned Waff Clerk --</option>
                 {assignedClerks && assignedClerks.length > 0 ? (
                   assignedClerks.map(clerk => (
                     <option key={clerk.userId} value={clerk.userId}>
@@ -125,11 +125,17 @@ function ReviewInvoiceModal({ show, onClose, job, assignedClerks, onSubmit, load
                     </option>
                   ))
                 ) : (
-                  <option disabled>No clerks assigned to this job</option>
+                  <option disabled>No Waff Clerks assigned to this job</option>
                 )}
               </select>
               {errors.selectedClerk && (
                 <p className="mt-2 text-sm text-red-600">{errors.selectedClerk}</p>
+              )}
+              {(!assignedClerks || assignedClerks.length === 0) && (
+                <div className="mt-2 p-2.5 bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded-lg flex items-center gap-2">
+                  <span>⚠️</span>
+                  <span>No Waff Clerks are currently assigned to Job #{job?.jobId}. Please assign a Waff Clerk to this job first.</span>
+                </div>
               )}
             </div>
 
