@@ -95,7 +95,7 @@ function PaymentManagement() {
         if (matchingJob) {
           const costItems = (Array.isArray(matchingJob.payItems) ? matchingJob.payItems : []).filter(item => {
             const label = (item?.description || item?.name || '').toLowerCase().trim();
-            return label.startsWith('transporter cost (from') || label === 'transporter cost';
+            return label.startsWith('transporter cost') || label.startsWith('transport cost');
           });
           totalCost = costItems.reduce((s, it) => s + (parseFloat(it.actualCost || it.amount || it.billingAmount || 0) || 0), 0);
           paidAmount = costItems.reduce((s, it) => s + (parseFloat(it.paidAmount || 0) || 0), 0);
@@ -135,7 +135,7 @@ function PaymentManagement() {
       jobs.forEach((job) => {
         const costItems = (Array.isArray(job.payItems) ? job.payItems : []).filter(item => {
           const label = (item?.description || item?.name || '').toLowerCase().trim();
-          return label.startsWith('transporter cost (from') || label === 'transporter cost';
+          return label.startsWith('transporter cost') || label.startsWith('transport cost');
         });
 
         const totalCost = costItems.reduce((s, it) => s + (parseFloat(it.actualCost || it.amount || it.billingAmount || 0) || 0), 0);

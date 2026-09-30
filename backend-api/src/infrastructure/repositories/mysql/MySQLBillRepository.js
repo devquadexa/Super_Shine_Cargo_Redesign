@@ -227,6 +227,97 @@ class MySQLBillRepository extends BaseMySQLRepository {
         : (row.netTotal ? Number(row.netTotal) : (row.total ? Number(row.total) : 0))
     });
   }
+
+  async getPendingPaymentsReport(fromDate, toDate, showOverdueOnly = false) {
+    const fromStr = fromDate instanceof Date ? fromDate.toISOString().split('T')[0] : (fromDate ? String(fromDate).split('T')[0] : null);
+    const toStr = toDate instanceof Date ? toDate.toISOString().split('T')[0] : (toDate ? String(toDate).split('T')[0] : null);
+
+    let sql = `
+      SELECT 
+        b.billId,
+        b.jobId,
+        b.customerId,
+        b.invoiceNumber,
+        b.invoiceDate,
+        b.dueDate,
+        b.grossTotal,
+        b.netTotal,
+        b.advancePayment,
+        b.paidAmount,
+        b.balanceAmount,
+        b.remainingAmount,
+        b.billingAmount,
+        b.amount,
+        b.paymentStatus,
+        b.isOverdue,
+        c.name AS customerName,
+        j.shipmentCategory,
+        j.containerNumber,
+        j.blNumber
+      FROM bills b
+      LEFT JOIN customers c ON b.customerId = c.customerId
+      LEFT JOIN jobs j ON b.jobId = j.jobId
+      WHERE (b.paymentStatus IS NULL OR LOWER(b.paymentStatus) != 'paid')
+    `;
+
+    const params = [];
+
+    if (fromStr && toStr) {
+      sql += ` AND DATE(b.invoiceDate) BETWEEN DATE(?) AND DATE(?)`;
+      params.push(fromStr, toStr);
+    } else if (fromStr) {
+      sql += ` AND DATE(b.invoiceDate) >= DATE(?)`;
+      params.push(fromStr);
+    } else if (toStr) {
+      sql += ` AND DATE(b.invoiceDate) <= DATE(?)`;
+      params.push(toStr);
+    }
+
+    if (showOverdueOnly) {
+      sql += ` AND (b.isOverdue = 1 OR (b.dueDate IS NOT NULL AND b.dueDate < NOW()))`;
+    }
+
+    sql += ` ORDER BY b.invoiceDate DESC, b.jobId ASC`;
+
+    const mysqlDb = require('../../../config/mysqlDatabase');
+    const rows = await mysqlDb.query(sql, params);
+
+    return (rows || []).map(row => {
+      const grossTotal = parseFloat(row.grossTotal || row.billingAmount || row.amount || 0);
+      const advancePayment = parseFloat(row.advancePayment || 0);
+      const netTotal = parseFloat(row.netTotal !== null && row.netTotal !== undefined ? row.netTotal : Math.max(0, grossTotal - advancePayment));
+      const paidAmount = parseFloat(row.paidAmount || 0);
+      const balanceAmt = parseFloat(row.balanceAmount);
+      const remainingAmt = parseFloat(row.remainingAmount);
+      const remainingAmount = !isNaN(balanceAmt) && balanceAmt > 0
+        ? balanceAmt
+        : (!isNaN(remainingAmt) && remainingAmt > 0
+            ? remainingAmt
+            : Math.max(0, netTotal - paidAmount));
+
+      const isOverdue = Boolean(row.isOverdue || (row.dueDate && new Date(row.dueDate) < new Date()));
+
+      return {
+        billId: row.billId,
+        jobId: row.jobId,
+        customerId: row.customerId,
+        customerName: row.customerName || '-',
+        invoiceNumber: row.invoiceNumber || row.billId,
+        invoiceDate: row.invoiceDate,
+        dueDate: row.dueDate,
+        grossTotal,
+        netTotal,
+        advancePayment,
+        paidAmount,
+        remainingAmount,
+        paymentStatus: row.paymentStatus || 'Unpaid',
+        isOverdue,
+        shipmentCategory: row.shipmentCategory || '-',
+        containerNumber: row.containerNumber || '-',
+        blNumber: row.blNumber || '-'
+      };
+    });
+  }
 }
 
 module.exports = MySQLBillRepository;

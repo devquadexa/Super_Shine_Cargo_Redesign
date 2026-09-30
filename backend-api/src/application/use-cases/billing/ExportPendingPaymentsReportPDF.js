@@ -18,60 +18,14 @@ class ExportPendingPaymentsReportPDF {
     if (isNaN(from.getTime())) throw new Error('Invalid from date. Use YYYY-MM-DD');
     if (isNaN(to.getTime()))   throw new Error('Invalid to date. Use YYYY-MM-DD');
 
-    // Get data using the repository
-    const pool = await this.billRepository.db();
     const fromDateStr = from.toISOString().split('T')[0];
-    const toDateStr = to.toISOString().split('T')[0];
+    const toDateStr   = to.toISOString().split('T')[0];
 
-    const request = pool.request()
-      .input('fromDate', this.billRepository.sql.VarChar, fromDateStr)
-      .input('toDate', this.billRepository.sql.VarChar, toDateStr);
+    const invoices = await this.billRepository.getPendingPaymentsReport(fromDateStr, toDateStr, showOverdueOnly);
 
-    let whereClause = `
-      WHERE b.PaymentStatus IN ('Unpaid', 'Partially Paid')
-        AND CONVERT(DATE, b.invoiceDate) BETWEEN CONVERT(DATE, @fromDate) AND CONVERT(DATE, @toDate)
-    `;
-
-    if (showOverdueOnly) {
-      whereClause += ` AND (b.isOverdue = 1 OR b.dueDate < GETDATE())`;
-    }
-
-    const result = await request.query(`
-      SELECT 
-        b.BillId,
-        b.JobId,
-        b.InvoiceNumber,
-        b.invoiceDate,
-        b.dueDate,
-        b.netTotal,
-        b.paidAmount,
-        b.remainingAmount,
-        b.PaymentStatus,
-        b.isOverdue,
-        c.Name as customerName
-      FROM Bills b
-      LEFT JOIN Customers c ON b.CustomerId = c.customerId
-      ${whereClause}
-      ORDER BY b.invoiceDate DESC, b.JobId ASC
-    `);
-
-    if (!result.recordset || result.recordset.length === 0) {
+    if (!invoices || invoices.length === 0) {
       throw new Error('No pending payments found for the selected date range');
     }
-
-    const invoices = result.recordset.map(row => ({
-      billId: row.BillId,
-      jobId: row.JobId,
-      customerName: row.customerName || '-',
-      invoiceNumber: row.InvoiceNumber,
-      invoiceDate: row.invoiceDate,
-      dueDate: row.dueDate,
-      netTotal: parseFloat(row.netTotal) || 0,
-      paidAmount: parseFloat(row.paidAmount) || 0,
-      remainingAmount: parseFloat(row.remainingAmount) || parseFloat(row.netTotal) || 0,
-      paymentStatus: row.PaymentStatus,
-      isOverdue: row.isOverdue || false
-    }));
 
     const totalInvoiceAmount = invoices.reduce((s, i) => s + i.netTotal, 0);
     const totalPaidAmount = invoices.reduce((s, i) => s + i.paidAmount, 0);

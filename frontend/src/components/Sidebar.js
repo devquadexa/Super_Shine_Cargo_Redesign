@@ -68,7 +68,6 @@ function Sidebar({ isOpen, onClose }) {
   const isSuperAdmin = user?.role === 'Super Admin';
   const canAccessReports = user?.role === 'Admin' || isSuperAdmin;
   const canAccessTransporters = ['Admin', 'Super Admin', 'Manager', 'Office Executive'].includes(user?.role);
-  const canAccessBilling = ['Admin', 'Super Admin', 'Manager'].includes(user?.role);
   const canAccessPettyCash = ['Admin', 'Super Admin', 'Manager', 'Waff Clerk'].includes(user?.role);
   const canAccessInvoiceReviews = user?.role === 'Waff Clerk';
   const canAccessOtherExpenses = ['Admin', 'Super Admin', 'Manager'].includes(user?.role);
@@ -176,7 +175,6 @@ function Sidebar({ isOpen, onClose }) {
             <NavItem to="/jobs" label="Jobs" />
             {canAccessPettyCash && <NavItem to="/petty-cash" label="Petty Cash" />}
             {canAccessInvoiceReviews && <NavItem to="/invoice-reviews" label="Invoice Reviews" />}
-            {canAccessBilling && <NavItem to="/billing" label="Invoicing" />}
           </NavGroup>
 
           {/* FINANCIAL */}

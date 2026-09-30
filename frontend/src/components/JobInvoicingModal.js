@@ -31,9 +31,7 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
   };
 
   const getTransporterCostItem = () => {
-    const fromPlace = (job?.exporter || '').trim() || 'placename';
-    const toPlace = (job?.transporter || '').trim() || 'placename';
-    const description = `transporter cost (from ${fromPlace} to ${toPlace})`;
+    const description = 'transport cost (from place A to place B)';
     
     return {
       name: description,
@@ -51,10 +49,8 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
     const description = item.description || item.name || '';
     const normalized = description.toLowerCase().trim();
     
-    if (normalized === 'transporter cost' && job) {
-      const fromPlace = job.exporter || 'placename';
-      const toPlace = job.transporter || 'placename';
-      return `transporter cost (from ${fromPlace} to ${toPlace})`;
+    if (normalized === 'transporter cost' || normalized === 'transport cost') {
+      return 'transport cost (from place A to place B)';
     }
     
     return description;
@@ -106,20 +102,26 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
       setTimeout(() => setMessage(''), 4000);
       return;
     }
-    const newPayItems = [...payItems, getBlankPayItem()];
+    const newItem = getBlankPayItem();
+    const newPayItems = [...payItems, newItem];
     setPayItems(newPayItems);
+    setShowPayItemsRow(true);
+    if (payItemsSaved) {
+      setEditingItemIndex(newPayItems.length - 1);
+      setEditingBackup({ ...newItem });
+    }
   };
 
   const hasTransporterCostItem = (items) => {
     return Array.isArray(items) && items.some(item => {
       const label = (item?.name || item?.description || item?.itemName || '').toLowerCase().trim();
-      return label.startsWith('transporter cost');
+      return label.startsWith('transporter cost') || label.startsWith('transport cost');
     });
   };
 
   const isTransporterCostLabel = (value) => {
     const normalized = String(value || '').toLowerCase().trim();
-    return normalized.startsWith('transporter cost');
+    return normalized.startsWith('transporter cost') || normalized.startsWith('transport cost');
   };
 
   const ensureFclTransporterCost = (items, shipmentCategory = job?.shipmentCategory) => {
@@ -144,9 +146,14 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
       setTimeout(() => setMessage(''), 3000);
       return;
     }
-    const newPayItems = [...payItems, getTransporterCostItem()];
+    const newItem = getTransporterCostItem();
+    const newPayItems = [...payItems, newItem];
     setPayItems(newPayItems);
     setShowPayItemsRow(true);
+    if (payItemsSaved) {
+      setEditingItemIndex(newPayItems.length - 1);
+      setEditingBackup({ ...newItem });
+    }
   };
 
   // State management
@@ -159,6 +166,8 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
   const [payItemsSaved, setPayItemsSaved] = useState(false);
   const [allItemsHaveBillingAmounts, setAllItemsHaveBillingAmounts] = useState(false); // Track if all items have billing amounts
   const [updatingItemIndex, setUpdatingItemIndex] = useState(null); // Track which cost item is being updated
+  const [editingItemIndex, setEditingItemIndex] = useState(null); // Track which row is actively being edited inline
+  const [editingBackup, setEditingBackup] = useState(null); // Backup of row data before edit
 
   // Check if invoice has received payment and should be locked
   const isInvoiceLocked = useMemo(() => {
@@ -323,6 +332,8 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
 
   const loadPayItems = async () => {
     try {
+      setEditingItemIndex(null);
+      setEditingBackup(null);
       let allPayItems = [];
       
       // Parse job.payItems if it's a JSON string
@@ -360,6 +371,7 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
         });
         setPayItemsSaved(true); // Mark as saved since loaded from job.payItems
       } else {
+        setPayItemsSaved(false);
         // 2. Load from office pay items
         try {
           const officePayItemsResponse = await fetch(`${API_BASE}/api/office-pay-items/job/${job.jobId}`, {
@@ -388,7 +400,11 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
         }
         
         // 3. Load Petty Cash Settlement Items (if settled)
-        if (job?.pettyCashStatus === 'Settled') {
+        const canHaveSettledPettyCash = job?.pettyCashStatus === 'Settled' ||
+                                        job?.pettyCashStatus?.includes('Settled') ||
+                                        job?.pettyCashStatus === 'Assigned' ||
+                                        !job?.pettyCashStatus;
+        if (canHaveSettledPettyCash) {
           setLoadingSettlement(true);
           try {
             const response = await fetch(`${API_BASE}/api/petty-cash-assignments/job/${job.jobId}/all`, {
@@ -443,6 +459,7 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
 
   const handlePayItemChange = (index, field, value) => {
     if (isInvoiceLocked) return;
+    if (payItemsSaved && editingItemIndex !== index) return;
     const newPayItems = [...payItems];
     newPayItems[index][field] = value;
     
@@ -457,6 +474,27 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
     }
     
     setPayItems(newPayItems);
+  };
+
+  const handleStartEdit = (index) => {
+    if (isInvoiceLocked) return;
+    setEditingItemIndex(index);
+    setEditingBackup({ ...payItems[index] });
+  };
+
+  const handleCancelUpdate = (index) => {
+    if (editingBackup) {
+      const isNewBlankItem = !editingBackup.name && !editingBackup.actualCost && !editingBackup.billingAmount;
+      if (isNewBlankItem) {
+        setPayItems(payItems.filter((_, i) => i !== index));
+      } else {
+        const restoredItems = [...payItems];
+        restoredItems[index] = { ...editingBackup };
+        setPayItems(restoredItems);
+      }
+    }
+    setEditingItemIndex(null);
+    setEditingBackup(null);
   };
 
   const handleUpdateItem = async (index) => {
@@ -538,7 +576,9 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
       }
 
       setPayItemsSaved(true);
-      setMessage(`✅ "${item.name}" cost updated successfully!`);
+      setEditingItemIndex(null);
+      setEditingBackup(null);
+      setMessage(`✅ "${item.name}" updated successfully!`);
       setTimeout(() => setMessage(''), 4000);
     } catch (error) {
       console.error('Error updating cost item:', error);
@@ -657,6 +697,8 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
       await jobService.replacePayItems(job.jobId, newPayItemsData);
       
       setPayItemsSaved(true); // Mark as saved after successful save
+      setEditingItemIndex(null);
+      setEditingBackup(null);
       setMessage(`✅ ${validPayItems.length} pay item(s) saved successfully!`);
       setShowPayItemsRow(false);
       
@@ -1082,10 +1124,8 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
       let description = item.description || item.name || 'Service Charge';
       
       const normalized = description.toLowerCase().trim();
-      if (normalized.startsWith('transporter cost') && (description.includes('placename') || (!description.includes('from') && !description.includes('to')))) {
-        const fromPlace = job.exporter || 'placename';
-        const toPlace = job.transporter || 'placename';
-        description = `transporter cost (from ${fromPlace} to ${toPlace})`;
+      if ((normalized.startsWith('transporter cost') || normalized.startsWith('transport cost')) && (description.includes('placename') || (!description.includes('from') && !description.includes('to')))) {
+        description = 'transport cost (from place A to place B)';
       }
       
       const amount = parseFloat(item.billingAmount || item.amount || 0) || 0;
@@ -1136,12 +1176,10 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
     if (job.shipmentCategory === 'FCL') {
       const hasTransporterCost = payItemsArray.some(item => {
         const label = (item?.name || item?.description || '').toLowerCase().trim();
-        return label.startsWith('transporter cost');
+        return label.startsWith('transporter cost') || label.startsWith('transport cost');
       });
       if (!hasTransporterCost) {
-        const fromPlace = job.exporter || 'placename';
-        const toPlace = job.transporter || 'placename';
-        const description = `transporter cost (from ${fromPlace} to ${toPlace})`;
+        const description = 'transport cost (from place A to place B)';
         payItemsArray.push({
           name: description,
           description: description,
@@ -1741,115 +1779,172 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
                           </tr>
                         </thead>
                         <tbody>
-                          {payItems.map((item, idx) => (
-                            <tr key={idx} className="border-b hover:bg-gray-50">
-                              <td className="px-4 py-2">
-                                <input
-                                  type="text"
-                                  value={item.name}
-                                  disabled={isInvoiceLocked}
-                                  onChange={(e) => handlePayItemChange(idx, 'name', e.target.value)}
-                                  placeholder="Enter item name"
-                                  className={`w-full px-2 py-1 border rounded outline-none ${
-                                    isInvoiceLocked
-                                      ? 'bg-gray-100 text-gray-700 cursor-not-allowed border-gray-200'
-                                      : 'border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
-                                  }`}
-                                />
-                              </td>
-                              <td className="px-4 py-2 text-right">
-                                <input
-                                  type="number"
-                                  value={item.actualCost}
-                                  disabled={isInvoiceLocked}
-                                  onChange={(e) => handlePayItemChange(idx, 'actualCost', e.target.value)}
-                                  placeholder="0"
-                                  className={`w-24 px-2 py-1 border rounded text-right outline-none ${
-                                    isInvoiceLocked
-                                      ? 'bg-gray-100 text-gray-700 cursor-not-allowed border-gray-200'
-                                      : 'border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
-                                  }`}
-                                />
-                              </td>
-                              <td className="px-4 py-2 text-right">
-                                <input
-                                  type="number"
-                                  value={item.billingAmount}
-                                  disabled={isInvoiceLocked}
-                                  onChange={(e) => handlePayItemChange(idx, 'billingAmount', e.target.value)}
-                                  placeholder="0"
-                                  className={`w-24 px-2 py-1 border rounded text-right outline-none ${
-                                    isInvoiceLocked
-                                      ? 'bg-gray-100 text-gray-700 cursor-not-allowed border-gray-200'
-                                      : 'border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
-                                  }`}
-                                />
-                              </td>
-                              <td className="px-4 py-2 text-center">
-                                <input
-                                  type="checkbox"
-                                  checked={item.sameAmount}
-                                  disabled={isInvoiceLocked}
-                                  onChange={(e) => handlePayItemChange(idx, 'sameAmount', e.target.checked)}
-                                  className={`w-4 h-4 ${isInvoiceLocked ? 'cursor-not-allowed opacity-60' : ''}`}
-                                />
-                              </td>
-                              <td className="px-4 py-2 text-center">
-                                {isInvoiceLocked ? (
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-gray-100 text-gray-600">
-                                    <svg className="w-3 h-3 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                                    </svg>
-                                    Locked
-                                  </span>
-                                ) : (
-                                  <div className="flex items-center justify-center gap-1.5">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleUpdateItem(idx)}
-                                      disabled={updatingItemIndex === idx}
-                                      title={`Update ${item.name || 'cost'}`}
-                                      className="px-2.5 py-1 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-md transition flex items-center gap-1 shadow-sm disabled:opacity-50"
-                                    >
-                                      {updatingItemIndex === idx ? (
-                                        <>
-                                          <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
-                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                          {payItems.map((item, idx) => {
+                            const isRowDisabled = isInvoiceLocked || (payItemsSaved && editingItemIndex !== idx);
+                            const isEditingThisRow = payItemsSaved && editingItemIndex === idx;
+
+                            return (
+                              <tr key={idx} className={`border-b transition-colors ${isEditingThisRow ? 'bg-blue-50/60' : 'hover:bg-gray-50'}`}>
+                                <td className="px-4 py-2">
+                                  <input
+                                    type="text"
+                                    value={item.name}
+                                    disabled={isRowDisabled}
+                                    onChange={(e) => handlePayItemChange(idx, 'name', e.target.value)}
+                                    placeholder="Enter item name"
+                                    className={`w-full px-2 py-1 border rounded outline-none transition ${
+                                      isEditingThisRow
+                                        ? 'border-blue-500 bg-white ring-2 ring-blue-100 font-medium text-gray-900'
+                                        : isRowDisabled
+                                          ? 'bg-gray-100 text-gray-700 cursor-not-allowed border-gray-200'
+                                          : 'border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white'
+                                    }`}
+                                  />
+                                </td>
+                                <td className="px-4 py-2 text-right">
+                                  <input
+                                    type="number"
+                                    value={item.actualCost}
+                                    disabled={isRowDisabled}
+                                    onChange={(e) => handlePayItemChange(idx, 'actualCost', e.target.value)}
+                                    placeholder="0"
+                                    className={`w-24 px-2 py-1 border rounded text-right outline-none transition ${
+                                      isEditingThisRow
+                                        ? 'border-blue-500 bg-white ring-2 ring-blue-100 font-medium text-gray-900'
+                                        : isRowDisabled
+                                          ? 'bg-gray-100 text-gray-700 cursor-not-allowed border-gray-200'
+                                          : 'border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white'
+                                    }`}
+                                  />
+                                </td>
+                                <td className="px-4 py-2 text-right">
+                                  <input
+                                    type="number"
+                                    value={item.billingAmount}
+                                    disabled={isRowDisabled}
+                                    onChange={(e) => handlePayItemChange(idx, 'billingAmount', e.target.value)}
+                                    placeholder="0"
+                                    className={`w-24 px-2 py-1 border rounded text-right outline-none transition ${
+                                      isEditingThisRow
+                                        ? 'border-blue-500 bg-white ring-2 ring-blue-100 font-medium text-gray-900'
+                                        : isRowDisabled
+                                          ? 'bg-gray-100 text-gray-700 cursor-not-allowed border-gray-200'
+                                          : 'border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white'
+                                    }`}
+                                  />
+                                </td>
+                                <td className="px-4 py-2 text-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={item.sameAmount}
+                                    disabled={isRowDisabled}
+                                    onChange={(e) => handlePayItemChange(idx, 'sameAmount', e.target.checked)}
+                                    className={`w-4 h-4 ${isRowDisabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+                                  />
+                                </td>
+                                <td className="px-4 py-2 text-center">
+                                  {isInvoiceLocked ? (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-gray-100 text-gray-600">
+                                      <svg className="w-3 h-3 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                                        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                                      </svg>
+                                      Locked
+                                    </span>
+                                  ) : !payItemsSaved ? (
+                                    <div className="flex items-center justify-center gap-1.5">
+                                      {(item.isCustomItem || item.isNewItem || item.source === 'Custom' || (!item.isOfficePayItem && !item.isPettyCashItem)) ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeleteItem(idx)}
+                                          title="Delete this item"
+                                          className="p-1.5 text-red-600 hover:bg-red-50 rounded transition"
+                                        >
+                                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                            <path d="M3 6h18"></path>
+                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path>
+                                            <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
                                           </svg>
-                                          Saving...
-                                        </>
+                                        </button>
                                       ) : (
-                                        <>
-                                          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-                                            <polyline points="17 21 17 13 7 13 7 21"></polyline>
-                                            <polyline points="7 3 7 8 15 8"></polyline>
-                                          </svg>
-                                          Update
-                                        </>
+                                        <span className="text-gray-400 text-xs font-medium">-</span>
                                       )}
-                                    </button>
-                                    {(item.isCustomItem || item.isNewItem || item.source === 'Custom' || (!item.isOfficePayItem && !item.isPettyCashItem)) && (
+                                    </div>
+                                  ) : isEditingThisRow ? (
+                                    <div className="flex items-center justify-center gap-1.5">
                                       <button
                                         type="button"
-                                        onClick={() => handleDeleteItem(idx)}
-                                        title="Delete this item"
-                                        className="p-1.5 text-red-600 hover:bg-red-50 rounded transition"
+                                        onClick={() => handleUpdateItem(idx)}
+                                        disabled={updatingItemIndex === idx}
+                                        title="Confirm changes"
+                                        className="px-2.5 py-1 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-md transition flex items-center gap-1 shadow-sm disabled:opacity-50"
                                       >
-                                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                          <path d="M3 6h18"></path>
-                                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path>
-                                          <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                                        </svg>
+                                        {updatingItemIndex === idx ? (
+                                          <>
+                                            <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                                            </svg>
+                                            Saving...
+                                          </>
+                                        ) : (
+                                          <>
+                                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                              <polyline points="20 6 9 17 4 12"></polyline>
+                                            </svg>
+                                            Confirm
+                                          </>
+                                        )}
                                       </button>
-                                    )}
-                                  </div>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
+                                      <button
+                                        type="button"
+                                        onClick={() => handleCancelUpdate(idx)}
+                                        disabled={updatingItemIndex === idx}
+                                        title="Cancel editing"
+                                        className="px-2 py-1 text-xs font-semibold bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-md transition flex items-center gap-1 shadow-sm disabled:opacity-50"
+                                      >
+                                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                          <line x1="18" y1="6" x2="6" y2="18"></line>
+                                          <line x1="6" y1="6" x2="18" y2="18"></line>
+                                        </svg>
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center justify-center gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleStartEdit(idx)}
+                                        disabled={editingItemIndex !== null && editingItemIndex !== idx}
+                                        title={`Update ${item.name || 'cost'}`}
+                                        className="px-2.5 py-1 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-md transition flex items-center gap-1 shadow-sm disabled:opacity-50"
+                                      >
+                                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                        </svg>
+                                        Update
+                                      </button>
+                                      {(item.isCustomItem || item.isNewItem || item.source === 'Custom' || (!item.isOfficePayItem && !item.isPettyCashItem)) && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeleteItem(idx)}
+                                          title="Delete this item"
+                                          className="p-1.5 text-red-600 hover:bg-red-50 rounded transition"
+                                        >
+                                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                            <path d="M3 6h18"></path>
+                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path>
+                                            <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                          </svg>
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>

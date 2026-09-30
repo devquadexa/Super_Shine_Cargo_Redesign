@@ -34,6 +34,19 @@ class MySQLJobRepository extends BaseMySQLRepository {
     };
   }
 
+  _formatDeliveryDate(value) {
+    if (!value) return null;
+    if (value instanceof Date) {
+      return !isNaN(value.getTime()) ? value.toISOString().split('T')[0] : null;
+    }
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) return null;
+      return trimmed.includes('T') ? trimmed.split('T')[0] : trimmed;
+    }
+    return String(value);
+  }
+
   async create(job) {
     const data = {
       jobId: job.jobId,
@@ -50,7 +63,7 @@ class MySQLJobRepository extends BaseMySQLRepository {
       lcNumber: job.lcNumber || null,
       containerNumber: job.containerNumber || null,
       chassisNumber: job.chassisNumber || null,
-      TransportDeliveryDate: job.transportDeliveryDate || null,
+      TransportDeliveryDate: this._formatDeliveryDate(job.transportDeliveryDate),
       CUSDECDate: job.cusdecDate ? new Date(job.cusdecDate) : null
     };
 
@@ -126,8 +139,9 @@ class MySQLJobRepository extends BaseMySQLRepository {
       assignedTo: job.assignedTo || null
     };
 
+    if (job.customerId) data.customerId = job.customerId;
     if (job.chassisNumber !== undefined) data.chassisNumber = job.chassisNumber || null;
-    if (job.transportDeliveryDate !== undefined) data.TransportDeliveryDate = job.transportDeliveryDate || null;
+    if (job.transportDeliveryDate !== undefined) data.TransportDeliveryDate = this._formatDeliveryDate(job.transportDeliveryDate);
     if (job.cusdecDate !== undefined) data.CUSDECDate = job.cusdecDate ? new Date(job.cusdecDate) : null;
 
     await this.prisma.jobs.update({

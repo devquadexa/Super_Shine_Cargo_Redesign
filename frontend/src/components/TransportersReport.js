@@ -61,8 +61,7 @@ function TransportersReport() {
         const payItems = Array.isArray(job?.payItems) ? job.payItems : [];
         const transporterCostItems = payItems.filter(item => {
           const label = (item?.description || item?.name || '').toLowerCase().trim();
-          // Only check for new format with place names
-          return label.startsWith('transporter cost (from');
+          return label.startsWith('transporter cost') || label.startsWith('transport cost');
         });
 
         if (transporterCostItems.length === 0) return false;
@@ -132,8 +131,7 @@ function TransportersReport() {
         const payItems = Array.isArray(job?.payItems) ? job.payItems : [];
         const transporterCostItems = payItems.filter(item => {
           const label = (item?.description || item?.name || '').toLowerCase().trim();
-          // Only check for new format with place names
-          return label.startsWith('transporter cost (from');
+          return label.startsWith('transporter cost') || label.startsWith('transport cost');
         });
 
         if (transporterCostItems.length > 0) {

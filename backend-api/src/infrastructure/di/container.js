@@ -154,7 +154,8 @@ class Container {
         MySQLOtherExpenseRepository,
         MySQLNotificationRepository,
         MySQLPasswordResetRepository,
-        MySQLInvoiceReviewRepository
+        MySQLInvoiceReviewRepository,
+        MySQLAdvancePaymentRequestRepository
       } = require('../repositories/mysql');
 
       const db = mysqlDb.getPool;
@@ -184,6 +185,7 @@ class Container {
       this.dependencies.notificationRepository = new MySQLNotificationRepository(db);
       this.dependencies.otherExpenseRepository = new MySQLOtherExpenseRepository(db);
       this.dependencies.invoiceReviewRepository = new MySQLInvoiceReviewRepository(db);
+      this.dependencies.advancePaymentRequestRepository = new MySQLAdvancePaymentRequestRepository(db);
     } else {
       console.log('🔌 DI Container: Initializing MSSQL Repositories');
       const { getConnection, sql } = require('../../config/database');
