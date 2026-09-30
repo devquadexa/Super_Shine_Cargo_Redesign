@@ -19,6 +19,7 @@ const MySQLOtherExpenseRepository = require('./MySQLOtherExpenseRepository');
 const MySQLNotificationRepository = require('./MySQLNotificationRepository');
 const MySQLPasswordResetRepository = require('./MySQLPasswordResetRepository');
 const MySQLInvoiceReviewRepository = require('./MySQLInvoiceReviewRepository');
+const MySQLAdvancePaymentRequestRepository = require('./MySQLAdvancePaymentRequestRepository');
 
 module.exports = {
   MySQLUserRepository,
@@ -41,5 +42,6 @@ module.exports = {
   MySQLOtherExpenseRepository,
   MySQLNotificationRepository,
   MySQLPasswordResetRepository,
-  MySQLInvoiceReviewRepository
+  MySQLInvoiceReviewRepository,
+  MySQLAdvancePaymentRequestRepository
 };

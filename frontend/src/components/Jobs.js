@@ -24,6 +24,8 @@ function Jobs() {
   const [viewJobModal, setViewJobModal] = useState(null); // job object being viewed
   const [officePayModal, setOfficePayModal] = useState(null);
   const [advancePayModal, setAdvancePayModal] = useState(null);
+  const [requestAdvanceModal, setRequestAdvanceModal] = useState(null); // {job, customerEmail, customerName, requestedAmount, notes, loading, error, success}
+  const [completeAdvanceRequestModal, setCompleteAdvanceRequestModal] = useState(null); // {request, paidAmount, paymentType, checkNo, paymentMadeDate, notes, loading, error}
   const [invoicingModalJob, setInvoicingModalJob] = useState(null); // for JobInvoicingModal
   const [editingOfficePayItem, setEditingOfficePayItem] = useState(null); // {officePayItemId, description, actualCost, jobId}
   const [editingAdvancePayment, setEditingAdvancePayment] = useState(null); // {advancePaymentId, amount, paymentMadeDate, paymentType, checkNo, notes, jobId}
@@ -282,12 +284,13 @@ function Jobs() {
     return user ? user.fullName : userId;
   };
 
-  // Fetch office pay items + advance payments for a specific job (used in expanded row)
+  // Fetch office pay items + advance payments + advance payment requests for a specific job
   const fetchJobPayments = async (jobId) => {
     try {
-      const [officeRes, advanceRes] = await Promise.all([
+      const [officeRes, advanceRes, requestsRes] = await Promise.all([
         apiClient.get(`/office-pay-items/job/${jobId}`),
         apiClient.get(`/jobs/${jobId}/advance-payments`),
+        apiClient.get(`/jobs/${jobId}/advance-payment-requests`),
       ]);
       setJobPayments(prev => ({
         ...prev,
@@ -295,6 +298,8 @@ function Jobs() {
           officeItems:     Array.isArray(officeRes.data)               ? officeRes.data               : [],
           advancePayments: Array.isArray(advanceRes.data?.data)        ? advanceRes.data.data         :
                            Array.isArray(advanceRes.data)              ? advanceRes.data              : [],
+          advanceRequests: Array.isArray(requestsRes.data?.data)       ? requestsRes.data.data        :
+                           Array.isArray(requestsRes.data)             ? requestsRes.data             : [],
         }
       }));
     } catch (e) {
@@ -1585,6 +1590,31 @@ function Jobs() {
                             </svg>
                             Advance Payment
                           </button>
+                          {['Admin','Super Admin','Manager'].includes(user?.role) && (
+                            <button
+                              onClick={() => {
+                                const cust = customers.find(c => c.customerId === viewJobModal.customerId);
+                                setRequestAdvanceModal({
+                                  job: viewJobModal,
+                                  customerEmail: cust?.email || '',
+                                  customerName: cust?.name || viewJobModal.customerName || '',
+                                  requestedAmount: '',
+                                  notes: '',
+                                  loading: false,
+                                  error: '',
+                                  success: ''
+                                });
+                              }}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-[#b45309] bg-amber-50 hover:bg-amber-100 border border-amber-200 transition shadow-sm"
+                              title="Request advance payment from customer via email"
+                            >
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                                <polyline points="22,6 12,13 2,6"/>
+                              </svg>
+                              Request Advance via Email
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1720,11 +1750,179 @@ function Jobs() {
                       </div>
                     )}
 
+                    {/* Advance Payment Requests sub-table */}
+                    {user?.role !== 'Waff Clerk' && (
+                      <div className="border-t border-gray-100">
+                        <div className="px-5 py-2.5 bg-amber-50 border-b border-amber-200 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-amber-800 uppercase tracking-wider">③ Advance Payment Requests (Email)</span>
+                            {(() => {
+                              const pendingCount = (pd.advanceRequests || []).filter(r => r.status === 'PENDING').length;
+                              return pendingCount > 0 ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-200 text-amber-900 animate-pulse">
+                                  {pendingCount} Pending
+                                </span>
+                              ) : null;
+                            })()}
+                          </div>
+                          {['Admin','Super Admin','Manager'].includes(user?.role) && (
+                            <button
+                              onClick={() => {
+                                const cust = customers.find(c => c.customerId === viewJobModal.customerId);
+                                setRequestAdvanceModal({
+                                  job: viewJobModal,
+                                  customerEmail: cust?.email || '',
+                                  customerName: cust?.name || viewJobModal.customerName || '',
+                                  requestedAmount: '',
+                                  notes: '',
+                                  loading: false,
+                                  error: '',
+                                  success: ''
+                                });
+                              }}
+                              className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-semibold text-amber-800 bg-amber-100 hover:bg-amber-200 border border-amber-300 transition"
+                              title="Request advance payment via email"
+                            >
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                              </svg>
+                              New Request
+                            </button>
+                          )}
+                        </div>
+                        <table className="w-full text-sm border-collapse">
+                          <thead>
+                            <tr className="bg-gray-50 border-b border-gray-100">
+                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Request ID</th>
+                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Customer &amp; Email</th>
+                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Amount</th>
+                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Requested By &amp; Date</th>
+                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Status</th>
+                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Notes / Details</th>
+                              {['Admin','Super Admin','Manager'].includes(user?.role) && (
+                                <th className="px-5 py-2.5 text-right text-xs font-semibold text-gray-500">Actions</th>
+                              )}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(!pd.advanceRequests || pd.advanceRequests.length === 0) ? (
+                              <tr>
+                                <td colSpan={['Admin','Super Admin','Manager'].includes(user?.role) ? 7 : 6} className="px-5 py-4 text-gray-400 text-xs italic text-center">
+                                  No email requests sent yet. Click "Request Advance via Email" to send an advance payment request to the customer.
+                                </td>
+                              </tr>
+                            ) : pd.advanceRequests.map((req, i) => {
+                              const isPending = req.status === 'PENDING';
+                              const isCompleted = req.status === 'COMPLETED';
+                              const isCancelled = req.status === 'CANCELLED';
+
+                              return (
+                                <tr key={req.requestId || i} className={`border-b border-gray-50 ${i % 2 === 0 ? 'bg-white' : 'bg-[#fafafa]'}`}>
+                                  <td className="px-5 py-3 font-semibold text-gray-900 text-xs">
+                                    {req.requestId}
+                                  </td>
+                                  <td className="px-5 py-3 text-xs">
+                                    <div className="font-semibold text-gray-800">{req.customerName || viewJobModal.customerName || '-'}</div>
+                                    <div className="text-gray-500 font-mono text-[11px]">{req.customerEmail}</div>
+                                  </td>
+                                  <td className="px-5 py-3 text-xs font-bold text-gray-900">
+                                    {fmtLKR(req.requestedAmount)}
+                                  </td>
+                                  <td className="px-5 py-3 text-xs text-gray-600">
+                                    <div>{req.requestedByName || req.requestedBy || '-'}</div>
+                                    <div className="text-[11px] text-gray-400">{fmtDT(req.requestedDate)}</div>
+                                  </td>
+                                  <td className="px-5 py-3 text-xs">
+                                    {isPending && (
+                                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                                        Pending Payment
+                                      </span>
+                                    )}
+                                    {isCompleted && (
+                                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="w-3 h-3"><polyline points="20 6 9 17 4 12"/></svg>
+                                        Completed
+                                      </span>
+                                    )}
+                                    {isCancelled && (
+                                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 border border-gray-200">
+                                        Cancelled
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="px-5 py-3 text-xs text-gray-600 max-w-xs truncate" title={req.notes || ''}>
+                                    <div>{req.notes || '-'}</div>
+                                    {isCompleted && (
+                                      <div className="text-[11px] text-emerald-700 font-medium mt-0.5">
+                                        Paid: {fmtLKR(req.paidAmount || req.requestedAmount)} ({req.paymentType || 'bank_transfer'}) {req.checkNo ? `Ref: ${req.checkNo}` : ''}
+                                      </div>
+                                    )}
+                                  </td>
+                                  {['Admin','Super Admin','Manager'].includes(user?.role) && (
+                                    <td className="px-5 py-3 text-right">
+                                      {isPending ? (
+                                        <div className="flex items-center justify-end gap-2">
+                                          <button
+                                            onClick={() => setCompleteAdvanceRequestModal({
+                                              request: req,
+                                              paidAmount: String(req.requestedAmount || ''),
+                                              paymentType: 'bank_transfer',
+                                              checkNo: '',
+                                              paymentMadeDate: new Date().toISOString().split('T')[0],
+                                              notes: `Settlement of request ${req.requestId}`,
+                                              loading: false,
+                                              error: ''
+                                            })}
+                                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-green-600 hover:bg-green-700 transition shadow-sm"
+                                            title="Mark customer advance payment as completed and add to job"
+                                          >
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3.5 h-3.5">
+                                              <polyline points="20 6 9 17 4 12"/>
+                                            </svg>
+                                            Mark as Completed
+                                          </button>
+                                          <button
+                                            onClick={async () => {
+                                              if (!window.confirm(`Cancel advance payment request ${req.requestId}?`)) return;
+                                              try {
+                                                await apiClient.post(`/jobs/${viewJobModal.jobId}/advance-payment-requests/${req.requestId}/cancel`);
+                                                fetchJobPayments(viewJobModal.jobId);
+                                              } catch (err) {
+                                                console.error('Cancel request error:', err);
+                                              }
+                                            }}
+                                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                                            title="Cancel request"
+                                          >
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
+                                              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                                            </svg>
+                                          </button>
+                                        </div>
+                                      ) : isCompleted ? (
+                                        <span className="text-[11px] text-emerald-600 font-semibold inline-flex items-center gap-1">
+                                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3"><polyline points="20 6 9 17 4 12"/></svg>
+                                          Added to Job
+                                        </span>
+                                      ) : (
+                                        <span className="text-[11px] text-gray-400 font-medium">-</span>
+                                      )}
+                                    </td>
+                                  )}
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
                     {/* Petty Cash Assignments section */}
                     <div className={user?.role !== 'Waff Clerk' ? "border-t border-gray-100" : ""}>
                       <div className="px-5 py-2.5 bg-purple-50 border-b border-purple-200 flex items-center justify-between">
                         <span className="text-xs font-bold text-purple-700 uppercase tracking-wider">
-                          {user?.role === 'Waff Clerk' ? 'Petty Cash Assignments' : '③ Petty Cash Assignments'}
+                          {user?.role === 'Waff Clerk' ? 'Petty Cash Assignments' : '④ Petty Cash Assignments'}
                         </span>
                         {['Admin','Super Admin','Manager'].includes(user?.role) && (() => {
                           const assignments = viewJobModal.assignments || [];
@@ -2275,6 +2473,359 @@ function Jobs() {
             fetchJobPayments(invoicingModalJob.jobId);
           }}
         />
+      )}
+
+      {/* Request Advance Payment Modal */}
+      {requestAdvanceModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10002] px-4 py-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-[#1E3F63] to-[#2f6bd6] text-white">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                    <polyline points="22,6 12,13 2,6"/>
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-base font-bold">Request Advance Payment</h3>
+                  <p className="text-blue-100 text-xs">Job #{requestAdvanceModal.job?.jobId} — {requestAdvanceModal.customerName}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setRequestAdvanceModal(null)}
+                className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              if (!requestAdvanceModal.customerEmail) {
+                setRequestAdvanceModal(prev => ({ ...prev, error: 'Customer email is required' }));
+                return;
+              }
+              const amt = parseFloat(requestAdvanceModal.requestedAmount);
+              if (isNaN(amt) || amt <= 0) {
+                setRequestAdvanceModal(prev => ({ ...prev, error: 'Please enter a valid amount greater than 0' }));
+                return;
+              }
+
+              setRequestAdvanceModal(prev => ({ ...prev, loading: true, error: '', success: '' }));
+
+              try {
+                const res = await apiClient.post(`/jobs/${requestAdvanceModal.job.jobId}/advance-payment-requests`, {
+                  requestedAmount: amt,
+                  customerEmail: requestAdvanceModal.customerEmail,
+                  notes: requestAdvanceModal.notes
+                });
+
+                fetchJobPayments(requestAdvanceModal.job.jobId);
+                setRequestAdvanceModal(prev => ({
+                  ...prev,
+                  loading: false,
+                  success: res.data?.message || 'Advance payment request created and sent successfully!'
+                }));
+
+                setTimeout(() => {
+                  setRequestAdvanceModal(null);
+                }, 1800);
+              } catch (err) {
+                console.error('Request advance error:', err);
+                setRequestAdvanceModal(prev => ({
+                  ...prev,
+                  loading: false,
+                  error: err.response?.data?.message || err.message || 'Failed to send advance payment request'
+                }));
+              }
+            }} className="p-6 space-y-4">
+
+              {requestAdvanceModal.error && (
+                <div className="p-3 rounded-lg text-xs bg-red-50 text-red-700 border border-red-200">
+                  {requestAdvanceModal.error}
+                </div>
+              )}
+
+              {requestAdvanceModal.success && (
+                <div className="p-3 rounded-lg text-xs bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-2">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-4 h-4 text-emerald-600"><polyline points="20 6 9 17 4 12"/></svg>
+                  {requestAdvanceModal.success}
+                </div>
+              )}
+
+              {/* Info banner */}
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 leading-relaxed">
+                An email containing official <strong>Super Shine Cargo Services</strong> payment details and instructions will be sent to the customer requesting this advance deposit.
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+                  Customer Email <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={requestAdvanceModal.customerEmail}
+                  onChange={(e) => setRequestAdvanceModal(prev => ({ ...prev, customerEmail: e.target.value, error: '' }))}
+                  placeholder="e.g. customer@example.com"
+                  className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-[#1E3F63]/20 focus:border-[#1E3F63] outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+                  Requested Advance Amount (LKR) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="1"
+                  required
+                  value={requestAdvanceModal.requestedAmount}
+                  onChange={(e) => setRequestAdvanceModal(prev => ({ ...prev, requestedAmount: e.target.value, error: '' }))}
+                  placeholder="e.g. 50000.00"
+                  className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-[#1E3F63]/20 focus:border-[#1E3F63] outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+                  Purpose / Notes to Customer
+                </label>
+                <textarea
+                  rows={3}
+                  value={requestAdvanceModal.notes}
+                  onChange={(e) => setRequestAdvanceModal(prev => ({ ...prev, notes: e.target.value }))}
+                  placeholder="e.g. Advance required for customs clearance and port handling fees..."
+                  className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-[#1E3F63]/20 focus:border-[#1E3F63] outline-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  disabled={requestAdvanceModal.loading}
+                  onClick={() => setRequestAdvanceModal(null)}
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium text-xs transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={requestAdvanceModal.loading}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#1E3F63] hover:bg-[#193552] disabled:opacity-50 text-white rounded-xl font-bold text-xs shadow-md transition"
+                >
+                  {requestAdvanceModal.loading ? (
+                    <>
+                      <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                      </svg>
+                      Sending Request...
+                    </>
+                  ) : (
+                    <>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3.5 h-3.5">
+                        <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                      </svg>
+                      Send Request Email
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Mark Advance Request Completed Modal */}
+      {completeAdvanceRequestModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10002] px-4 py-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-green-600 to-emerald-700 text-white">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-5 h-5">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-base font-bold">Mark Advance Payment as Paid</h3>
+                  <p className="text-emerald-100 text-xs">Request #{completeAdvanceRequestModal.request?.requestId}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setCompleteAdvanceRequestModal(null)}
+                className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              const amt = parseFloat(completeAdvanceRequestModal.paidAmount);
+              if (isNaN(amt) || amt <= 0) {
+                setCompleteAdvanceRequestModal(prev => ({ ...prev, error: 'Please enter a valid amount' }));
+                return;
+              }
+
+              setCompleteAdvanceRequestModal(prev => ({ ...prev, loading: true, error: '' }));
+
+              try {
+                const reqId = completeAdvanceRequestModal.request.requestId;
+                const jId = completeAdvanceRequestModal.request.jobId;
+
+                const res = await apiClient.post(`/jobs/${jId}/advance-payment-requests/${reqId}/complete`, {
+                  paidAmount: amt,
+                  paymentType: completeAdvanceRequestModal.paymentType,
+                  checkNo: completeAdvanceRequestModal.checkNo,
+                  paymentMadeDate: completeAdvanceRequestModal.paymentMadeDate,
+                  notes: completeAdvanceRequestModal.notes
+                });
+
+                // Update jobs and job payments
+                fetchJobs();
+                fetchJobPayments(jId);
+
+                // Update the job object currently open in viewJobModal
+                if (res.data?.job) {
+                  setViewJobModal(res.data.job);
+                }
+
+                setCompleteAdvanceRequestModal(null);
+              } catch (err) {
+                console.error('Complete request error:', err);
+                setCompleteAdvanceRequestModal(prev => ({
+                  ...prev,
+                  loading: false,
+                  error: err.response?.data?.message || err.message || 'Failed to complete advance payment request'
+                }));
+              }
+            }} className="p-6 space-y-4">
+
+              {completeAdvanceRequestModal.error && (
+                <div className="p-3 rounded-lg text-xs bg-red-50 text-red-700 border border-red-200">
+                  {completeAdvanceRequestModal.error}
+                </div>
+              )}
+
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 leading-relaxed">
+                Confirming this payment will mark the request as <strong>Completed</strong> and automatically add an official advance payment entry of <strong>LKR {parseFloat(completeAdvanceRequestModal.paidAmount || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</strong> to Job #{completeAdvanceRequestModal.request?.jobId}.
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+                    Amount Paid (LKR) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="1"
+                    required
+                    value={completeAdvanceRequestModal.paidAmount}
+                    onChange={(e) => setCompleteAdvanceRequestModal(prev => ({ ...prev, paidAmount: e.target.value, error: '' }))}
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm font-bold text-emerald-700 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+                    Payment Date <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={completeAdvanceRequestModal.paymentMadeDate}
+                    onChange={(e) => setCompleteAdvanceRequestModal(prev => ({ ...prev, paymentMadeDate: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+                    Payment Method <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={completeAdvanceRequestModal.paymentType}
+                    onChange={(e) => setCompleteAdvanceRequestModal(prev => ({ ...prev, paymentType: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none bg-white"
+                  >
+                    <option value="bank_transfer">Bank Transfer</option>
+                    <option value="cash">Cash</option>
+                    <option value="check">Cheque</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+                    {completeAdvanceRequestModal.paymentType === 'check' ? 'Cheque No *' : 'Reference / Trans No'}
+                  </label>
+                  <input
+                    type="text"
+                    required={completeAdvanceRequestModal.paymentType === 'check'}
+                    value={completeAdvanceRequestModal.checkNo}
+                    onChange={(e) => setCompleteAdvanceRequestModal(prev => ({ ...prev, checkNo: e.target.value }))}
+                    placeholder={completeAdvanceRequestModal.paymentType === 'check' ? 'e.g. CHQ-998822' : 'e.g. TXN-102938'}
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+                  Notes
+                </label>
+                <input
+                  type="text"
+                  value={completeAdvanceRequestModal.notes}
+                  onChange={(e) => setCompleteAdvanceRequestModal(prev => ({ ...prev, notes: e.target.value }))}
+                  placeholder="e.g. Received via Commercial Bank transfer..."
+                  className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  disabled={completeAdvanceRequestModal.loading}
+                  onClick={() => setCompleteAdvanceRequestModal(null)}
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium text-xs transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={completeAdvanceRequestModal.loading}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-xl font-bold text-xs shadow-md transition"
+                >
+                  {completeAdvanceRequestModal.loading ? (
+                    <>
+                      <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                      </svg>
+                      Adding to Job...
+                    </>
+                  ) : (
+                    <>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3.5 h-3.5">
+                        <polyline points="20 6 9 17 4 12"/>
+                      </svg>
+                      Confirm &amp; Add Payment
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -157,6 +157,7 @@ model customers {
   jobs                  jobs[]
   oldinvoices           oldinvoices[]
   payments              payments[]
+  advancepaymentrequests advancepaymentrequests[]
 }
 
 model districts {
@@ -259,9 +260,34 @@ model jobs {
   payments                 payments[]
   pettycashassignments     pettycashassignments[]
   transporterpayments      transporterpayments[]
+  advancepaymentrequests   advancepaymentrequests[]
 
   @@index([customerId], map: "idx_jobs_customer")
   @@index([status], map: "idx_jobs_status")
+}
+
+model advancepaymentrequests {
+  requestId        String    @id @db.VarChar(50)
+  jobId            String    @db.VarChar(50)
+  customerId       String?   @db.VarChar(20)
+  customerEmail    String    @db.VarChar(255)
+  requestedAmount  Decimal   @db.Decimal(18, 2)
+  notes            String?   @db.LongText
+  status           String    @default("PENDING") @db.VarChar(50)
+  requestedBy      String?   @db.VarChar(50)
+  requestedDate    DateTime? @default(now()) @db.DateTime(0)
+  completedBy      String?   @db.VarChar(50)
+  completedDate    DateTime? @db.DateTime(0)
+  paidAmount       Decimal?  @db.Decimal(18, 2)
+  paymentType      String?   @db.VarChar(50)
+  checkNo          String?   @db.VarChar(100)
+  advancePaymentId Int?
+  jobs             jobs      @relation(fields: [jobId], references: [jobId], onDelete: Cascade, onUpdate: NoAction, map: "fk_apr_jobs")
+  customers        customers? @relation(fields: [customerId], references: [customerId], onDelete: SetNull, onUpdate: NoAction, map: "fk_apr_customers")
+
+  @@index([jobId], map: "idx_apr_job")
+  @@index([customerId], map: "idx_apr_customer")
+  @@index([status], map: "idx_apr_status")
 }
 
 model notifications {

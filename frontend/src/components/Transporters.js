@@ -532,8 +532,7 @@ function Transporters() {
     const payItems = Array.isArray(job.payItems) ? job.payItems : [];
     const transporterCostItems = payItems.filter((item) => {
       const label = (item?.description || item?.name || '').toLowerCase().trim();
-      // Only check for new format with place names
-      return label.startsWith('transporter cost (from');
+      return label.startsWith('transporter cost') || label.startsWith('transport cost');
     });
 
     if (!transporterCostItems.length) return 0;
@@ -551,8 +550,7 @@ function Transporters() {
     const payItems = Array.isArray(job?.payItems) ? job.payItems : [];
     return payItems.filter((item) => {
       const label = (item?.description || item?.name || '').toLowerCase().trim();
-      // Only check for new format with place names
-      return label.startsWith('transporter cost (from');
+      return label.startsWith('transporter cost') || label.startsWith('transport cost');
     });
   };
 
@@ -829,8 +827,8 @@ function Transporters() {
       
       const updatedPayItems = (Array.isArray(latestJob.payItems) ? latestJob.payItems : []).map((item) => {
         const label = (item?.description || item?.name || '').toLowerCase().trim();
-        // Match both old format "transporter cost" and new format "transporter cost (from ...)"
-        if (label !== 'transporter cost' && !label.startsWith('transporter cost (from')) return item;
+        const isTransporterCost = label.startsWith('transporter cost') || label.startsWith('transport cost');
+        if (!isTransporterCost) return item;
 
         const itemAmount = parseFloat(item.billingAmount || item.amount || item.actualCost || 0) || 0;
         const currentPaidAmount = parseFloat(item.paidAmount || 0) || 0;

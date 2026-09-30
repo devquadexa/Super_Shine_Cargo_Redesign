@@ -418,6 +418,188 @@ class JobController {
   async updateAdvancePayment(req, res) {
     return this.addAdvancePayment(req, res);
   }
+
+  async getAdvancePaymentRequests(req, res) {
+    try {
+      const { jobId } = req.params;
+      const container = require('../../infrastructure/di/container');
+      const advancePaymentRequestRepository = container.get('advancePaymentRequestRepository');
+
+      const requests = await advancePaymentRequestRepository.getRequestsByJob(jobId);
+      res.json({ success: true, data: requests });
+    } catch (error) {
+      console.error('Error fetching advance payment requests:', error);
+      res.status(500).json({ message: error.message });
+    }
+  }
+
+  async createAdvancePaymentRequest(req, res) {
+    try {
+      const { jobId } = req.params;
+      const { requestedAmount, customerEmail, notes } = req.body;
+      const userId = req.user?.userId;
+
+      const amount = parseFloat(requestedAmount);
+      if (isNaN(amount) || amount <= 0) {
+        return res.status(400).json({ message: 'Valid advance payment amount is required (must be greater than 0)' });
+      }
+
+      const email = String(customerEmail || '').trim();
+      if (!email || !email.includes('@')) {
+        return res.status(400).json({ message: 'Valid customer email is required' });
+      }
+
+      const container = require('../../infrastructure/di/container');
+      const advancePaymentRequestRepository = container.get('advancePaymentRequestRepository');
+      const customerRepository = container.get('customerRepository');
+
+      const job = await this.getJobById.execute(jobId);
+      if (!job) {
+        return res.status(404).json({ message: 'Job not found' });
+      }
+
+      let customerName = job.customerName;
+      if (!customerName && job.customerId) {
+        try {
+          const c = await customerRepository.findById(job.customerId);
+          if (c) customerName = c.name;
+        } catch (_) {}
+      }
+
+      const createdRequest = await advancePaymentRequestRepository.createRequest({
+        jobId,
+        customerId: job.customerId || null,
+        customerEmail: email,
+        requestedAmount: amount,
+        notes: notes || null,
+        status: 'PENDING',
+        requestedBy: userId,
+        requestedDate: new Date()
+      });
+
+      const emailService = require('../../infrastructure/services/EmailService');
+      const emailResult = await emailService.sendAdvancePaymentRequestEmail({
+        to: email,
+        customerName: customerName || 'Customer',
+        jobId,
+        blNumber: job.blNumber,
+        cusdecNumber: job.cusdecNumber,
+        requestedAmount: amount,
+        notes: notes || '',
+        requesterName: req.user?.fullName || req.user?.username || 'Accounts Team'
+      });
+
+      const requests = await advancePaymentRequestRepository.getRequestsByJob(jobId);
+
+      res.status(201).json({
+        success: true,
+        message: emailResult.simulated 
+          ? 'Advance payment request created. (Note: Email was simulated in console since SMTP is not yet configured).'
+          : (emailResult.sent ? 'Advance payment request created and email sent successfully.' : `Advance payment request created. Note: ${emailResult.message}`),
+        request: createdRequest,
+        requests,
+        emailResult
+      });
+    } catch (error) {
+      console.error('Error creating advance payment request:', error);
+      res.status(500).json({ message: error.message });
+    }
+  }
+
+  async completeAdvancePaymentRequest(req, res) {
+    try {
+      const { jobId, requestId } = req.params;
+      const { paidAmount, paymentType, checkNo, paymentMadeDate, notes } = req.body;
+      const userId = req.user?.userId;
+
+      const container = require('../../infrastructure/di/container');
+      const jobRepository = container.get('jobRepository');
+      const advancePaymentRequestRepository = container.get('advancePaymentRequestRepository');
+
+      const request = await advancePaymentRequestRepository.getRequestById(requestId);
+      if (!request) {
+        return res.status(404).json({ message: 'Advance payment request not found' });
+      }
+
+      if (request.status === 'COMPLETED') {
+        return res.status(400).json({ message: 'This request has already been marked as completed.' });
+      }
+
+      const amount = parseFloat(paidAmount !== undefined && paidAmount !== null && paidAmount !== '' ? paidAmount : request.requestedAmount);
+      if (isNaN(amount) || amount <= 0) {
+        return res.status(400).json({ message: 'Valid payment amount is required (must be greater than 0)' });
+      }
+
+      const pType = paymentType || request.paymentType || 'bank_transfer';
+      if (pType === 'check' && (!checkNo || !String(checkNo).trim())) {
+        return res.status(400).json({ message: 'Check number is required for check payments' });
+      }
+
+      const pDate = paymentMadeDate || new Date();
+      const pNotes = notes || (request.notes ? `Settlement of request ${requestId}: ${request.notes}` : `Advance payment for request ${requestId}`);
+
+      // 1. Add advance payment to job
+      const createdPayment = await jobRepository.addAdvancePayment(
+        jobId,
+        amount,
+        pDate,
+        pType,
+        checkNo || null,
+        pNotes,
+        userId
+      );
+
+      // 2. Mark advance payment request as completed
+      const updatedRequest = await advancePaymentRequestRepository.completeRequest(requestId, {
+        completedBy: userId,
+        completedDate: pDate,
+        paidAmount: amount,
+        paymentType: pType,
+        checkNo: checkNo || null,
+        advancePaymentId: createdPayment.advancePaymentId
+      });
+
+      const updatedJob = await this.getJobById.execute(jobId);
+      const payments = await jobRepository.getAdvancePaymentsByJob(jobId);
+      const requests = await advancePaymentRequestRepository.getRequestsByJob(jobId);
+
+      res.json({
+        success: true,
+        message: 'Advance payment successfully recorded and request marked as completed',
+        request: updatedRequest,
+        payment: createdPayment,
+        payments,
+        requests,
+        job: updatedJob
+      });
+    } catch (error) {
+      console.error('Error completing advance payment request:', error);
+      res.status(500).json({ message: error.message });
+    }
+  }
+
+  async cancelAdvancePaymentRequest(req, res) {
+    try {
+      const { jobId, requestId } = req.params;
+      const userId = req.user?.userId;
+      const container = require('../../infrastructure/di/container');
+      const advancePaymentRequestRepository = container.get('advancePaymentRequestRepository');
+
+      const cancelledRequest = await advancePaymentRequestRepository.cancelRequest(requestId, userId);
+      const requests = await advancePaymentRequestRepository.getRequestsByJob(jobId);
+
+      res.json({
+        success: true,
+        message: 'Advance payment request cancelled',
+        request: cancelledRequest,
+        requests
+      });
+    } catch (error) {
+      console.error('Error cancelling advance payment request:', error);
+      res.status(500).json({ message: error.message });
+    }
+  }
 }
 
 module.exports = JobController;
+

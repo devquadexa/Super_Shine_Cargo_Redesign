@@ -274,31 +274,46 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
       }
     });
 
+    await this._checkAndUpdateJobPettyCashStatus(assignment.jobId);
+
+    return await this.getById(id);
+  }
+
+  async _checkAndUpdateJobPettyCashStatus(jobId) {
+    if (!jobId) return;
+    const settledStatuses = [
+      'Settled',
+      'Settled / Balance Returned',
+      'Settled / Over Due Collected',
+      'Full Petty Cash Returned',
+      'Returned',
+      'Paid',
+      'Closed'
+    ];
     const unsettledCount = await this.prisma.pettycashassignments.count({
       where: {
-        jobId: assignment.jobId,
+        jobId,
         status: {
-          notIn: ['Settled', 'Settled / Balance Returned', 'Settled / Over Due Collected', 'Full Petty Cash Returned']
+          notIn: settledStatuses
         }
       }
     });
 
     if (unsettledCount === 0) {
       await this.prisma.jobs.update({
-        where: { jobId: assignment.jobId },
+        where: { jobId },
         data: { pettyCashStatus: 'Settled' }
       }).catch(() => null);
     }
-
-    return await this.getById(id);
   }
 
   async updateStatus(assignmentId, status) {
     const id = parseInt(assignmentId, 10);
-    await this.prisma.pettycashassignments.update({
+    const updated = await this.prisma.pettycashassignments.update({
       where: { assignmentId: id },
       data: { status }
     });
+    await this._checkAndUpdateJobPettyCashStatus(updated.jobId);
     return await this.getById(id);
   }
 
@@ -330,6 +345,8 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
       }
     });
 
+    await this._checkAndUpdateJobPettyCashStatus(row.jobId);
+
     return await this.getById(id);
   }
 
@@ -338,6 +355,7 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
       where: { jobId },
       data: { status: 'Closed' }
     });
+    await this._checkAndUpdateJobPettyCashStatus(jobId);
   }
 
   async updateStatusAndClearAmount(assignmentId, newStatus, settlementType) {
@@ -349,28 +367,31 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
       data.overAmount = 0;
     }
 
-    await this.prisma.pettycashassignments.update({
+    const updated = await this.prisma.pettycashassignments.update({
       where: { assignmentId: id },
       data
     });
+    await this._checkAndUpdateJobPettyCashStatus(updated.jobId);
     return await this.getById(id);
   }
 
   async returnBalance(assignmentId) {
     const id = parseInt(assignmentId, 10);
-    await this.prisma.pettycashassignments.update({
+    const updated = await this.prisma.pettycashassignments.update({
       where: { assignmentId: id },
-      data: { status: 'Returned' }
+      data: { status: 'Settled / Balance Returned' }
     });
+    await this._checkAndUpdateJobPettyCashStatus(updated.jobId);
     return await this.getById(id);
   }
 
   async payOverAmount(assignmentId) {
     const id = parseInt(assignmentId, 10);
-    await this.prisma.pettycashassignments.update({
+    const updated = await this.prisma.pettycashassignments.update({
       where: { assignmentId: id },
-      data: { status: 'Paid' }
+      data: { status: 'Settled / Over Due Collected' }
     });
+    await this._checkAndUpdateJobPettyCashStatus(updated.jobId);
     return await this.getById(id);
   }
 

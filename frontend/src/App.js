@@ -5,7 +5,6 @@ import './App.css';
 import Login from './components/Login';
 import Customers from './components/Customers';
 import Jobs from './components/Jobs';
-import Billing from './components/Billing';
 import PettyCash from './components/PettyCash';
 import Reports from './components/Reports';
 import PettyCashReport from './components/PettyCashReport';
@@ -100,7 +99,7 @@ function AppContent() {
               <Route path="/reset-password" element={<PrivateRoute><ResetPassword /></PrivateRoute>} />
               <Route path="/customers" element={<PrivateRoute><Customers /></PrivateRoute>} />
               <Route path="/jobs" element={<PrivateRoute><Jobs /></PrivateRoute>} />
-              <Route path="/billing" element={<PrivateRoute><Billing /></PrivateRoute>} />
+              <Route path="/billing" element={<Navigate to="/jobs" replace />} />
               <Route path="/invoice-reviews" element={<PrivateRoute><InvoiceReviewPage /></PrivateRoute>} />
               <Route path="/transporters" element={<PrivateRoute><Transporters /></PrivateRoute>} />
               <Route path="/old-invoices" element={<PrivateRoute><OldInvoices /></PrivateRoute>} />

@@ -28,6 +28,7 @@
     "mssql": "^12.2.0",
     "mysql2": "^3.24.4",
     "node-cron": "^4.2.1",
+    "nodemailer": "^10.0.12",
     "pdfkit": "^0.18.0"
   },
   "devDependencies": {
