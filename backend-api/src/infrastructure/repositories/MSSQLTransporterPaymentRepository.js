@@ -37,6 +37,47 @@ class MSSQLTransporterPaymentRepository {
     }
   }
 
+  async findAll(filters = {}) {
+    const pool = await this.getConnection();
+
+    try {
+      let query = `
+        SELECT tp.*, t.Name AS TransporterName, j.ShipmentCategory, j.TransportDeliveryDate, c.Name AS CustomerName
+        FROM TransporterPayments tp
+        LEFT JOIN Transporters t ON tp.TransporterId = t.TransporterId
+        LEFT JOIN Jobs j ON tp.JobId = j.JobId
+        LEFT JOIN Customers c ON j.CustomerId = c.CustomerId
+        WHERE 1=1
+      `;
+      const request = pool.request();
+
+      if (filters.status && filters.status !== 'All') {
+        query += ' AND tp.Status = @Status';
+        request.input('Status', this.sql.VarChar(50), filters.status);
+      }
+      if (filters.method && filters.method !== 'All') {
+        query += ' AND tp.PaymentMethod = @PaymentMethod';
+        request.input('PaymentMethod', this.sql.VarChar(50), filters.method);
+      }
+      if (filters.fromDate) {
+        query += ' AND tp.PaymentDate >= @FromDate';
+        request.input('FromDate', this.sql.DateTime, new Date(filters.fromDate));
+      }
+      if (filters.toDate) {
+        query += ' AND tp.PaymentDate <= @ToDate';
+        request.input('ToDate', this.sql.DateTime, new Date(filters.toDate));
+      }
+
+      query += ' ORDER BY tp.PaymentDate DESC, tp.CreatedDate DESC';
+
+      const result = await request.query(query);
+      return result.recordset || [];
+    } catch (error) {
+      console.error('Error fetching all transporter payments:', error);
+      throw error;
+    }
+  }
+
   async findByTransporterId(transporterId, filters = {}) {
     const pool = await this.getConnection();
 

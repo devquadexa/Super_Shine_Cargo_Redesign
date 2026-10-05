@@ -28,10 +28,8 @@ const otherExpenseRoutes = require('./presentation/routes/otherExpense');
 const invoiceReviewRoutes = require('./presentation/routes/invoiceReviewRoutes');
 const notificationRoutes = require('./presentation/routes/notifications');
 const testNotificationRoutes = require('./presentation/routes/testNotification');
-const { getConnection } = require('./config/database');
 const container = require('./infrastructure/di/container');
 const { startOverdueChecker } = require('./infrastructure/scheduler/overdueChecker');
-const sql = require('mssql');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -40,16 +38,31 @@ app.use(cors());
 app.use(bodyParser.json());
 
 // Test database connection on startup
-getConnection()
-  .then(() => {
-    console.log('✅ Database connected successfully');
+const isMySQL = (process.env.DB_TYPE || 'mysql').toLowerCase() === 'mysql';
+
+const testDbConnection = async () => {
+  if (isMySQL) {
+    const mysqlDb = require('./config/mysqlDatabase');
+    const conn = await mysqlDb.getConnection();
+    conn.release();
+    return 'MySQL';
+  } else {
+    const { getConnection } = require('./config/database');
+    await getConnection();
+    return 'MSSQL';
+  }
+};
+
+testDbConnection()
+  .then((dbType) => {
+    console.log(`✅ ${dbType} Database connected successfully`);
     console.log('🏗️  Clean Architecture initialized');
     
     // Start the overdue invoice checker
     startOverdueChecker(container);
   })
   .catch((err) => {
-    console.error('❌ Failed to connect to database:', err);
+    console.error('❌ Failed to connect to database:', err.message || err);
     console.log('Server will continue but database operations will fail');
   });
 

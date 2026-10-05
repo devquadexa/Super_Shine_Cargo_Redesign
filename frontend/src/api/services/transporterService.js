@@ -37,6 +37,13 @@ export const transporterService = {
     return response.data;
   },
 
+  getAllPayments: async (filters = {}) => {
+    const response = await apiClient.get('/transporters/payments/all', {
+      params: filters,
+    });
+    return response.data;
+  },
+
   updatePaymentStatus: async (paymentId, status) => {
     const response = await apiClient.put(`/transporters/payments/${paymentId}/status`, {
       status,

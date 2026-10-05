@@ -2198,7 +2198,7 @@ function PettyCash() {
                       'Closed',
                       'Full Petty Cash Returned'
                     ].includes(a.status));
-                    const anyAssigned = groupAssignments.some(a => a.status === 'Assigned');
+                    const anyAssigned = groupAssignments.some(a => a.status === 'Assigned' || a.status?.toUpperCase() === 'ASSIGNED');
                     // Status priority: most advanced status wins for the group display
                     const statusPriority = [
                       'Assigned',

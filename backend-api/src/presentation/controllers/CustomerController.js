@@ -11,6 +11,7 @@ class CustomerController {
     this.deleteCustomer = container.get('deleteCustomer');
     this.customerRepository = container.get('customerRepository');
     this.categoryRepository = container.get('categoryRepository');
+    this.jobRepository = container.get('jobRepository');
   }
 
   async create(req, res) {
@@ -29,7 +30,15 @@ class CustomerController {
   async getAll(req, res) {
     try {
       console.log('📋 Getting all customers... User:', req.user?.username, 'Role:', req.user?.role);
-      const customers = await this.getAllCustomers.execute(req.query);
+      let customers = await this.getAllCustomers.execute(req.query);
+
+      // Filter by user role - Waff Clerk only sees customers assigned to their jobs
+      if (req.user?.role === 'Waff Clerk') {
+        const jobs = await this.jobRepository.findByAssignedUser(req.user.userId);
+        const assignedCustomerIds = new Set((jobs || []).map(j => j.customerId).filter(Boolean));
+        customers = customers.filter(c => assignedCustomerIds.has(c.customerId));
+      }
+
       console.log('✅ Found', customers.length, 'customers');
       res.json(customers);
     } catch (error) {
@@ -44,6 +53,15 @@ class CustomerController {
       if (!customer) {
         return res.status(404).json({ message: 'Customer not found' });
       }
+
+      if (req.user?.role === 'Waff Clerk') {
+        const jobs = await this.jobRepository.findByAssignedUser(req.user.userId);
+        const assignedCustomerIds = new Set((jobs || []).map(j => j.customerId).filter(Boolean));
+        if (!assignedCustomerIds.has(customer.customerId)) {
+          return res.status(403).json({ message: 'Access denied: Customer not assigned to you' });
+        }
+      }
+
       res.json(customer);
     } catch (error) {
       console.error('Get customer error:', error);

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { jobService } from '../api/services/jobService';
@@ -6,6 +6,7 @@ import { customerService } from '../api/services/customerService';
 import { authService } from '../api/services/authService';
 import { transporterService } from '../api/services/transporterService';
 import apiClient from '../api/client';
+import API_BASE from '../api/config';
 import OfficePayItems from './OfficePayItems';
 import AdvancePayment from './AdvancePayment';
 import JobPettyCash from './JobPettyCash';
@@ -23,6 +24,8 @@ function Jobs() {
   const [viewJobModal, setViewJobModal] = useState(null); // job object being viewed
   const [officePayModal, setOfficePayModal] = useState(null);
   const [advancePayModal, setAdvancePayModal] = useState(null);
+  const [requestAdvanceModal, setRequestAdvanceModal] = useState(null); // {job, customerEmail, customerName, requestedAmount, notes, loading, error, success}
+  const [completeAdvanceRequestModal, setCompleteAdvanceRequestModal] = useState(null); // {request, paidAmount, paymentType, checkNo, paymentMadeDate, notes, loading, error}
   const [invoicingModalJob, setInvoicingModalJob] = useState(null); // for JobInvoicingModal
   const [editingOfficePayItem, setEditingOfficePayItem] = useState(null); // {officePayItemId, description, actualCost, jobId}
   const [editingAdvancePayment, setEditingAdvancePayment] = useState(null); // {advancePaymentId, amount, paymentMadeDate, paymentType, checkNo, notes, jobId}
@@ -35,6 +38,9 @@ function Jobs() {
   const [settleModal, setSettleModal] = useState(null); // {pettyAssignmentId, userName, assignedAmount}
   const [settleItems, setSettleItems] = useState([{ itemName: '', actualCost: '', hasBill: false }]);
   const [settleLoading, setSettleLoading] = useState(false);
+  const [assignPcModal, setAssignPcModal] = useState(false); // Show assign petty cash modal
+  const [assignPcForm, setAssignPcForm] = useState({ assignedTo: '', assignedAmount: '', notes: '' });
+  const [assignPcLoading, setAssignPcLoading] = useState(false);
   const [selectedJob, setSelectedJob] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
@@ -59,11 +65,15 @@ function Jobs() {
   const [statusFilter, setStatusFilter] = useState('All');
   const [currentPage, setCurrentPage] = useState(1);
   const [recordsPerPage, setRecordsPerPage] = useState(20);
+  const [pettyCashAssignments, setPettyCashAssignments] = useState({}); // Track petty cash assignments by jobId
+  const [invoicedJobIds, setInvoicedJobIds] = useState(new Set()); // Track jobs with invoices
+  const [loadingPettyCash, setLoadingPettyCash] = useState(true); // Track loading state
 
   useEffect(() => {
     fetchJobs();
     fetchCustomers(); // All users need to see customer names
     fetchTransporters();
+    fetchInvoicedJobs(); // Fetch jobs that already have invoices
     if (user?.role === 'Admin' || user?.role === 'Super Admin' || user?.role === 'Manager' || user?.role === 'Office Executive') {
       fetchUsers();
     }
@@ -109,6 +119,7 @@ function Jobs() {
 
   const fetchJobs = async () => {
     try {
+      setLoadingPettyCash(true); // Set loading state
       const data = await jobService.getAll();
       console.log('Fetched jobs data:', data);
       console.log('First job details:', JSON.stringify(data[0], null, 2));
@@ -122,9 +133,144 @@ function Jobs() {
       console.log('Jobs with status:', jobsWithStatus);
       console.log('First job after mapping:', JSON.stringify(jobsWithStatus[0], null, 2));
       setJobs(jobsWithStatus);
+      
+      // Fetch petty cash assignments for all jobs
+      await fetchAllPettyCashAssignments(jobsWithStatus);
     } catch (error) {
       console.error('Error fetching jobs:', error);
+      setLoadingPettyCash(false); // Reset loading state on error
     }
+  };
+
+  // Fetch all petty cash assignments to determine settlement status
+  const fetchAllPettyCashAssignments = async (jobsList) => {
+    try {
+      const token = localStorage.getItem('token');
+      const assignmentsMap = {};
+      
+      // Fetch petty cash assignments for each job
+      await Promise.all(
+        jobsList.map(async (job) => {
+          try {
+            const response = await fetch(`${API_BASE}/api/petty-cash-assignments/job/${job.jobId}/all`, {
+              headers: {
+                'Authorization': `Bearer ${token}`
+              }
+            });
+            
+            if (response.ok) {
+              const assignments = await response.json();
+              assignmentsMap[job.jobId] = Array.isArray(assignments) ? assignments : [];
+            } else {
+              assignmentsMap[job.jobId] = [];
+            }
+          } catch (error) {
+            console.error(`Error fetching petty cash for job ${job.jobId}:`, error);
+            assignmentsMap[job.jobId] = [];
+          }
+        })
+      );
+      
+      setPettyCashAssignments(assignmentsMap);
+      setLoadingPettyCash(false); // Data loaded successfully
+    } catch (error) {
+      console.error('Error fetching petty cash assignments:', error);
+      setLoadingPettyCash(false); // Reset loading state on error
+    }
+  };
+
+  // Fetch jobs that already have invoices
+  const fetchInvoicedJobs = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_BASE}/api/billing`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const bills = await response.json();
+        const invoicedSet = new Set(bills.map(b => b.jobId));
+        setInvoicedJobIds(invoicedSet);
+      }
+    } catch (error) {
+      console.error('Error fetching invoiced jobs:', error);
+    }
+  };
+
+  // Check if petty cash is fully settled for a job
+  const isPettyCashFullySettled = (jobId) => {
+    const assignments = pettyCashAssignments[jobId];
+    
+    // If no assignments exist, consider it as not having petty cash requirement
+    if (!assignments || assignments.length === 0) {
+      return true; // Allow invoice if no petty cash was assigned
+    }
+    
+    // All assignments must be in a settled state
+    const settledStatuses = [
+      'Settled',
+      'Settled/Approved',
+      'Balance Returned',
+      'Overdue Collected',
+      'Settled / Balance Returned',
+      'Settled / Over Due Collected',
+      'Full Petty Cash Returned',
+      'Closed'
+    ];
+    
+    const allSettled = assignments.every(assignment => 
+      settledStatuses.includes(assignment.status)
+    );
+    
+    return allSettled;
+  };
+
+  // Check if manage invoice button should be enabled
+  const canManageInvoice = (job) => {
+    // If invoice already exists, allow opening to manage payments
+    if (invoicedJobIds.has(job.jobId)) {
+      return true;
+    }
+    
+    // For new invoice creation, check if petty cash is fully settled
+    if (!isPettyCashFullySettled(job.jobId)) {
+      return false;
+    }
+    
+    return true;
+  };
+
+  const getManageInvoiceTooltip = (job) => {
+    if (invoicedJobIds.has(job.jobId)) {
+      return 'Manage Invoice / Record Payment';
+    }
+    
+    if (!isPettyCashFullySettled(job.jobId)) {
+      const assignments = pettyCashAssignments[job.jobId];
+      if (assignments && assignments.length > 0) {
+        const unsettled = assignments.filter(a => {
+          const settledStatuses = [
+            'Settled',
+            'Settled/Approved',
+            'Balance Returned',
+            'Overdue Collected',
+            'Settled / Balance Returned',
+            'Settled / Over Due Collected',
+            'Full Petty Cash Returned',
+            'Closed'
+          ];
+          return !settledStatuses.includes(a.status);
+        });
+        
+        if (unsettled.length > 0) {
+          return `Petty cash must be fully settled first (${unsettled.length} pending)`;
+        }
+      }
+    }
+    
+    return 'Manage Invoicing';
   };
 
   const getCustomerName = (customerId) => {
@@ -138,12 +284,13 @@ function Jobs() {
     return user ? user.fullName : userId;
   };
 
-  // Fetch office pay items + advance payments for a specific job (used in expanded row)
+  // Fetch office pay items + advance payments + advance payment requests for a specific job
   const fetchJobPayments = async (jobId) => {
     try {
-      const [officeRes, advanceRes] = await Promise.all([
+      const [officeRes, advanceRes, requestsRes] = await Promise.all([
         apiClient.get(`/office-pay-items/job/${jobId}`),
         apiClient.get(`/jobs/${jobId}/advance-payments`),
+        apiClient.get(`/jobs/${jobId}/advance-payment-requests`),
       ]);
       setJobPayments(prev => ({
         ...prev,
@@ -151,6 +298,8 @@ function Jobs() {
           officeItems:     Array.isArray(officeRes.data)               ? officeRes.data               : [],
           advancePayments: Array.isArray(advanceRes.data?.data)        ? advanceRes.data.data         :
                            Array.isArray(advanceRes.data)              ? advanceRes.data              : [],
+          advanceRequests: Array.isArray(requestsRes.data?.data)       ? requestsRes.data.data        :
+                           Array.isArray(requestsRes.data)             ? requestsRes.data             : [],
         }
       }));
     } catch (e) {
@@ -404,11 +553,44 @@ function Jobs() {
         const response = await apiClient.get(`/pay-item-templates/category/${encodeURIComponent(job.shipmentCategory)}`);
         const templates = response.data;
         if (templates && templates.length > 0) {
-          defaultItems = templates.map(template => ({
-            itemName: template.itemName,
-            actualCost: '',
-            hasBill: false
-          }));
+          // Fetch already settled items from other assignments for this job
+          let alreadySettledItems = [];
+          try {
+            const allAssignments = job.assignments || [];
+            const otherSettledAssignments = allAssignments.filter(
+              a => a.pettyAssignmentId !== assignment.pettyAssignmentId && 
+                   a.status !== 'Assigned'
+            );
+            
+            for (const otherAssignment of otherSettledAssignments) {
+              try {
+                const itemsRes = await apiClient.get(`/petty-cash-assignments/${otherAssignment.pettyAssignmentId}/settlement-items`);
+                if (Array.isArray(itemsRes.data)) {
+                  alreadySettledItems.push(...itemsRes.data.map(item => item.itemName?.toLowerCase().trim()));
+                }
+              } catch (e) {
+                // ignore individual fetch errors
+              }
+            }
+          } catch (e) {
+            console.error('Error fetching settled items:', e);
+          }
+          
+          // Filter out templates that have already been settled by other clerks
+          const availableTemplates = templates.filter(template => 
+            !alreadySettledItems.includes(template.itemName?.toLowerCase().trim())
+          );
+          
+          if (availableTemplates.length > 0) {
+            defaultItems = availableTemplates.map(template => ({
+              itemName: template.itemName,
+              actualCost: '',
+              hasBill: false
+            }));
+          } else {
+            // All templates already settled - show empty custom item slot with helpful context
+            defaultItems = [{ itemName: '', actualCost: '', hasBill: false }];
+          }
         }
       } catch (error) {
         console.error('Error loading templates:', error);
@@ -418,28 +600,47 @@ function Jobs() {
     setSettleModal({
       pettyAssignmentId: assignment.pettyAssignmentId,
       userName: assignment.userName || assignment.waff_clerk_name || getUserFullName(assignment.userId),
-      assignedAmount: parseFloat(assignment.assignedAmount || 0)
+      assignedAmount: parseFloat(assignment.assignedAmount || 0),
+      isGroupedSettlement: assignment.isGroupedSettlement || false,
+      groupAssignments: assignment.groupAssignments || null,
+      groupId: assignment.groupId || null
     });
     setSettleItems(defaultItems);
   };
 
   const handleSettleSubmit = async () => {
     const validItems = settleItems.filter(item => item.itemName && item.actualCost && parseFloat(item.actualCost) > 0);
+    
+    // If no items with amounts, treat as full petty cash return
     if (validItems.length === 0) {
-      setMessage('Please add at least one settlement item with name and cost');
-      setTimeout(() => setMessage(''), 3000);
-      return;
+      const confirmFullReturn = window.confirm(
+        `You are submitting a full petty cash return.\n\n` +
+        `Assigned Amount: LKR ${settleModal.assignedAmount.toLocaleString('en-US', {minimumFractionDigits: 2})}\n` +
+        `No items will be claimed as expenses.\n` +
+        `The full amount will be marked for return.\n\n` +
+        `Continue?`
+      );
+      if (!confirmFullReturn) return;
     }
 
     setSettleLoading(true);
     try {
-      const response = await apiClient.post(`/petty-cash-assignments/${settleModal.pettyAssignmentId}/settle`, {
-        items: validItems.map(item => ({
-          itemName: item.itemName,
-          actualCost: parseFloat(item.actualCost),
-          hasBill: item.hasBill || false
-        }))
-      });
+      const itemsPayload = validItems.map(item => ({
+        itemName: item.itemName,
+        actualCost: parseFloat(item.actualCost),
+        hasBill: item.hasBill || false
+      }));
+
+      // Use group settle if multiple assignments (like PettyCash.js)
+      let url;
+      if (settleModal.isGroupedSettlement && settleModal.groupAssignments?.length > 1) {
+        const groupId = settleModal.groupId || `${settleModal.groupAssignments[0].jobId}_${settleModal.groupAssignments[0].userId}`;
+        url = `/petty-cash-assignments/group/${encodeURIComponent(groupId)}/settle`;
+      } else {
+        url = `/petty-cash-assignments/${settleModal.pettyAssignmentId}/settle`;
+      }
+
+      const response = await apiClient.post(url, { items: itemsPayload });
 
       setMessage('✅ Settlement submitted successfully!');
       setSettleModal(null);
@@ -457,6 +658,45 @@ function Jobs() {
       setMessage(`❌ ${errorMsg}`);
     } finally {
       setSettleLoading(false);
+      setTimeout(() => setMessage(''), 5000);
+    }
+  };
+
+  const handleAssignPcSubmit = async () => {
+    if (!assignPcForm.assignedTo) {
+      setMessage('Please select a user to assign');
+      setTimeout(() => setMessage(''), 3000);
+      return;
+    }
+    if (!assignPcForm.assignedAmount || parseFloat(assignPcForm.assignedAmount) <= 0) {
+      setMessage('Please enter a valid amount');
+      setTimeout(() => setMessage(''), 3000);
+      return;
+    }
+
+    setAssignPcLoading(true);
+    try {
+      await apiClient.post('/petty-cash-assignments', {
+        jobId: viewJobModal.jobId,
+        assignedTo: assignPcForm.assignedTo,
+        assignedAmount: parseFloat(assignPcForm.assignedAmount),
+        notes: assignPcForm.notes || null
+      });
+
+      setMessage('✅ Petty cash assigned successfully!');
+      setAssignPcModal(false);
+      setAssignPcForm({ assignedTo: '', assignedAmount: '', notes: '' });
+      fetchJobs();
+      // Refresh view modal
+      const data = await jobService.getAll();
+      const updatedJob = data.find(j => j.jobId === viewJobModal.jobId);
+      if (updatedJob) setViewJobModal(updatedJob);
+    } catch (error) {
+      console.error('Error assigning petty cash:', error);
+      const errorMsg = error.response?.data?.message || error.message || 'Error assigning petty cash';
+      setMessage(`❌ ${errorMsg}`);
+    } finally {
+      setAssignPcLoading(false);
       setTimeout(() => setMessage(''), 5000);
     }
   };
@@ -733,7 +973,14 @@ function Jobs() {
         </div>
         {filteredJobs.length === 0 ? (
           <div className="p-12 text-center">
-            <div className="text-4xl mb-4">≡ƒôª</div>
+            <div className="text-4xl mb-4">
+              <svg className="mx-auto" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="16" y1="13" x2="8" y2="13"/>
+                <line x1="16" y1="17" x2="8" y2="17"/>
+              </svg>
+            </div>
             <p className="text-gray-600">{searchTerm ? 'No jobs found matching your search' : 'No jobs found'}</p>
           </div>
         ) : (
@@ -825,17 +1072,37 @@ function Jobs() {
                       <div className="flex items-center gap-2">
                         {(user?.role === 'Admin' || user?.role === 'Super Admin' || user?.role === 'Manager' || user?.role === 'Office Executive') && (
                           <>
-                            <button
-                              onClick={() => setInvoicingModalJob(job)}
-                              disabled={job.pettyCashStatus !== 'Settled' && job.assignments && job.assignments.length > 0}
-                              title={job.pettyCashStatus !== 'Settled' && job.assignments && job.assignments.length > 0 ? 'Petty cash must be settled first' : 'Manage Invoicing'}
-                              className={`p-1.5 rounded-lg transition ${job.pettyCashStatus !== 'Settled' && job.assignments && job.assignments.length > 0 ? 'text-gray-400 cursor-not-allowed' : 'text-green-600 hover:bg-green-50'}`}
-                            >
-                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                                <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
-                                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
-                              </svg>
-                            </button>
+                            {loadingPettyCash ? (
+                              <button
+                                disabled
+                                title="Loading petty cash data..."
+                                className="p-1.5 rounded-lg text-gray-400 bg-gray-100 cursor-wait opacity-50"
+                              >
+                                <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                                </svg>
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => canManageInvoice(job) && setInvoicingModalJob(job)}
+                                title={getManageInvoiceTooltip(job)}
+                                disabled={!canManageInvoice(job)}
+                                className={`p-1.5 rounded-lg transition ${
+                                  canManageInvoice(job)
+                                    ? 'text-blue-600 hover:bg-blue-50 cursor-pointer'
+                                    : 'text-gray-400 bg-gray-100 cursor-not-allowed opacity-50'
+                                }`}
+                              >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                  <polyline points="14 2 14 8 20 8"></polyline>
+                                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                                  <polyline points="10 9 9 9 8 9"></polyline>
+                                </svg>
+                              </button>
+                            )}
                             <button
                               onClick={() => openEditModal(job)}
                               title="Edit Job"
@@ -1019,7 +1286,12 @@ function Jobs() {
               <button onClick={() => setSettleModal(null)} className="text-white hover:bg-green-500 rounded-lg p-2 transition">✕</button>
             </div>
             <div className="flex-1 overflow-y-auto p-6">
-              <p className="text-sm text-gray-600 mb-4">Add the items that were paid from this petty cash assignment:</p>
+              <p className="text-sm text-gray-600 mb-2">Add the items that were paid from this petty cash assignment:</p>
+              {settleItems.length === 1 && !settleItems[0].itemName && (
+                <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                  All predefined items have already been settled. Add custom items below, or submit empty to return the remaining balance.
+                </p>
+              )}
               
               <div className="space-y-3">
                 {settleItems.map((item, idx) => (
@@ -1099,6 +1371,73 @@ function Jobs() {
                 className="px-5 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white rounded-lg transition font-semibold text-sm"
               >
                 {settleLoading ? 'Submitting...' : 'Submit Settlement'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Assign Petty Cash Modal */}
+      {assignPcModal && viewJobModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10001] px-4 py-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-600 to-purple-700 rounded-t-2xl">
+              <div>
+                <h2 className="text-lg font-bold text-white">Assign Petty Cash</h2>
+                <p className="text-purple-100 text-xs mt-0.5">Job #{viewJobModal.jobId}</p>
+              </div>
+              <button onClick={() => setAssignPcModal(false)} className="text-white hover:bg-purple-500 rounded-lg p-2 transition">✕</button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Assign To <span className="text-red-600">*</span></label>
+                <select
+                  value={assignPcForm.assignedTo}
+                  onChange={(e) => setAssignPcForm(prev => ({...prev, assignedTo: e.target.value}))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+                >
+                  <option value="">Select Assigned User</option>
+                  {viewJobModal.assignedUsers && viewJobModal.assignedUsers.length > 0
+                    ? viewJobModal.assignedUsers.map(a => (
+                        <option key={a.userId} value={a.userId}>{a.userName || getUserFullName(a.userId)} ({a.role || 'Assigned'})</option>
+                      ))
+                    : users.filter(u => u.role === 'Waff Clerk' || u.role === 'Manager').map(u => (
+                        <option key={u.userId} value={u.userId}>{u.fullName} ({u.role})</option>
+                      ))
+                  }
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Amount (LKR) <span className="text-red-600">*</span></label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={assignPcForm.assignedAmount}
+                  onChange={(e) => setAssignPcForm(prev => ({...prev, assignedAmount: e.target.value}))}
+                  placeholder="0.00"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Notes (Optional)</label>
+                <textarea
+                  value={assignPcForm.notes}
+                  onChange={(e) => setAssignPcForm(prev => ({...prev, notes: e.target.value}))}
+                  placeholder="Enter any notes..."
+                  rows="2"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-2xl">
+              <button onClick={() => setAssignPcModal(false)} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition font-medium text-sm">Cancel</button>
+              <button
+                onClick={handleAssignPcSubmit}
+                disabled={assignPcLoading}
+                className="px-5 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white rounded-lg transition font-semibold text-sm"
+              >
+                {assignPcLoading ? 'Assigning...' : 'Assign Petty Cash'}
               </button>
             </div>
           </div>
@@ -1224,7 +1563,9 @@ function Jobs() {
                         <svg viewBox="0 0 24 24" fill="none" stroke="#1E3F63" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 shrink-0">
                           <rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>
                         </svg>
-                        <span className="text-sm font-bold text-[#1E3F63] uppercase tracking-wider">Payment Details</span>
+                        <span className="text-sm font-bold text-[#1E3F63] uppercase tracking-wider">
+                          {user?.role === 'Waff Clerk' ? 'Petty Cash Assignments' : 'Payment Details'}
+                        </span>
                       </div>
                       {/* Add buttons in header */}
                       {['Admin','Super Admin','Manager','Office Executive'].includes(user?.role) && (
@@ -1249,117 +1590,75 @@ function Jobs() {
                             </svg>
                             Advance Payment
                           </button>
+                          {['Admin','Super Admin','Manager'].includes(user?.role) && (
+                            <button
+                              onClick={() => {
+                                const cust = customers.find(c => c.customerId === viewJobModal.customerId);
+                                setRequestAdvanceModal({
+                                  job: viewJobModal,
+                                  customerEmail: cust?.email || '',
+                                  customerName: cust?.name || viewJobModal.customerName || '',
+                                  requestedAmount: '',
+                                  notes: '',
+                                  loading: false,
+                                  error: '',
+                                  success: ''
+                                });
+                              }}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-[#b45309] bg-amber-50 hover:bg-amber-100 border border-amber-200 transition shadow-sm"
+                              title="Request advance payment from customer via email"
+                            >
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                                <polyline points="22,6 12,13 2,6"/>
+                              </svg>
+                              Request Advance via Email
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
 
                     {/* Office Pay Items sub-table */}
-                    <div className="border-b border-gray-100">
-                      <div className="px-5 py-2.5 bg-blue-50 border-b border-blue-200">
-                        <span className="text-xs font-bold text-blue-700 uppercase tracking-wider">① Office Pay Items</span>
-                      </div>
-                      <table className="w-full text-sm border-collapse">
-                        <thead>
-                          <tr className="bg-gray-50 border-b border-gray-100">
-                            <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Description</th>
-                            <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Amount</th>
-                            <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Paid By</th>
-                            <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Date</th>
-                            {['Admin','Super Admin','Manager','Office Executive'].includes(user?.role) && (
-                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Actions</th>
-                            )}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {pd.officeItems.length === 0 ? (
-                            <tr><td colSpan={5} className="px-5 py-3 text-gray-400 text-xs italic">No office payments yet</td></tr>
-                          ) : pd.officeItems.map((item, i) => (
-                            <tr key={item.officePayItemId||i} className={`border-b border-gray-50 ${i%2===0?'bg-white':'bg-[#f8fafc]'}`}>
-                              <td className="px-5 py-3 text-gray-900 font-medium">{item.description||'-'}</td>
-                              <td className="px-5 py-3 text-gray-900 font-semibold">{fmtLKR(item.actualCost)}</td>
-                              <td className="px-5 py-3 text-gray-600">{item.paidByName||'-'}</td>
-                              <td className="px-5 py-3 text-gray-600">{fmtDT(item.paymentDate)}</td>
+                    {user?.role !== 'Waff Clerk' && (
+                      <div className="border-b border-gray-100">
+                        <div className="px-5 py-2.5 bg-blue-50 border-b border-blue-200">
+                          <span className="text-xs font-bold text-blue-700 uppercase tracking-wider">① Office Pay Items</span>
+                        </div>
+                        <table className="w-full text-sm border-collapse">
+                          <thead>
+                            <tr className="bg-gray-50 border-b border-gray-100">
+                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Description</th>
+                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Amount</th>
+                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Paid By</th>
+                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Date</th>
                               {['Admin','Super Admin','Manager','Office Executive'].includes(user?.role) && (
-                                <td className="px-5 py-3">
-                                  <button
-                                    onClick={() => setEditingOfficePayItem({ officePayItemId: item.officePayItemId, description: item.description || '', actualCost: String(item.actualCost || ''), jobId: viewJobModal.jobId })}
-                                    className="p-1.5 rounded text-blue-600 hover:bg-blue-50 transition mr-1" title="Edit"
-                                  >
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-                                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                                    </svg>
-                                  </button>
-                                  <button
-                                    onClick={async () => { if (!window.confirm('Are you sure you want to delete this office pay item?')) return; try { await apiClient.delete(`/office-pay-items/${item.officePayItemId}`); fetchJobs(); fetchJobPayments(viewJobModal.jobId); } catch(err) { console.error('Delete error:', err); } }}
-                                    className="p-1.5 rounded text-red-500 hover:bg-red-50 transition" title="Delete"
-                                  >
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-                                      <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                                    </svg>
-                                  </button>
-                                </td>
+                                <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Actions</th>
                               )}
                             </tr>
-                          ))}
-                        </tbody>
-                        <tfoot>
-                          <tr className="bg-blue-50 border-t border-blue-200">
-                            <td colSpan={['Admin','Super Admin','Manager','Office Executive'].includes(user?.role) ? 4 : 3} className="px-5 py-2.5 text-right text-xs font-bold text-gray-600 uppercase tracking-wide">Total Office Payments</td>
-                            <td className="px-5 py-2.5 text-blue-700 font-bold text-sm">{fmtLKR(officeTotal)}</td>
-                          </tr>
-                        </tfoot>
-                      </table>
-                    </div>
-
-                    {/* Advance Payments sub-table */}
-                    <div>
-                      <div className="px-5 py-2.5 bg-green-50 border-b border-green-200">
-                        <span className="text-xs font-bold text-green-700 uppercase tracking-wider">② Advance Payments</span>
-                      </div>
-                      <table className="w-full text-sm border-collapse">
-                        <thead>
-                          <tr className="bg-gray-50 border-b border-gray-100">
-                            <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Description</th>
-                            <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Amount</th>
-                            <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Paid By</th>
-                            <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Date</th>
-                            <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Notes</th>
-                            {['Admin','Super Admin','Manager'].includes(user?.role) && (
-                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Actions</th>
-                            )}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {pd.advancePayments.length === 0 ? (
-                            <tr><td colSpan={6} className="px-5 py-3 text-gray-400 text-xs italic">No advance payments yet</td></tr>
-                          ) : pd.advancePayments.map((pmt, i) => {
-                            const ptLabel = (pmt.paymentType||'').toLowerCase() === 'check'
-                              ? `Advance Payment (Check #${pmt.checkNo||'-'})`
-                              : `Advance Payment (${pmt.paymentType||'-'})`;
-                            return (
-                              <tr key={pmt.advancePaymentId||i} className={`border-b border-gray-50 ${i%2===0?'bg-white':'bg-[#f8fafc]'}`}>
-                                <td className="px-5 py-3 text-gray-900 font-medium">{ptLabel}</td>
-                                <td className="px-5 py-3 text-gray-900 font-semibold">{fmtLKR(pmt.amount)}</td>
-                                <td className="px-5 py-3 text-gray-600">{pmt.recordedByName||pmt.recordedBy||'-'}</td>
-                                <td className="px-5 py-3 text-gray-600">{fmtDT(pmt.paymentMadeDate)}</td>
-                                <td className="px-5 py-3 text-gray-500 text-xs">{pmt.notes||'-'}</td>
-                                {['Admin','Super Admin','Manager'].includes(user?.role) && (
+                          </thead>
+                          <tbody>
+                            {pd.officeItems.length === 0 ? (
+                              <tr><td colSpan={5} className="px-5 py-3 text-gray-400 text-xs italic">No office payments yet</td></tr>
+                            ) : pd.officeItems.map((item, i) => (
+                              <tr key={item.officePayItemId||i} className={`border-b border-gray-50 ${i%2===0?'bg-white':'bg-[#f8fafc]'}`}>
+                                <td className="px-5 py-3 text-gray-900 font-medium">{item.description||'-'}</td>
+                                <td className="px-5 py-3 text-gray-900 font-semibold">{fmtLKR(item.actualCost)}</td>
+                                <td className="px-5 py-3 text-gray-600">{item.paidByName||'-'}</td>
+                                <td className="px-5 py-3 text-gray-600">{fmtDT(item.paymentDate)}</td>
+                                {['Admin','Super Admin','Manager','Office Executive'].includes(user?.role) && (
                                   <td className="px-5 py-3">
                                     <button
-                                      onClick={() => setEditingAdvancePayment({ advancePaymentId: pmt.advancePaymentId, amount: String(pmt.amount || ''), paymentMadeDate: pmt.paymentMadeDate ? new Date(pmt.paymentMadeDate).toISOString().split('T')[0] : '', paymentType: pmt.paymentType || 'cash', checkNo: pmt.checkNo || '', notes: pmt.notes || '', jobId: viewJobModal.jobId })}
-                                      className={`p-1.5 rounded mr-1 transition ${pmt.isLegacy ? 'text-gray-300 cursor-not-allowed' : 'text-blue-600 hover:bg-blue-50'}`}
-                                      title={pmt.isLegacy ? 'Legacy records cannot be edited' : 'Edit'}
-                                      disabled={pmt.isLegacy}
+                                      onClick={() => setEditingOfficePayItem({ officePayItemId: item.officePayItemId, description: item.description || '', actualCost: String(item.actualCost || ''), jobId: viewJobModal.jobId })}
+                                      className="p-1.5 rounded text-blue-600 hover:bg-blue-50 transition mr-1" title="Edit"
                                     >
                                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
                                         <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                                       </svg>
                                     </button>
                                     <button
-                                      onClick={async () => { if (pmt.isLegacy || !pmt.advancePaymentId) return; if (!window.confirm('Are you sure you want to delete this advance payment?')) return; try { await apiClient.delete(`/jobs/${viewJobModal.jobId}/advance-payments/${pmt.advancePaymentId}`); fetchJobs(); fetchJobPayments(viewJobModal.jobId); } catch(err) { console.error('Delete error:', err); } }}
-                                      className={`p-1.5 rounded transition ${pmt.isLegacy ? 'text-gray-300 cursor-not-allowed' : 'text-red-500 hover:bg-red-50'}`}
-                                      title={pmt.isLegacy ? 'Legacy records cannot be deleted' : 'Delete'}
-                                      disabled={pmt.isLegacy}
+                                      onClick={async () => { if (!window.confirm('Are you sure you want to delete this office pay item?')) return; try { await apiClient.delete(`/office-pay-items/${item.officePayItemId}`); fetchJobs(); fetchJobPayments(viewJobModal.jobId); } catch(err) { console.error('Delete error:', err); } }}
+                                      className="p-1.5 rounded text-red-500 hover:bg-red-50 transition" title="Delete"
                                     >
                                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
                                         <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -1368,22 +1667,285 @@ function Jobs() {
                                   </td>
                                 )}
                               </tr>
-                            );
-                          })}
-                        </tbody>
-                        <tfoot>
-                          <tr className="bg-green-50 border-t border-green-200">
-                            <td colSpan={['Admin','Super Admin','Manager'].includes(user?.role) ? 5 : 4} className="px-5 py-2.5 text-right text-xs font-bold text-gray-600 uppercase tracking-wide">Total Advance Payments</td>
-                            <td className="px-5 py-2.5 text-green-700 font-bold text-sm">{fmtLKR(advanceTotal)}</td>
-                          </tr>
-                        </tfoot>
-                      </table>
-                    </div>
+                            ))}
+                          </tbody>
+                          <tfoot>
+                            <tr className="bg-blue-50 border-t border-blue-200">
+                              <td colSpan={['Admin','Super Admin','Manager','Office Executive'].includes(user?.role) ? 4 : 3} className="px-5 py-2.5 text-right text-xs font-bold text-gray-600 uppercase tracking-wide">Total Office Payments</td>
+                              <td className="px-5 py-2.5 text-blue-700 font-bold text-sm">{fmtLKR(officeTotal)}</td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    )}
+
+                    {/* Advance Payments sub-table */}
+                    {user?.role !== 'Waff Clerk' && (
+                      <div>
+                        <div className="px-5 py-2.5 bg-green-50 border-b border-green-200">
+                          <span className="text-xs font-bold text-green-700 uppercase tracking-wider">② Advance Payments</span>
+                        </div>
+                        <table className="w-full text-sm border-collapse">
+                          <thead>
+                            <tr className="bg-gray-50 border-b border-gray-100">
+                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Description</th>
+                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Amount</th>
+                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Paid By</th>
+                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Date</th>
+                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Notes</th>
+                              {['Admin','Super Admin','Manager'].includes(user?.role) && (
+                                <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Actions</th>
+                              )}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pd.advancePayments.length === 0 ? (
+                              <tr><td colSpan={6} className="px-5 py-3 text-gray-400 text-xs italic">No advance payments yet</td></tr>
+                            ) : pd.advancePayments.map((pmt, i) => {
+                              const ptLabel = (pmt.paymentType||'').toLowerCase() === 'check'
+                                ? `Advance Payment (Check #${pmt.checkNo||'-'})`
+                                : `Advance Payment (${pmt.paymentType||'-'})`;
+                              return (
+                                <tr key={pmt.advancePaymentId||i} className={`border-b border-gray-50 ${i%2===0?'bg-white':'bg-[#f8fafc]'}`}>
+                                  <td className="px-5 py-3 text-gray-900 font-medium">{ptLabel}</td>
+                                  <td className="px-5 py-3 text-gray-900 font-semibold">{fmtLKR(pmt.amount)}</td>
+                                  <td className="px-5 py-3 text-gray-600">{pmt.recordedByName||pmt.recordedBy||'-'}</td>
+                                  <td className="px-5 py-3 text-gray-600">{fmtDT(pmt.paymentMadeDate)}</td>
+                                  <td className="px-5 py-3 text-gray-500 text-xs">{pmt.notes||'-'}</td>
+                                  {['Admin','Super Admin','Manager'].includes(user?.role) && (
+                                    <td className="px-5 py-3">
+                                      <button
+                                        onClick={() => setEditingAdvancePayment({ advancePaymentId: pmt.advancePaymentId, amount: String(pmt.amount || ''), paymentMadeDate: pmt.paymentMadeDate ? new Date(pmt.paymentMadeDate).toISOString().split('T')[0] : '', paymentType: pmt.paymentType || 'cash', checkNo: pmt.checkNo || '', notes: pmt.notes || '', jobId: viewJobModal.jobId })}
+                                        className={`p-1.5 rounded mr-1 transition ${pmt.isLegacy ? 'text-gray-300 cursor-not-allowed' : 'text-blue-600 hover:bg-blue-50'}`}
+                                        title={pmt.isLegacy ? 'Legacy records cannot be edited' : 'Edit'}
+                                        disabled={pmt.isLegacy}
+                                      >
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                        </svg>
+                                      </button>
+                                      <button
+                                        onClick={async () => { if (pmt.isLegacy || !pmt.advancePaymentId) return; if (!window.confirm('Are you sure you want to delete this advance payment?')) return; try { await apiClient.delete(`/jobs/${viewJobModal.jobId}/advance-payments/${pmt.advancePaymentId}`); fetchJobs(); fetchJobPayments(viewJobModal.jobId); } catch(err) { console.error('Delete error:', err); } }}
+                                        className={`p-1.5 rounded transition ${pmt.isLegacy ? 'text-gray-300 cursor-not-allowed' : 'text-red-500 hover:bg-red-50'}`}
+                                        title={pmt.isLegacy ? 'Legacy records cannot be deleted' : 'Delete'}
+                                        disabled={pmt.isLegacy}
+                                      >
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                                          <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                        </svg>
+                                      </button>
+                                    </td>
+                                  )}
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                          <tfoot>
+                            <tr className="bg-green-50 border-t border-green-200">
+                              <td colSpan={['Admin','Super Admin','Manager'].includes(user?.role) ? 5 : 4} className="px-5 py-2.5 text-right text-xs font-bold text-gray-600 uppercase tracking-wide">Total Advance Payments</td>
+                              <td className="px-5 py-2.5 text-green-700 font-bold text-sm">{fmtLKR(advanceTotal)}</td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    )}
+
+                    {/* Advance Payment Requests sub-table */}
+                    {user?.role !== 'Waff Clerk' && (
+                      <div className="border-t border-gray-100">
+                        <div className="px-5 py-2.5 bg-amber-50 border-b border-amber-200 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-amber-800 uppercase tracking-wider">③ Advance Payment Requests (Email)</span>
+                            {(() => {
+                              const pendingCount = (pd.advanceRequests || []).filter(r => r.status === 'PENDING').length;
+                              return pendingCount > 0 ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-200 text-amber-900 animate-pulse">
+                                  {pendingCount} Pending
+                                </span>
+                              ) : null;
+                            })()}
+                          </div>
+                          {['Admin','Super Admin','Manager'].includes(user?.role) && (
+                            <button
+                              onClick={() => {
+                                const cust = customers.find(c => c.customerId === viewJobModal.customerId);
+                                setRequestAdvanceModal({
+                                  job: viewJobModal,
+                                  customerEmail: cust?.email || '',
+                                  customerName: cust?.name || viewJobModal.customerName || '',
+                                  requestedAmount: '',
+                                  notes: '',
+                                  loading: false,
+                                  error: '',
+                                  success: ''
+                                });
+                              }}
+                              className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-semibold text-amber-800 bg-amber-100 hover:bg-amber-200 border border-amber-300 transition"
+                              title="Request advance payment via email"
+                            >
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                              </svg>
+                              New Request
+                            </button>
+                          )}
+                        </div>
+                        <table className="w-full text-sm border-collapse">
+                          <thead>
+                            <tr className="bg-gray-50 border-b border-gray-100">
+                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Request ID</th>
+                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Customer &amp; Email</th>
+                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Amount</th>
+                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Requested By &amp; Date</th>
+                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Status</th>
+                              <th className="px-5 py-2.5 text-left text-xs font-semibold text-gray-500">Notes / Details</th>
+                              {['Admin','Super Admin','Manager'].includes(user?.role) && (
+                                <th className="px-5 py-2.5 text-right text-xs font-semibold text-gray-500">Actions</th>
+                              )}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(!pd.advanceRequests || pd.advanceRequests.length === 0) ? (
+                              <tr>
+                                <td colSpan={['Admin','Super Admin','Manager'].includes(user?.role) ? 7 : 6} className="px-5 py-4 text-gray-400 text-xs italic text-center">
+                                  No email requests sent yet. Click "Request Advance via Email" to send an advance payment request to the customer.
+                                </td>
+                              </tr>
+                            ) : pd.advanceRequests.map((req, i) => {
+                              const isPending = req.status === 'PENDING';
+                              const isCompleted = req.status === 'COMPLETED';
+                              const isCancelled = req.status === 'CANCELLED';
+
+                              return (
+                                <tr key={req.requestId || i} className={`border-b border-gray-50 ${i % 2 === 0 ? 'bg-white' : 'bg-[#fafafa]'}`}>
+                                  <td className="px-5 py-3 font-semibold text-gray-900 text-xs">
+                                    {req.requestId}
+                                  </td>
+                                  <td className="px-5 py-3 text-xs">
+                                    <div className="font-semibold text-gray-800">{req.customerName || viewJobModal.customerName || '-'}</div>
+                                    <div className="text-gray-500 font-mono text-[11px]">{req.customerEmail}</div>
+                                  </td>
+                                  <td className="px-5 py-3 text-xs font-bold text-gray-900">
+                                    {fmtLKR(req.requestedAmount)}
+                                  </td>
+                                  <td className="px-5 py-3 text-xs text-gray-600">
+                                    <div>{req.requestedByName || req.requestedBy || '-'}</div>
+                                    <div className="text-[11px] text-gray-400">{fmtDT(req.requestedDate)}</div>
+                                  </td>
+                                  <td className="px-5 py-3 text-xs">
+                                    {isPending && (
+                                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                                        Pending Payment
+                                      </span>
+                                    )}
+                                    {isCompleted && (
+                                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="w-3 h-3"><polyline points="20 6 9 17 4 12"/></svg>
+                                        Completed
+                                      </span>
+                                    )}
+                                    {isCancelled && (
+                                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 border border-gray-200">
+                                        Cancelled
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="px-5 py-3 text-xs text-gray-600 max-w-xs truncate" title={req.notes || ''}>
+                                    <div>{req.notes || '-'}</div>
+                                    {isCompleted && (
+                                      <div className="text-[11px] text-emerald-700 font-medium mt-0.5">
+                                        Paid: {fmtLKR(req.paidAmount || req.requestedAmount)} ({req.paymentType || 'bank_transfer'}) {req.checkNo ? `Ref: ${req.checkNo}` : ''}
+                                      </div>
+                                    )}
+                                  </td>
+                                  {['Admin','Super Admin','Manager'].includes(user?.role) && (
+                                    <td className="px-5 py-3 text-right">
+                                      {isPending ? (
+                                        <div className="flex items-center justify-end gap-2">
+                                          <button
+                                            onClick={() => setCompleteAdvanceRequestModal({
+                                              request: req,
+                                              paidAmount: String(req.requestedAmount || ''),
+                                              paymentType: 'bank_transfer',
+                                              checkNo: '',
+                                              paymentMadeDate: new Date().toISOString().split('T')[0],
+                                              notes: `Settlement of request ${req.requestId}`,
+                                              loading: false,
+                                              error: ''
+                                            })}
+                                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-green-600 hover:bg-green-700 transition shadow-sm"
+                                            title="Mark customer advance payment as completed and add to job"
+                                          >
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3.5 h-3.5">
+                                              <polyline points="20 6 9 17 4 12"/>
+                                            </svg>
+                                            Mark as Completed
+                                          </button>
+                                          <button
+                                            onClick={async () => {
+                                              if (!window.confirm(`Cancel advance payment request ${req.requestId}?`)) return;
+                                              try {
+                                                await apiClient.post(`/jobs/${viewJobModal.jobId}/advance-payment-requests/${req.requestId}/cancel`);
+                                                fetchJobPayments(viewJobModal.jobId);
+                                              } catch (err) {
+                                                console.error('Cancel request error:', err);
+                                              }
+                                            }}
+                                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                                            title="Cancel request"
+                                          >
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
+                                              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                                            </svg>
+                                          </button>
+                                        </div>
+                                      ) : isCompleted ? (
+                                        <span className="text-[11px] text-emerald-600 font-semibold inline-flex items-center gap-1">
+                                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3"><polyline points="20 6 9 17 4 12"/></svg>
+                                          Added to Job
+                                        </span>
+                                      ) : (
+                                        <span className="text-[11px] text-gray-400 font-medium">-</span>
+                                      )}
+                                    </td>
+                                  )}
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
 
                     {/* Petty Cash Assignments section */}
-                    <div className="border-t border-gray-100">
-                      <div className="px-5 py-2.5 bg-purple-50 border-b border-purple-200">
-                        <span className="text-xs font-bold text-purple-700 uppercase tracking-wider">③ Petty Cash Assignments</span>
+                    <div className={user?.role !== 'Waff Clerk' ? "border-t border-gray-100" : ""}>
+                      <div className="px-5 py-2.5 bg-purple-50 border-b border-purple-200 flex items-center justify-between">
+                        <span className="text-xs font-bold text-purple-700 uppercase tracking-wider">
+                          {user?.role === 'Waff Clerk' ? 'Petty Cash Assignments' : '④ Petty Cash Assignments'}
+                        </span>
+                        {['Admin','Super Admin','Manager'].includes(user?.role) && (() => {
+                          const assignments = viewJobModal.assignments || [];
+                          const settledStatuses = ['Settled', 'Settled/Approved', 'Balance Returned', 'Overdue Collected', 'Settled / Balance Returned', 'Settled / Over Due Collected', 'Closed'];
+                          const allSettled = assignments.length > 0 && assignments.every(a => settledStatuses.includes(a.status));
+                          return (
+                            <button
+                              onClick={() => !allSettled || assignments.length === 0 ? setAssignPcModal(true) : null}
+                              disabled={allSettled}
+                              title={allSettled ? 'All petty cash assignments are settled' : 'Assign petty cash to a user'}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                                allSettled
+                                  ? 'text-gray-400 bg-gray-200 cursor-not-allowed'
+                                  : 'text-white bg-purple-600 hover:bg-purple-700'
+                              }`}
+                            >
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                              </svg>
+                              Assign Petty Cash
+                            </button>
+                          );
+                        })()}
                       </div>
                       <table className="w-full text-sm border-collapse">
                         <thead>
@@ -1400,11 +1962,61 @@ function Jobs() {
                         </thead>
                         <tbody>
                           {viewJobModal.assignments && viewJobModal.assignments.length > 0 ? (
-                            viewJobModal.assignments.map((a, i) => {
-                              const assignedAmount = parseFloat(a.assignedAmount || 0);
-                              const settledAmount = parseFloat(a.settledAmount || 0);
-                              const balanceAmount = assignedAmount - settledAmount;
-                              const isAssigned = a.status === 'Assigned';
+                            (() => {
+                              // Group assignments by groupId (matching PettyCash.js so grouped sub-assignments stay unified)
+                              const filtered = (viewJobModal.assignments || []).filter(a => user?.role === 'Waff Clerk' ? a.userId === user.userId : true);
+                              const groupMap = new Map();
+                              filtered.forEach(a => {
+                                const gid = a.groupId || `${a.jobId || viewJobModal.jobId}_${a.userId}`;
+                                if (!groupMap.has(gid)) groupMap.set(gid, []);
+                                groupMap.get(gid).push(a);
+                              });
+                              
+                              return Array.from(groupMap.values()).map((group, i) => {
+                                const assignedAmount = group.reduce((sum, a) => sum + parseFloat(a.assignedAmount || 0), 0);
+                                const settledAmount = group.reduce((sum, a) => sum + parseFloat(a.settledAmount || 0), 0);
+                                const balanceAmount = assignedAmount - settledAmount;
+
+                                const anyAssigned = group.some(a => a.status === 'Assigned' || a.status?.toUpperCase() === 'ASSIGNED');
+                                const hasClosed = group.some(a => a.status === 'Closed' || a.status?.toUpperCase() === 'CLOSED');
+                                const pendingApprovalSub = group.find(a => 
+                                  a.status === 'Pending Approval / Balance' || 
+                                  a.status === 'Pending Approval / Over Due' || 
+                                  a.status === 'Pending Approval'
+                                );
+                                const allBalanceReturned = group.every(a => a.status === 'Settled / Balance Returned');
+                                const allOverDueCollected = group.every(a => a.status === 'Settled / Over Due Collected');
+                                const allApproved = group.every(a => a.status === 'Settled/Approved');
+                                const allFullReturned = group.every(a => a.status === 'Full Petty Cash Returned');
+
+                                // Overall display status matching PettyCash.js
+                                const displayStatus = anyAssigned 
+                                  ? 'Assigned'
+                                  : hasClosed
+                                  ? 'Closed'
+                                  : pendingApprovalSub
+                                  ? pendingApprovalSub.status
+                                  : allBalanceReturned
+                                  ? 'Settled / Balance Returned'
+                                  : allOverDueCollected
+                                  ? 'Settled / Over Due Collected'
+                                  : allApproved
+                                  ? 'Settled/Approved'
+                                  : allFullReturned
+                                  ? 'Full Petty Cash Returned'
+                                  : balanceAmount > 0
+                                  ? 'Balance To Be Return'
+                                  : balanceAmount < 0
+                                  ? 'Over Due'
+                                  : 'Settled';
+
+                                const isAssigned = anyAssigned;
+                                const assignedSub = group.find(a => a.status === 'Assigned' || a.status?.toUpperCase() === 'ASSIGNED');
+                                const canReturnBalance = !anyAssigned && !pendingApprovalSub && displayStatus === 'Balance To Be Return' && balanceAmount > 0;
+                                const canCollectOverdue = !anyAssigned && !pendingApprovalSub && displayStatus === 'Over Due' && balanceAmount < 0;
+
+                                // Use first assignment for display fields
+                                const a = group[0];
                               return (
                                 <tr key={a.pettyAssignmentId||i} className={`border-b border-gray-50 ${i%2===0?'bg-white':'bg-[#f8fafc]'}`}>
                                   <td className="px-5 py-3 text-gray-900 font-medium">{a.userName || a.waff_clerk_name || getUserFullName(a.userId)}</td>
@@ -1415,15 +2027,20 @@ function Jobs() {
                                   </td>
                                   <td className="px-5 py-3 text-center">
                                     <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
-                                      a.status === 'Assigned' ? 'bg-blue-100 text-blue-800' :
-                                      a.status === 'Settled' ? 'bg-green-100 text-green-800' :
-                                      a.status === 'Settled / Balance Returned' ? 'bg-green-100 text-green-800' :
-                                      a.status === 'Settled / Over Due Collected' ? 'bg-green-100 text-green-800' :
-                                      a.status === 'Full Petty Cash Returned' ? 'bg-gray-100 text-gray-800' :
-                                      a.status === 'Closed' ? 'bg-gray-100 text-gray-800' :
+                                      displayStatus === 'Assigned' ? 'bg-blue-100 text-blue-800' :
+                                      displayStatus === 'Partially Settled' ? 'bg-amber-100 text-amber-800' :
+                                      displayStatus === 'Settled' ? 'bg-green-100 text-green-800' :
+                                      displayStatus === 'Settled / Balance Returned' ? 'bg-green-100 text-green-800' :
+                                      displayStatus === 'Settled / Over Due Collected' ? 'bg-green-100 text-green-800' :
+                                      displayStatus === 'Full Petty Cash Returned' ? 'bg-gray-100 text-gray-800' :
+                                      displayStatus === 'Closed' ? 'bg-gray-100 text-gray-800' :
+                                      displayStatus === 'Pending Approval / Balance' ? 'bg-purple-100 text-purple-800' :
+                                      displayStatus === 'Pending Approval / Over Due' ? 'bg-purple-100 text-purple-800' :
+                                      displayStatus === 'Pending Approval' ? 'bg-purple-100 text-purple-800' :
+                                      displayStatus === 'Over Due' ? 'bg-red-100 text-red-800' :
                                       'bg-yellow-100 text-yellow-800'
                                     }`}>
-                                      {a.status || 'Assigned'}
+                                      {displayStatus || 'Assigned'}
                                     </span>
                                   </td>
                                   {['Manager','Waff Clerk'].includes(user?.role) && (
@@ -1431,24 +2048,59 @@ function Jobs() {
                                       <div className="flex items-center justify-center gap-1.5 flex-wrap">
                                         {isAssigned && (
                                           <button
-                                            onClick={() => handleSettleAssignment(a)}
+                                            onClick={() => {
+                                              // Use group settle like PettyCash.js does
+                                              const firstAssigned = assignedSub || group[0];
+                                              const groupId = firstAssigned.groupId || `${firstAssigned.jobId}_${firstAssigned.userId}`;
+                                              handleSettleAssignment({
+                                                ...firstAssigned,
+                                                pettyAssignmentId: firstAssigned.pettyAssignmentId,
+                                                assignedAmount: assignedAmount, // Total group amount
+                                                isGroupedSettlement: group.length > 1,
+                                                groupAssignments: group,
+                                                groupId: groupId
+                                              });
+                                            }}
                                             className="px-2.5 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold rounded-lg transition"
                                             title="Settle this assignment"
                                           >
                                             Settle
                                           </button>
                                         )}
-                                        {a.status === 'Balance To Be Return' && (
+                                        {canReturnBalance && (
                                           <button
                                             onClick={async () => {
                                               try {
+                                                const relatedIds = group.map(g => g.pettyAssignmentId).filter(Boolean);
                                                 await apiClient.post('/cash-balance-settlements', {
                                                   settlementType: 'BALANCE_RETURN',
                                                   amount: Math.abs(balanceAmount),
                                                   notes: `Balance return for Job #${viewJobModal.jobId}`,
-                                                  relatedAssignments: [a.pettyAssignmentId]
+                                                  relatedAssignments: relatedIds
                                                 });
                                                 setMessage('✅ Balance return request submitted!');
+
+                                                // Optimistically update local modal assignments so status updates immediately
+                                                setViewJobModal(prev => {
+                                                  if (!prev) return prev;
+                                                  const updatedAssignments = (prev.assignments || []).map(asgn => 
+                                                    relatedIds.includes(asgn.pettyAssignmentId)
+                                                      ? { ...asgn, status: 'Pending Approval / Balance' }
+                                                      : asgn
+                                                  );
+                                                  return { ...prev, assignments: updatedAssignments };
+                                                });
+
+                                                // Refresh jobs and job details
+                                                try {
+                                                  const freshJob = await jobService.getById(viewJobModal.jobId);
+                                                  if (freshJob) setViewJobModal(freshJob);
+                                                } catch (e) {
+                                                  const data = await jobService.getAll();
+                                                  const updatedJob = data.find(j => j.jobId === viewJobModal.jobId);
+                                                  if (updatedJob) setViewJobModal(updatedJob);
+                                                }
+
                                                 fetchJobs();
                                                 setTimeout(() => setMessage(''), 3000);
                                               } catch (err) {
@@ -1462,17 +2114,40 @@ function Jobs() {
                                             Return Balance
                                           </button>
                                         )}
-                                        {a.status === 'Over Due' && (
+                                        {canCollectOverdue && (
                                           <button
                                             onClick={async () => {
                                               try {
+                                                const relatedIds = group.map(g => g.pettyAssignmentId).filter(Boolean);
                                                 await apiClient.post('/cash-balance-settlements', {
                                                   settlementType: 'OVERDUE_COLLECTION',
                                                   amount: Math.abs(balanceAmount),
                                                   notes: `Overdue collection for Job #${viewJobModal.jobId}`,
-                                                  relatedAssignments: [a.pettyAssignmentId]
+                                                  relatedAssignments: relatedIds
                                                 });
                                                 setMessage('✅ Overdue collection request submitted!');
+
+                                                // Optimistically update local modal assignments so status updates immediately
+                                                setViewJobModal(prev => {
+                                                  if (!prev) return prev;
+                                                  const updatedAssignments = (prev.assignments || []).map(asgn => 
+                                                    relatedIds.includes(asgn.pettyAssignmentId)
+                                                      ? { ...asgn, status: 'Pending Approval / Over Due' }
+                                                      : asgn
+                                                  );
+                                                  return { ...prev, assignments: updatedAssignments };
+                                                });
+
+                                                // Refresh jobs and job details
+                                                try {
+                                                  const freshJob = await jobService.getById(viewJobModal.jobId);
+                                                  if (freshJob) setViewJobModal(freshJob);
+                                                } catch (e) {
+                                                  const data = await jobService.getAll();
+                                                  const updatedJob = data.find(j => j.jobId === viewJobModal.jobId);
+                                                  if (updatedJob) setViewJobModal(updatedJob);
+                                                }
+
                                                 fetchJobs();
                                                 setTimeout(() => setMessage(''), 3000);
                                               } catch (err) {
@@ -1498,7 +2173,8 @@ function Jobs() {
                                   )}
                                 </tr>
                               );
-                            })
+                            });
+                            })()
                           ) : (
                             <tr><td colSpan={['Manager','Waff Clerk'].includes(user?.role) ? 6 : 5} className="px-5 py-3 text-gray-400 text-xs italic text-center">No petty cash assignments yet</td></tr>
                           )}
@@ -1507,13 +2183,13 @@ function Jobs() {
                           <tr className="bg-purple-50 border-t-2 border-purple-200">
                             <td className="px-5 py-2.5 text-right text-xs font-bold text-purple-700 uppercase tracking-wide">Total</td>
                             <td className="px-5 py-2.5 text-right text-[#1E3F63] font-bold text-sm">
-                              {(viewJobModal.assignments || []).reduce((sum,a)=>sum+parseFloat(a.assignedAmount||0),0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+                              {(viewJobModal.assignments || []).filter(a => user?.role === 'Waff Clerk' ? a.userId === user.userId : true).reduce((sum,a)=>sum+parseFloat(a.assignedAmount||0),0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
                             </td>
                             <td className="px-5 py-2.5 text-right text-gray-600 font-bold text-sm">
-                              {(viewJobModal.assignments || []).reduce((sum,a)=>sum+parseFloat(a.settledAmount||0),0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+                              {(viewJobModal.assignments || []).filter(a => user?.role === 'Waff Clerk' ? a.userId === user.userId : true).reduce((sum,a)=>sum+parseFloat(a.settledAmount||0),0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
                             </td>
                             <td className="px-5 py-2.5 text-right text-orange-600 font-bold text-sm">
-                              {((viewJobModal.assignments || []).reduce((sum,a)=>sum+parseFloat(a.assignedAmount||0),0) - (viewJobModal.assignments || []).reduce((sum,a)=>sum+parseFloat(a.settledAmount||0),0)).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+                              {((viewJobModal.assignments || []).filter(a => user?.role === 'Waff Clerk' ? a.userId === user.userId : true).reduce((sum,a)=>sum+parseFloat(a.assignedAmount||0),0) - (viewJobModal.assignments || []).filter(a => user?.role === 'Waff Clerk' ? a.userId === user.userId : true).reduce((sum,a)=>sum+parseFloat(a.settledAmount||0),0)).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
                             </td>
                             <td></td>
                             {['Manager','Waff Clerk'].includes(user?.role) && <td></td>}
@@ -1788,13 +2464,368 @@ function Jobs() {
             setInvoicingModalJob(null);
             // Refresh jobs after invoicing operations
             fetchJobs();
+            fetchInvoicedJobs(); // Refresh the invoiced jobs list
           }}
           onInvoiceCreated={(newBill) => {
             console.log('Invoice created:', newBill);
             fetchJobs();
+            fetchInvoicedJobs(); // Refresh the invoiced jobs list
             fetchJobPayments(invoicingModalJob.jobId);
           }}
         />
+      )}
+
+      {/* Request Advance Payment Modal */}
+      {requestAdvanceModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10002] px-4 py-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-[#1E3F63] to-[#2f6bd6] text-white">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                    <polyline points="22,6 12,13 2,6"/>
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-base font-bold">Request Advance Payment</h3>
+                  <p className="text-blue-100 text-xs">Job #{requestAdvanceModal.job?.jobId} — {requestAdvanceModal.customerName}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setRequestAdvanceModal(null)}
+                className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              if (!requestAdvanceModal.customerEmail) {
+                setRequestAdvanceModal(prev => ({ ...prev, error: 'Customer email is required' }));
+                return;
+              }
+              const amt = parseFloat(requestAdvanceModal.requestedAmount);
+              if (isNaN(amt) || amt <= 0) {
+                setRequestAdvanceModal(prev => ({ ...prev, error: 'Please enter a valid amount greater than 0' }));
+                return;
+              }
+
+              setRequestAdvanceModal(prev => ({ ...prev, loading: true, error: '', success: '' }));
+
+              try {
+                const res = await apiClient.post(`/jobs/${requestAdvanceModal.job.jobId}/advance-payment-requests`, {
+                  requestedAmount: amt,
+                  customerEmail: requestAdvanceModal.customerEmail,
+                  notes: requestAdvanceModal.notes
+                });
+
+                fetchJobPayments(requestAdvanceModal.job.jobId);
+                setRequestAdvanceModal(prev => ({
+                  ...prev,
+                  loading: false,
+                  success: res.data?.message || 'Advance payment request created and sent successfully!'
+                }));
+
+                setTimeout(() => {
+                  setRequestAdvanceModal(null);
+                }, 1800);
+              } catch (err) {
+                console.error('Request advance error:', err);
+                setRequestAdvanceModal(prev => ({
+                  ...prev,
+                  loading: false,
+                  error: err.response?.data?.message || err.message || 'Failed to send advance payment request'
+                }));
+              }
+            }} className="p-6 space-y-4">
+
+              {requestAdvanceModal.error && (
+                <div className="p-3 rounded-lg text-xs bg-red-50 text-red-700 border border-red-200">
+                  {requestAdvanceModal.error}
+                </div>
+              )}
+
+              {requestAdvanceModal.success && (
+                <div className="p-3 rounded-lg text-xs bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-2">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-4 h-4 text-emerald-600"><polyline points="20 6 9 17 4 12"/></svg>
+                  {requestAdvanceModal.success}
+                </div>
+              )}
+
+              {/* Info banner */}
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 leading-relaxed">
+                An email containing official <strong>Super Shine Cargo Services</strong> payment details and instructions will be sent to the customer requesting this advance deposit.
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+                  Customer Email <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={requestAdvanceModal.customerEmail}
+                  onChange={(e) => setRequestAdvanceModal(prev => ({ ...prev, customerEmail: e.target.value, error: '' }))}
+                  placeholder="e.g. customer@example.com"
+                  className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-[#1E3F63]/20 focus:border-[#1E3F63] outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+                  Requested Advance Amount (LKR) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="1"
+                  required
+                  value={requestAdvanceModal.requestedAmount}
+                  onChange={(e) => setRequestAdvanceModal(prev => ({ ...prev, requestedAmount: e.target.value, error: '' }))}
+                  placeholder="e.g. 50000.00"
+                  className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-[#1E3F63]/20 focus:border-[#1E3F63] outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+                  Purpose / Notes to Customer
+                </label>
+                <textarea
+                  rows={3}
+                  value={requestAdvanceModal.notes}
+                  onChange={(e) => setRequestAdvanceModal(prev => ({ ...prev, notes: e.target.value }))}
+                  placeholder="e.g. Advance required for customs clearance and port handling fees..."
+                  className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-[#1E3F63]/20 focus:border-[#1E3F63] outline-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  disabled={requestAdvanceModal.loading}
+                  onClick={() => setRequestAdvanceModal(null)}
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium text-xs transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={requestAdvanceModal.loading}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#1E3F63] hover:bg-[#193552] disabled:opacity-50 text-white rounded-xl font-bold text-xs shadow-md transition"
+                >
+                  {requestAdvanceModal.loading ? (
+                    <>
+                      <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                      </svg>
+                      Sending Request...
+                    </>
+                  ) : (
+                    <>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3.5 h-3.5">
+                        <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                      </svg>
+                      Send Request Email
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Mark Advance Request Completed Modal */}
+      {completeAdvanceRequestModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10002] px-4 py-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-green-600 to-emerald-700 text-white">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-5 h-5">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-base font-bold">Mark Advance Payment as Paid</h3>
+                  <p className="text-emerald-100 text-xs">Request #{completeAdvanceRequestModal.request?.requestId}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setCompleteAdvanceRequestModal(null)}
+                className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              const amt = parseFloat(completeAdvanceRequestModal.paidAmount);
+              if (isNaN(amt) || amt <= 0) {
+                setCompleteAdvanceRequestModal(prev => ({ ...prev, error: 'Please enter a valid amount' }));
+                return;
+              }
+
+              setCompleteAdvanceRequestModal(prev => ({ ...prev, loading: true, error: '' }));
+
+              try {
+                const reqId = completeAdvanceRequestModal.request.requestId;
+                const jId = completeAdvanceRequestModal.request.jobId;
+
+                const res = await apiClient.post(`/jobs/${jId}/advance-payment-requests/${reqId}/complete`, {
+                  paidAmount: amt,
+                  paymentType: completeAdvanceRequestModal.paymentType,
+                  checkNo: completeAdvanceRequestModal.checkNo,
+                  paymentMadeDate: completeAdvanceRequestModal.paymentMadeDate,
+                  notes: completeAdvanceRequestModal.notes
+                });
+
+                // Update jobs and job payments
+                fetchJobs();
+                fetchJobPayments(jId);
+
+                // Update the job object currently open in viewJobModal
+                if (res.data?.job) {
+                  setViewJobModal(res.data.job);
+                }
+
+                setCompleteAdvanceRequestModal(null);
+              } catch (err) {
+                console.error('Complete request error:', err);
+                setCompleteAdvanceRequestModal(prev => ({
+                  ...prev,
+                  loading: false,
+                  error: err.response?.data?.message || err.message || 'Failed to complete advance payment request'
+                }));
+              }
+            }} className="p-6 space-y-4">
+
+              {completeAdvanceRequestModal.error && (
+                <div className="p-3 rounded-lg text-xs bg-red-50 text-red-700 border border-red-200">
+                  {completeAdvanceRequestModal.error}
+                </div>
+              )}
+
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 leading-relaxed">
+                Confirming this payment will mark the request as <strong>Completed</strong> and automatically add an official advance payment entry of <strong>LKR {parseFloat(completeAdvanceRequestModal.paidAmount || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</strong> to Job #{completeAdvanceRequestModal.request?.jobId}.
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+                    Amount Paid (LKR) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="1"
+                    required
+                    value={completeAdvanceRequestModal.paidAmount}
+                    onChange={(e) => setCompleteAdvanceRequestModal(prev => ({ ...prev, paidAmount: e.target.value, error: '' }))}
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm font-bold text-emerald-700 focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+                    Payment Date <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={completeAdvanceRequestModal.paymentMadeDate}
+                    onChange={(e) => setCompleteAdvanceRequestModal(prev => ({ ...prev, paymentMadeDate: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+                    Payment Method <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={completeAdvanceRequestModal.paymentType}
+                    onChange={(e) => setCompleteAdvanceRequestModal(prev => ({ ...prev, paymentType: e.target.value }))}
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none bg-white"
+                  >
+                    <option value="bank_transfer">Bank Transfer</option>
+                    <option value="cash">Cash</option>
+                    <option value="check">Cheque</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+                    {completeAdvanceRequestModal.paymentType === 'check' ? 'Cheque No *' : 'Reference / Trans No'}
+                  </label>
+                  <input
+                    type="text"
+                    required={completeAdvanceRequestModal.paymentType === 'check'}
+                    value={completeAdvanceRequestModal.checkNo}
+                    onChange={(e) => setCompleteAdvanceRequestModal(prev => ({ ...prev, checkNo: e.target.value }))}
+                    placeholder={completeAdvanceRequestModal.paymentType === 'check' ? 'e.g. CHQ-998822' : 'e.g. TXN-102938'}
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
+                  Notes
+                </label>
+                <input
+                  type="text"
+                  value={completeAdvanceRequestModal.notes}
+                  onChange={(e) => setCompleteAdvanceRequestModal(prev => ({ ...prev, notes: e.target.value }))}
+                  placeholder="e.g. Received via Commercial Bank transfer..."
+                  className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  disabled={completeAdvanceRequestModal.loading}
+                  onClick={() => setCompleteAdvanceRequestModal(null)}
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium text-xs transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={completeAdvanceRequestModal.loading}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-xl font-bold text-xs shadow-md transition"
+                >
+                  {completeAdvanceRequestModal.loading ? (
+                    <>
+                      <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                      </svg>
+                      Adding to Job...
+                    </>
+                  ) : (
+                    <>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3.5 h-3.5">
+                        <polyline points="20 6 9 17 4 12"/>
+                      </svg>
+                      Confirm &amp; Add Payment
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

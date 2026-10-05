@@ -78,4 +78,21 @@ router.put('/:jobId/advance-payment', auth, checkRole('Admin', 'Super Admin', 'M
   jobController.updateAdvancePayment(req, res)
 );
 
+// Advance payment request routes (Email request + Complete request)
+router.get('/:jobId/advance-payment-requests', auth, (req, res) =>
+  jobController.getAdvancePaymentRequests(req, res)
+);
+
+router.post('/:jobId/advance-payment-requests', auth, checkRole('Admin', 'Super Admin', 'Manager'), (req, res) =>
+  jobController.createAdvancePaymentRequest(req, res)
+);
+
+router.post('/:jobId/advance-payment-requests/:requestId/complete', auth, checkRole('Admin', 'Super Admin', 'Manager'), (req, res) =>
+  jobController.completeAdvancePaymentRequest(req, res)
+);
+
+router.post('/:jobId/advance-payment-requests/:requestId/cancel', auth, checkRole('Admin', 'Super Admin', 'Manager'), (req, res) =>
+  jobController.cancelAdvancePaymentRequest(req, res)
+);
+
 module.exports = router;

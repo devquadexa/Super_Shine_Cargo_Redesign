@@ -4,27 +4,19 @@ const container = require('../../infrastructure/di/container');
 const TransporterController = require('../controllers/TransporterController');
 const TransporterPaymentController = require('../controllers/TransporterPaymentController');
 const { auth, checkRole } = require('../../middleware/auth');
-const { getConnection, sql } = require('../../config/database');
-const MSSQLTransporterPaymentRepository = require('../../infrastructure/repositories/MSSQLTransporterPaymentRepository');
-const MSSQLTransporterRepository = require('../../infrastructure/repositories/MSSQLTransporterRepository');
-const CreateTransporterPayment = require('../../application/use-cases/transporter/CreateTransporterPayment');
-const GetTransporterPayments = require('../../application/use-cases/transporter/GetTransporterPayments');
-const UpdateTransporterPaymentStatus = require('../../application/use-cases/transporter/UpdateTransporterPaymentStatus');
-
 const transporterController = new TransporterController(container);
 
-// Initialize payment repository and use cases
-const transporterPaymentRepository = new MSSQLTransporterPaymentRepository(getConnection, sql);
-const transporterRepository = new MSSQLTransporterRepository(getConnection, sql);
-const jobRepository = container.get('jobRepository');
-const createTransporterPayment = new CreateTransporterPayment(transporterPaymentRepository, jobRepository, transporterRepository);
-const getTransporterPayments = new GetTransporterPayments(transporterPaymentRepository);
-const updateTransporterPaymentStatus = new UpdateTransporterPaymentStatus(transporterPaymentRepository);
+// Initialize payment repository and use cases from container
+const transporterPaymentRepository = container.get('transporterPaymentRepository');
+const createTransporterPayment = container.get('createTransporterPayment');
+const getTransporterPayments = container.get('getTransporterPayments');
+const updateTransporterPaymentStatus = container.get('updateTransporterPaymentStatus');
 
 const transporterPaymentController = new TransporterPaymentController(
   createTransporterPayment,
   getTransporterPayments,
-  updateTransporterPaymentStatus
+  updateTransporterPaymentStatus,
+  transporterPaymentRepository
 );
 
 // Transporter CRUD routes
@@ -35,6 +27,7 @@ router.put('/:id', auth, checkRole('Admin', 'Super Admin', 'Manager'), (req, res
 router.delete('/:id', auth, checkRole('Admin', 'Super Admin', 'Manager'), (req, res) => transporterController.delete(req, res));
 
 // Transporter Payment routes
+router.get('/payments/all', auth, checkRole('Admin', 'Super Admin', 'Manager', 'Office Executive'), (req, res) => transporterPaymentController.getAll(req, res));
 router.post('/payments/record', auth, checkRole('Admin', 'Super Admin', 'Manager', 'Office Executive'), (req, res) => transporterPaymentController.create(req, res));
 router.get('/:transporterId/payments', auth, checkRole('Admin', 'Super Admin', 'Manager', 'Office Executive'), (req, res) => transporterPaymentController.getByTransporter(req, res));
 router.put('/payments/:paymentId/status', auth, checkRole('Admin', 'Super Admin', 'Manager'), (req, res) => transporterPaymentController.updateStatus(req, res));

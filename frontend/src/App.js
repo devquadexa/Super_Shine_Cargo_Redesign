@@ -5,7 +5,6 @@ import './App.css';
 import Login from './components/Login';
 import Customers from './components/Customers';
 import Jobs from './components/Jobs';
-import Billing from './components/Billing';
 import PettyCash from './components/PettyCash';
 import Reports from './components/Reports';
 import PettyCashReport from './components/PettyCashReport';
@@ -21,6 +20,7 @@ import OtherExpenses from './components/OtherExpenses';
 import OtherExpensesReport from './components/OtherExpensesReport';
 import InvoiceReviewPage from './components/InvoiceReviewPage';
 import CashSummaryReport from './components/CashSummaryReport';
+import InvoiceReport from './components/InvoiceReport';
 import Navbar from './components/Navbar';
 import Sidebar from './components/Sidebar';
 import ResetPassword from './components/ResetPassword';
@@ -99,7 +99,7 @@ function AppContent() {
               <Route path="/reset-password" element={<PrivateRoute><ResetPassword /></PrivateRoute>} />
               <Route path="/customers" element={<PrivateRoute><Customers /></PrivateRoute>} />
               <Route path="/jobs" element={<PrivateRoute><Jobs /></PrivateRoute>} />
-              <Route path="/billing" element={<PrivateRoute><Billing /></PrivateRoute>} />
+              <Route path="/billing" element={<Navigate to="/jobs" replace />} />
               <Route path="/invoice-reviews" element={<PrivateRoute><InvoiceReviewPage /></PrivateRoute>} />
               <Route path="/transporters" element={<PrivateRoute><Transporters /></PrivateRoute>} />
               <Route path="/old-invoices" element={<PrivateRoute><OldInvoices /></PrivateRoute>} />
@@ -154,6 +154,11 @@ function AppContent() {
               <Route
                 path="/reports/transporters"
                 element={<PrivateRoute><AdminRoute><TransportersReport /></AdminRoute></PrivateRoute>}
+              />
+
+              <Route
+                path="/reports/invoices"
+                element={<PrivateRoute><AdminRoute><InvoiceReport /></AdminRoute></PrivateRoute>}
               />
 
               {/* Legacy redirect — keep old bookmark working */}
