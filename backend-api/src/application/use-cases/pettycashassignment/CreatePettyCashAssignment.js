@@ -42,8 +42,6 @@ class CreatePettyCashAssignment {
     // Create notification for the assigned user
     if (this.createNotification && assignmentData.assignedTo) {
       try {
-        console.log(`[NOTIFICATION] Creating PETTY_CASH_ASSIGNED notification for user ${assignmentData.assignedTo}`);
-        
         const notificationData = {
           userId: assignmentData.assignedTo,
           type: 'PETTY_CASH_ASSIGNED',
@@ -61,9 +59,7 @@ class CreatePettyCashAssignment {
           createdBy: assignmentData.assignedBy
         };
         
-        console.log(`[NOTIFICATION] Notification data: ${JSON.stringify(notificationData)}`);
-        const result = await this.createNotification.execute(notificationData);
-        console.log(`[NOTIFICATION] Successfully created notification for user ${assignmentData.assignedTo}, result: ${JSON.stringify(result)}`);
+        await this.createNotification.execute(notificationData);
       } catch (notificationError) {
         console.error('[NOTIFICATION] Error creating notification for petty cash assignment:', notificationError);
         console.error('[NOTIFICATION] Error stack:', notificationError.stack);

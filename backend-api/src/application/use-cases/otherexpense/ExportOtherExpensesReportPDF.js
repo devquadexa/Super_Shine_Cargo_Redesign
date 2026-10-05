@@ -65,14 +65,15 @@ class ExportOtherExpensesReportPDF {
       // Table
       const tableTop = 75;
       const cols = [
-        { label: '#', width: 25, align: 'center' },
-        { label: 'Expense ID', width: 55, align: 'left' },
+        { label: '#', width: 20, align: 'center' },
+        { label: 'Expense ID', width: 50, align: 'left' },
         { label: 'Date', width: 50, align: 'center' },
-        { label: 'Category', width: 75, align: 'left' },
-        { label: 'Description', width: 140, align: 'left' },
-        { label: 'Amount', width: 65, align: 'right' },
-        { label: 'Payment Method', width: 70, align: 'left' },
-        { label: 'Recorded By', width: 70, align: 'left' },
+        { label: 'Category', width: 55, align: 'left' },
+        { label: 'Expense Type', width: 85, align: 'left' },
+        { label: 'Description', width: 120, align: 'left' },
+        { label: 'Amount', width: 60, align: 'right' },
+        { label: 'Payment Method', width: 55, align: 'left' },
+        { label: 'Recorded By', width: 60, align: 'left' },
       ];
 
       // Header row
@@ -96,6 +97,7 @@ class ExportOtherExpensesReportPDF {
           { v: exp.expenseId || '-', align: 'left' },
           { v: fmtDate(exp.expenseDate), align: 'center' },
           { v: exp.category || '-', align: 'left' },
+          { v: exp.expenseType || '-', align: 'left' },
           { v: exp.description || '-', align: 'left' },
           { v: fmt(exp.amount), align: 'right', color: BLUE },
           { v: exp.paymentMethod || '-', align: 'left' },

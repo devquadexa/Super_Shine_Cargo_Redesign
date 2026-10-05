@@ -14,7 +14,6 @@ class MSSQLJobRepository extends IJobRepository {
 
   async create(job) {
     const pool = await this.db();
-    console.log('MSSQLJobRepository.create - job:', job);
 
     await pool.request()
       .input('JobId',                 this.sql.VarChar(50),   job.jobId)
@@ -35,7 +34,6 @@ class MSSQLJobRepository extends IJobRepository {
       .input('CreatedDate',           this.sql.DateTime,      job.createdDate)
       .execute('usp_CreateJob');
 
-    console.log('MSSQLJobRepository.create - job created successfully');
     return job;
   }
 
@@ -68,13 +66,10 @@ class MSSQLJobRepository extends IJobRepository {
   async findByAssignedUser(userId) {
     const pool = await this.db();
     try {
-      console.log('findByAssignedUser called with userId:', userId);
-
       const result = await pool.request()
         .input('UserId', this.sql.VarChar(50), userId)
         .execute('usp_GetJobsByAssignedUser');
 
-      console.log('Jobs found for user:', result.recordset.length);
       return Promise.all(result.recordset.map(row => this.mapToEntity(row)));
     } catch (error) {
       console.error('Error in findByAssignedUser:', error);
@@ -347,8 +342,6 @@ class MSSQLJobRepository extends IJobRepository {
   async replacePayItems(jobId, payItems, userId) {
     const pool = await this.db();
     try {
-      console.log('=== REPLACE PAY ITEMS START ===');
-
       // Store JSON in Jobs table
       await pool.request()
         .input('JobId',    this.sql.VarChar(50),   jobId)
@@ -377,12 +370,10 @@ class MSSQLJobRepository extends IJobRepository {
         }
 
         await transaction.commit();
-        console.log('✓ Pay items also stored in PayItems table');
       } catch (tableError) {
-        console.log('⚠ Could not store in PayItems table:', tableError.message);
+        // Ignored or table doesn't exist
       }
 
-      console.log('=== REPLACE PAY ITEMS END ===');
       return true;
     } catch (error) {
       console.error('❌ Error in replacePayItems:', error);
@@ -393,8 +384,6 @@ class MSSQLJobRepository extends IJobRepository {
   async getPayItems(jobId) {
     const pool = await this.db();
     try {
-      console.log('=== GET PAY ITEMS START ===');
-
       // Try JSON column first
       const jobResult = await pool.request()
         .input('JobId', this.sql.VarChar(50), jobId)
@@ -406,11 +395,10 @@ class MSSQLJobRepository extends IJobRepository {
           try {
             const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
             if (Array.isArray(parsed) && parsed.length > 0) {
-              console.log('✅ Returning pay items from Jobs JSON column');
               return parsed;
             }
           } catch (e) {
-            console.log('❌ Error parsing payItems JSON:', e.message);
+            // parsing error fallback
           }
         }
       }
@@ -432,23 +420,19 @@ class MSSQLJobRepository extends IJobRepository {
         }));
 
         if (payItems.length > 0) {
-          console.log('✅ Returning pay items from PayItems table');
           return payItems;
         }
       } catch (e) {
-        console.log('❌ PayItems table error:', e.message);
+        // PayItems table error fallback
       }
 
       return [];
     } catch (error) {
-      console.log('❌ Error fetching pay items:', error.message);
       return [];
     }
   }
 
   async mapToEntity(row) {
-    console.log('mapToEntity called with row:', row);
-
     const pool = await this.db();
     const jobId = row.jobId || row.JobId;
 
@@ -473,7 +457,7 @@ class MSSQLJobRepository extends IJobRepository {
         notes:           item.notes,
       }));
     } catch (e) {
-      console.log('Could not fetch office pay items:', e.message);
+      // ignore
     }
 
     // Fallback to JSON column if table returned nothing
@@ -485,7 +469,7 @@ class MSSQLJobRepository extends IJobRepository {
           officePayItems = row.officePayItems;
         }
       } catch (e) {
-        console.log('Could not parse officePayItems JSON:', e.message);
+        // ignore
       }
     }
 
@@ -498,21 +482,18 @@ class MSSQLJobRepository extends IJobRepository {
 
       assignedUsers = auResult.recordset.map(a => ({ userId: a.userId, userName: a.userName }));
     } catch (e) {
-      console.log('Could not fetch assigned users:', e.message);
+      // ignore
     }
 
     // Petty Cash Assignments
     let assignments = [];
     try {
-      console.log('mapToEntity - Fetching petty cash assignments for jobId:', jobId);
       const container = require('../../infrastructure/di/container');
       const pettyCashAssignmentRepository = container.get('pettyCashAssignmentRepository');
       const pettyCashAssignments = await pettyCashAssignmentRepository.getAllByJob(jobId);
       
-      console.log('mapToEntity - Found petty cash assignments:', pettyCashAssignments.length);
-      
       assignments = pettyCashAssignments.map(pa => {
-        const mapped = {
+        return {
           pettyAssignmentId: pa.assignmentId,
           userId: pa.assignedTo,
           userName: pa.assignedToName,
@@ -524,14 +505,9 @@ class MSSQLJobRepository extends IJobRepository {
           assignedDate: pa.assignedDate,
           notes: pa.notes,
         };
-        console.log('mapToEntity - Mapped assignment:', mapped);
-        return mapped;
       });
-      
-      console.log('mapToEntity - Final assignments array:', assignments);
     } catch (e) {
-      console.log('Could not fetch petty cash assignments:', e.message);
-      console.error('Full error:', e);
+      console.error('Could not fetch petty cash assignments:', e.message);
     }
 
     // Metadata
@@ -543,7 +519,7 @@ class MSSQLJobRepository extends IJobRepository {
         metadataFromJson = row.metadata;
       }
     } catch (e) {
-      console.log('Could not parse metadata JSON:', e.message);
+      // ignore
     }
 
     // Customer name
@@ -555,7 +531,7 @@ class MSSQLJobRepository extends IJobRepository {
 
       if (cResult.recordset.length > 0) customerName = cResult.recordset[0].Name;
     } catch (e) {
-      console.log('Could not fetch customer name:', e.message);
+      // ignore
     }
 
     const job = new Job({
@@ -593,7 +569,6 @@ class MSSQLJobRepository extends IJobRepository {
       billPaidAmount:           row.billPaidAmount  ? parseFloat(row.billPaidAmount)  : 0,
     });
 
-    console.log('mapToEntity result:', job.toJSON());
     return job;
   }
 }

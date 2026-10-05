@@ -29,9 +29,9 @@ function PaymentManagement() {
     if (hasAccess()) fetchPayments();
   }, []);
 
-  const fetchPayments = async () => {
+  const fetchPayments = async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
       const [paymentsRes, tpRes, jobsRes, transportersRes] = await Promise.all([
         apiClient.get('/payments/all').catch(err => {
           console.warn('Could not fetch invoice payments:', err);
@@ -403,25 +403,53 @@ function PaymentManagement() {
 
   // ─── Actions ─────────────────────────────────────────────────────────────
   const updateChequeStatus = async (chequeNumber, status) => {
+    const nowIso = new Date().toISOString();
+    // Instant optimistic update
+    setPayments(prev => prev.map(p => {
+      if (p.chequeNumber === chequeNumber) {
+        return {
+          ...p,
+          status,
+          clearedDate: status === 'Cleared' ? nowIso : (status === 'Pending' ? null : p.clearedDate),
+          bouncedDate: status === 'Bounced' ? nowIso : (status === 'Pending' ? null : p.bouncedDate)
+        };
+      }
+      return p;
+    }));
+
     try {
       await apiClient.put(`/payments/cheque/${chequeNumber}/status`, { status });
       setMessage(`Cheque ${chequeNumber} marked as ${status}`);
-      fetchPayments();
       setTimeout(() => setMessage(''), 3000);
     } catch (err) {
       setMessage('Error updating cheque status');
+      fetchPayments(false);
       setTimeout(() => setMessage(''), 3000);
     }
   };
 
   const updatePaymentStatus = async (paymentId, status) => {
+    const nowIso = new Date().toISOString();
+    // Instant optimistic update
+    setPayments(prev => prev.map(p => {
+      if (p.paymentId === paymentId) {
+        return {
+          ...p,
+          status,
+          clearedDate: status === 'Cleared' ? nowIso : (status === 'Pending' ? null : p.clearedDate),
+          bouncedDate: status === 'Bounced' ? nowIso : (status === 'Pending' ? null : p.bouncedDate)
+        };
+      }
+      return p;
+    }));
+
     try {
       await apiClient.put(`/payments/${paymentId}/status`, { status });
       setMessage(`Payment status updated to ${status}`);
-      fetchPayments();
       setTimeout(() => setMessage(''), 3000);
     } catch (err) {
       setMessage('Error updating status');
+      fetchPayments(false);
       setTimeout(() => setMessage(''), 3000);
     }
   };

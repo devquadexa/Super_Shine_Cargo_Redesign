@@ -155,7 +155,8 @@ class Container {
         MySQLNotificationRepository,
         MySQLPasswordResetRepository,
         MySQLInvoiceReviewRepository,
-        MySQLAdvancePaymentRequestRepository
+        MySQLAdvancePaymentRequestRepository,
+        MySQLExpenseTypeRepository
       } = require('../repositories/mysql');
 
       const db = mysqlDb.getPool;
@@ -186,6 +187,7 @@ class Container {
       this.dependencies.otherExpenseRepository = new MySQLOtherExpenseRepository(db);
       this.dependencies.invoiceReviewRepository = new MySQLInvoiceReviewRepository(db);
       this.dependencies.advancePaymentRequestRepository = new MySQLAdvancePaymentRequestRepository(db);
+      this.dependencies.expenseTypeRepository = new MySQLExpenseTypeRepository(db);
     } else {
       console.log('🔌 DI Container: Initializing MSSQL Repositories');
       const { getConnection, sql } = require('../../config/database');
@@ -417,6 +419,20 @@ class Container {
     this.dependencies.exportOtherExpensesReportPDF = new ExportOtherExpensesReportPDF(otherExpenseRepository);
     this.dependencies.exportOtherExpensesReportExcel = new ExportOtherExpensesReportExcel(otherExpenseRepository);
     
+    // Expense Type use cases
+    const GetAllExpenseTypes = require('../../application/use-cases/expensetype/GetAllExpenseTypes');
+    const GetExpenseTypesByCategory = require('../../application/use-cases/expensetype/GetExpenseTypesByCategory');
+    const CreateExpenseType = require('../../application/use-cases/expensetype/CreateExpenseType');
+    const UpdateExpenseType = require('../../application/use-cases/expensetype/UpdateExpenseType');
+    const DeleteExpenseType = require('../../application/use-cases/expensetype/DeleteExpenseType');
+
+    const expenseTypeRepository = this.dependencies.expenseTypeRepository;
+    this.dependencies.getAllExpenseTypes = new GetAllExpenseTypes(expenseTypeRepository);
+    this.dependencies.getExpenseTypesByCategory = new GetExpenseTypesByCategory(expenseTypeRepository);
+    this.dependencies.createExpenseType = new CreateExpenseType(expenseTypeRepository);
+    this.dependencies.updateExpenseType = new UpdateExpenseType(expenseTypeRepository);
+    this.dependencies.deleteExpenseType = new DeleteExpenseType(expenseTypeRepository);
+
     // Cash Summary Report use cases
     this.dependencies.exportCashSummaryReportPDF = new ExportCashSummaryReportPDF(
       cashWithdrawalRepository,

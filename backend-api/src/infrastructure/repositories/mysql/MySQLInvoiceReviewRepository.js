@@ -5,6 +5,11 @@ class MySQLInvoiceReviewRepository extends BaseMySQLRepository {
     super(dbConnection);
   }
 
+  clearCache() {
+    this._cache = null;
+    this._cacheTime = 0;
+  }
+
   async create(reviewData) {
     const data = {
       reviewId: reviewData.reviewId,
@@ -20,10 +25,16 @@ class MySQLInvoiceReviewRepository extends BaseMySQLRepository {
     };
 
     await this.prisma.invoice_reviews.create({ data });
+    this.clearCache();
     return this.findById(reviewData.reviewId);
   }
 
   async getAll() {
+    const now = Date.now();
+    if (this._cache && (now - this._cacheTime < 60000)) {
+      return this._cache;
+    }
+
     const rows = await this.prisma.invoice_reviews.findMany({
       include: {
         users_invoice_reviews_sentByTousers: true,
@@ -31,7 +42,10 @@ class MySQLInvoiceReviewRepository extends BaseMySQLRepository {
       },
       orderBy: { createdDate: 'desc' }
     });
-    return rows.map(r => this.parseReview(r));
+    const result = rows.map(r => this.parseReview(r));
+    this._cache = result;
+    this._cacheTime = now;
+    return result;
   }
 
   async getByClerkId(clerkId) {
@@ -78,6 +92,7 @@ class MySQLInvoiceReviewRepository extends BaseMySQLRepository {
         updatedDate: new Date()
       }
     });
+    this.clearCache();
     return this.findById(reviewId);
   }
 
@@ -90,6 +105,7 @@ class MySQLInvoiceReviewRepository extends BaseMySQLRepository {
         updatedDate: new Date()
       }
     });
+    this.clearCache();
     return this.findById(reviewId);
   }
 

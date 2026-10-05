@@ -34,6 +34,21 @@ class MySQLContactPersonRepository extends BaseMySQLRepository {
     return contactPerson;
   }
 
+  async createMany(contactPersons) {
+    if (!contactPersons || contactPersons.length === 0) return [];
+    await this.prisma.contactpersons.createMany({
+      data: contactPersons.map(cp => ({
+        contactPersonId: parseInt(cp.contactPersonId, 10),
+        customerId: cp.customerId,
+        name: cp.name,
+        phone: cp.phone,
+        email: cp.email || null,
+        designation: cp.designation || null
+      }))
+    });
+    return contactPersons;
+  }
+
   async findByCustomerId(customerId) {
     const rows = await this.prisma.contactpersons.findMany({
       where: { customerId },

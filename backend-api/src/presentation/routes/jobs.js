@@ -38,12 +38,9 @@ router.patch('/:id/status', auth, (req, res) =>
   jobController.updateStatus(req, res)
 );
 
-router.put('/:id', auth, checkRole('Admin', 'Super Admin', 'Manager', 'Office Executive'), (req, res) => {
-  console.log('PUT /:id route hit - jobId:', req.params.id);
-  console.log('PUT /:id route hit - user:', req.user);
-  console.log('PUT /:id route hit - body:', req.body);
-  jobController.update(req, res);
-});
+router.put('/:id', auth, checkRole('Admin', 'Super Admin', 'Manager', 'Office Executive'), (req, res) => 
+  jobController.update(req, res)
+);
 
 router.patch('/:id/assign', auth, checkRole('Admin', 'Super Admin', 'Manager'), (req, res) => 
   jobController.assign(req, res)

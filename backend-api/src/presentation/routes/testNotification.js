@@ -9,12 +9,7 @@ module.exports = (container) => {
   // Test endpoint to create a notification
   router.post('/test-create', async (req, res) => {
     try {
-      console.log('\n========================================');
-      console.log('TEST: Creating test notification');
-      console.log('========================================');
-      
       const createNotification = container.get('createNotification');
-      console.log('createNotification available:', !!createNotification);
       
       const testNotification = await createNotification.execute({
         userId: req.body.userId || 'USER0002',
@@ -29,9 +24,6 @@ module.exports = (container) => {
         },
         createdBy: 'SYSTEM'
       });
-      
-      console.log('Test notification created:', testNotification);
-      console.log('========================================\n');
       
       res.status(200).json({
         success: true,
@@ -51,10 +43,6 @@ module.exports = (container) => {
   // Test endpoint to check DI container
   router.get('/test-di', async (req, res) => {
     try {
-      console.log('\n========================================');
-      console.log('TEST: Checking DI container');
-      console.log('========================================');
-      
       const createNotification = container.get('createNotification');
       const assignMultipleUsersToJob = container.get('assignMultipleUsersToJob');
       
@@ -71,9 +59,6 @@ module.exports = (container) => {
           hasCreateNotification: !!assignMultipleUsersToJob?.createNotification
         }
       };
-      
-      console.log('DI Container check:', JSON.stringify(result, null, 2));
-      console.log('========================================\n');
       
       res.status(200).json({
         success: true,

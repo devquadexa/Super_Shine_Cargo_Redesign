@@ -85,13 +85,8 @@ class PaymentController {
       const { status } = req.body;
       if (!status) return res.status(400).json({ message: 'Status is required' });
 
-      const payments = await this.paymentRepository.findByChequeNumber(chequeNumber);
-      if (!payments.length) return res.status(404).json({ message: 'Cheque not found' });
-
-      const updated = await Promise.all(
-        payments.map(p => this.updatePaymentStatus.execute(p.paymentId, status))
-      );
-      res.json({ updated: updated.length, chequeNumber, status });
+      const result = await this.paymentRepository.updateStatusByChequeNumber(chequeNumber, status);
+      res.json({ updated: result.count !== undefined ? result.count : 1, chequeNumber, status });
     } catch (error) {
       console.error('Update cheque status error:', error);
       res.status(400).json({ message: error.message });

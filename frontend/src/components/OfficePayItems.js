@@ -21,9 +21,9 @@ function OfficePayItems({ jobId, onUpdate, forceOpen }) {
     }
   }, [jobId]);
 
-  const fetchOfficePayItems = async () => {
+  const fetchOfficePayItems = async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
       const items = await officePayItemService.getByJobId(jobId);
       setOfficePayItems(items);
     } catch (error) {
@@ -31,15 +31,13 @@ function OfficePayItems({ jobId, onUpdate, forceOpen }) {
       setMessage('Error loading office pay items');
       setTimeout(() => setMessage(''), 3000);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      setLoading(true);
-
       const actualCost = parseFloat(formData.actualCost);
       if (!formData.actualCost || Number.isNaN(actualCost) || actualCost < 0) {
         setMessage('Please enter a valid Amount Paid');
@@ -57,12 +55,15 @@ function OfficePayItems({ jobId, onUpdate, forceOpen }) {
         // Update logic would go here if backend supports it
         setMessage('Edit functionality coming soon');
       } else {
-        await officePayItemService.create(payItemData);
+        const created = await officePayItemService.create(payItemData);
         setMessage('Office pay item added successfully!');
+        if (created) {
+          setOfficePayItems(prev => [...prev, created]);
+        }
       }
       
       handleCloseForm();
-      await fetchOfficePayItems();
+      fetchOfficePayItems(false);
       if (onUpdate) onUpdate();
       
       setTimeout(() => setMessage(''), 3000);
@@ -70,8 +71,6 @@ function OfficePayItems({ jobId, onUpdate, forceOpen }) {
       console.error('Error creating office pay item:', error);
       setMessage('Error adding office pay item');
       setTimeout(() => setMessage(''), 3000);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -89,21 +88,20 @@ function OfficePayItems({ jobId, onUpdate, forceOpen }) {
       return;
     }
 
+    // Optimistic delete
+    setOfficePayItems(prev => prev.filter(item => item.officePayItemId !== officePayItemId));
+    setMessage('Office pay item deleted successfully!');
+    if (onUpdate) onUpdate();
+    setTimeout(() => setMessage(''), 3000);
+
     try {
-      setLoading(true);
       await officePayItemService.delete(officePayItemId);
-      
-      setMessage('Office pay item deleted successfully!');
-      await fetchOfficePayItems();
-      if (onUpdate) onUpdate();
-      
-      setTimeout(() => setMessage(''), 3000);
+      fetchOfficePayItems(false);
     } catch (error) {
       console.error('Error deleting office pay item:', error);
       setMessage('Error deleting office pay item');
+      fetchOfficePayItems(false);
       setTimeout(() => setMessage(''), 3000);
-    } finally {
-      setLoading(false);
     }
   };
 

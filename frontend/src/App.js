@@ -26,6 +26,7 @@ import Sidebar from './components/Sidebar';
 import ResetPassword from './components/ResetPassword';
 import ForgotPassword from './components/ForgotPassword';
 import PasswordResetRequests from './components/PasswordResetRequests';
+import GlobalLoadingIndicator from './components/GlobalLoadingIndicator';
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -78,6 +79,7 @@ function AppContent() {
   return (
     <Router>
       <div className="App">
+        <GlobalLoadingIndicator />
         {user && (
           <>
             {!isSidebarHidden && <Sidebar isOpen={isSidebarOpen} onClose={closeSidebar} />}

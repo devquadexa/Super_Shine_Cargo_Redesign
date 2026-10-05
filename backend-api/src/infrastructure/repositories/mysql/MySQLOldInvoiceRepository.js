@@ -7,6 +7,11 @@ class MySQLOldInvoiceRepository extends IOldInvoiceRepository {
     super();
   }
 
+  clearCache() {
+    this._cache = null;
+    this._cacheTime = 0;
+  }
+
   async create(invoiceData) {
     const created = await prisma.oldinvoices.create({
       data: {
@@ -29,10 +34,16 @@ class MySQLOldInvoiceRepository extends IOldInvoiceRepository {
       }
     });
 
+    this.clearCache();
     return this.mapToEntity(created);
   }
 
   async findAll() {
+    const now = Date.now();
+    if (this._cache && (now - this._cacheTime < 60000)) {
+      return this._cache;
+    }
+
     const rows = await prisma.oldinvoices.findMany({
       include: {
         customers: true,
@@ -44,7 +55,10 @@ class MySQLOldInvoiceRepository extends IOldInvoiceRepository {
       ]
     });
 
-    return rows.map(r => this.mapToEntity(r));
+    const result = rows.map(r => this.mapToEntity(r));
+    this._cache = result;
+    this._cacheTime = now;
+    return result;
   }
 
   async findById(oldInvoiceId) {
@@ -83,6 +97,7 @@ class MySQLOldInvoiceRepository extends IOldInvoiceRepository {
       }
     });
 
+    this.clearCache();
     return this.mapToEntity(updated);
   }
 
@@ -91,6 +106,7 @@ class MySQLOldInvoiceRepository extends IOldInvoiceRepository {
     await prisma.oldinvoices.delete({
       where: { oldInvoiceId: id }
     });
+    this.clearCache();
     return { success: true };
   }
 
@@ -113,6 +129,7 @@ class MySQLOldInvoiceRepository extends IOldInvoiceRepository {
     });
 
     await this.recalculateTotals(id);
+    this.clearCache();
     return await this.findById(id);
   }
 
@@ -143,6 +160,7 @@ class MySQLOldInvoiceRepository extends IOldInvoiceRepository {
     });
 
     await this.recalculateTotals(oldInvoiceId);
+    this.clearCache();
     return await this.findById(oldInvoiceId);
   }
 

@@ -12,23 +12,18 @@ class GetAccountingDashboard {
 
   async execute(filters = {}) {
     const { fromDate, toDate } = filters || {};
-    console.log('GetAccountingDashboard - Starting with filters:', { fromDate, toDate });
     
     // Get all jobs with their financial data
     const jobs = await this.jobRepository.findAll();
-    console.log('GetAccountingDashboard - Found jobs:', jobs.length);
     
     // Get all bills
     const bills = await this.billRepository.findAll();
-    console.log('GetAccountingDashboard - Found bills:', bills.length);
     
     // Get all petty cash assignments
     const pettyCashAssignments = await this.pettyCashAssignmentRepository.findAll();
-    console.log('GetAccountingDashboard - Found petty cash assignments:', pettyCashAssignments.length);
     
     // Get all customers
     const customers = await this.customerRepository.findAll();
-    console.log('GetAccountingDashboard - Found customers:', customers.length);
     
     // Build job-wise financial data
     const jobFinancials = [];
@@ -163,8 +158,6 @@ class GetAccountingDashboard {
       unpaidJobsCount: jobFinancials.filter(j => !j.isPaid && j.billingAmount > 0).length,
       overdueJobsCount: jobFinancials.filter(j => j.isOverdue).length
     };
-    
-    console.log('GetAccountingDashboard - Summary:', summary);
     
     return {
       summary,

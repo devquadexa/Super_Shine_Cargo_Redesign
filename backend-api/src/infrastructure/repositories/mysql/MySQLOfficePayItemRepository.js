@@ -21,7 +21,18 @@ class MySQLOfficePayItemRepository extends BaseMySQLRepository {
     };
 
     await this.prisma.officepayitems.create({ data });
+    this._clearJobCache();
     return officePayItem;
+  }
+
+  _clearJobCache() {
+    try {
+      const container = require('../../di/container');
+      const jobRepo = container.get('jobRepository');
+      if (jobRepo && typeof jobRepo.clearCache === 'function') {
+        jobRepo.clearCache();
+      }
+    } catch (e) {}
   }
 
   async _attachPaidByName(rows) {
@@ -86,32 +97,31 @@ class MySQLOfficePayItemRepository extends BaseMySQLRepository {
   }
 
   async update(officePayItemId, updateData) {
-    const existing = await this.findById(officePayItemId);
-    if (!existing) throw new Error('Office pay item not found');
+    const data = { updatedDate: new Date() };
+    if (updateData.description !== undefined) data.description = updateData.description;
+    if (updateData.actualCost !== undefined) data.actualCost = updateData.actualCost;
+    if (updateData.billingAmount !== undefined) data.billingAmount = updateData.billingAmount;
+    if (updateData.notes !== undefined) data.notes = updateData.notes;
 
-    const description = updateData.description !== undefined ? updateData.description : existing.description;
-    const actualCost = updateData.actualCost !== undefined ? updateData.actualCost : existing.actualCost;
-    const billingAmount = updateData.billingAmount !== undefined ? updateData.billingAmount : existing.billingAmount;
-    const notes = updateData.notes !== undefined ? updateData.notes : existing.notes;
-
-    await this.prisma.officepayitems.update({
+    const row = await this.prisma.officepayitems.update({
       where: { officePayItemId },
-      data: {
-        description,
-        actualCost,
-        billingAmount,
-        notes,
-        updatedDate: new Date()
-      }
+      data
     });
 
-    return this.findById(officePayItemId);
+    this._clearJobCache();
+    return new OfficePayItem({
+      ...row,
+      actualCost: row.actualCost ? Number(row.actualCost) : 0,
+      billingAmount: row.billingAmount ? Number(row.billingAmount) : null,
+      paidByName: updateData.paidByName || null
+    });
   }
 
   async delete(officePayItemId) {
     await this.prisma.officepayitems.delete({
       where: { officePayItemId }
     }).catch(() => null);
+    this._clearJobCache();
     return true;
   }
 

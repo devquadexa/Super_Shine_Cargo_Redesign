@@ -109,6 +109,7 @@ class MySQLAdvancePaymentRequestRepository extends BaseMySQLRepository {
       ]
     );
 
+    this._clearJobCache();
     return this.getRequestById(requestId);
   }
 
@@ -122,7 +123,18 @@ class MySQLAdvancePaymentRequestRepository extends BaseMySQLRepository {
       [cancelledBy || null, requestId]
     );
 
+    this._clearJobCache();
     return this.getRequestById(requestId);
+  }
+
+  _clearJobCache() {
+    try {
+      const container = require('../../di/container');
+      const jobRepo = container.get('jobRepository');
+      if (jobRepo && typeof jobRepo.clearCache === 'function') {
+        jobRepo.clearCache();
+      }
+    } catch (e) {}
   }
 
   _mapRow(row) {

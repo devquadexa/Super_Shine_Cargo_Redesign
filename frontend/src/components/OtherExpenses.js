@@ -2,18 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { otherExpenseService } from '../api/services/otherExpenseService';
 import { formatDate } from '../utils/dateFormatter';
+import API_BASE from '../api/config';
 
-// Predefined expense categories
-const EXPENSE_CATEGORIES = [
-  'Food & Beverages',
-  'Utility Bills',
-  'WiFi / Internet',
-  'Phone Cards',
-  'Office Supplies',
-  'Maintenance',
-  'Transportation',
-  'Other'
-];
+// 2 Primary customizable categories
+const EXPENSE_CATEGORIES = ['General', 'Operational'];
 
 const PAYMENT_METHODS = ['Cash', 'Bank Transfer', 'Cheque', 'Card'];
 
@@ -26,6 +18,7 @@ const getTodayDate = () => {
 function OtherExpenses() {
   const { user } = useAuth();
   const [expenses, setExpenses] = useState([]);
+  const [expenseTypes, setExpenseTypes] = useState({ General: [], Operational: [] });
   const [showModal, setShowModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [selectedExpense, setSelectedExpense] = useState(null);
@@ -34,12 +27,14 @@ function OtherExpenses() {
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All');
+  const [typeFilter, setTypeFilter] = useState('All');
   const [currentPage, setCurrentPage] = useState(1);
   const [recordsPerPage, setRecordsPerPage] = useState(20);
   const [expandedRow, setExpandedRow] = useState(null);
 
   const [formData, setFormData] = useState({
-    category: '',
+    category: 'General',
+    expenseType: '',
     description: '',
     amount: '',
     expenseDate: getTodayDate(),
@@ -74,22 +69,35 @@ function OtherExpenses() {
   useEffect(() => {
     if (hasAccess()) {
       fetchExpenses();
+      fetchExpenseTypes();
     }
   }, [user]);
 
-
-
-  const fetchExpenses = async () => {
+  const fetchExpenseTypes = async () => {
     try {
-      setLoading(true);
+      const response = await fetch(`${API_BASE}/api/expense-types/all`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setExpenseTypes(data || { General: [], Operational: [] });
+      }
+    } catch (error) {
+      console.error('Error loading expense types in OtherExpenses:', error);
+    }
+  };
+
+  const fetchExpenses = async (showLoading = true) => {
+    try {
+      if (showLoading) setLoading(true);
       const data = await otherExpenseService.getAll();
       setExpenses(data);
-      setLoading(false);
+      if (showLoading) setLoading(false);
     } catch (error) {
       console.error('Error fetching expenses:', error);
       setMessage('Error loading expenses');
       setMessageType('error');
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
@@ -98,15 +106,20 @@ function OtherExpenses() {
     
     try {
       if (isEditing) {
-        await otherExpenseService.update(selectedExpense.expenseId, formData);
+        const updated = await otherExpenseService.update(selectedExpense.expenseId, formData);
+        const merged = { ...selectedExpense, ...formData, amount: parseFloat(formData.amount) || selectedExpense.amount, ...(updated || {}) };
+        setExpenses(prev => prev.map(item => item.expenseId === selectedExpense.expenseId ? merged : item));
         setMessage('Expense updated successfully!');
       } else {
-        await otherExpenseService.create(formData);
+        const created = await otherExpenseService.create(formData);
+        if (created) {
+          setExpenses(prev => [created, ...prev]);
+        }
         setMessage('Expense created successfully!');
       }
       setMessageType('success');
       resetForm();
-      await fetchExpenses();
+      fetchExpenses(false);
       setTimeout(() => setMessage(''), 3000);
     } catch (error) {
       console.error('Error saving expense:', error);
@@ -120,7 +133,8 @@ function OtherExpenses() {
     setSelectedExpense(expense);
     setIsEditing(true);
     setFormData({
-      category: expense.category,
+      category: expense.category || 'General',
+      expenseType: expense.expenseType || '',
       description: expense.description,
       amount: expense.amount,
       expenseDate: expense.expenseDate ? expense.expenseDate.split('T')[0] : getTodayDate(),
@@ -135,23 +149,28 @@ function OtherExpenses() {
     if (!window.confirm('Are you sure you want to delete this expense?')) {
       return;
     }
+    // Optimistic delete
+    setExpenses(prev => prev.filter(e => e.expenseId !== expenseId));
+    setMessage('Expense deleted successfully!');
+    setMessageType('success');
+    setTimeout(() => setMessage(''), 3000);
+
     try {
       await otherExpenseService.delete(expenseId);
-      setMessage('Expense deleted successfully!');
-      setMessageType('success');
-      fetchExpenses();
-      setTimeout(() => setMessage(''), 3000);
+      fetchExpenses(false);
     } catch (error) {
       console.error('Error deleting expense:', error);
       setMessage('Error deleting expense');
       setMessageType('error');
+      fetchExpenses(false);
       setTimeout(() => setMessage(''), 5000);
     }
   };
 
   const resetForm = () => {
     setFormData({
-      category: '',
+      category: 'General',
+      expenseType: '',
       description: '',
       amount: '',
       expenseDate: getTodayDate(),
@@ -177,14 +196,16 @@ function OtherExpenses() {
   const filteredExpenses = expenses.filter(expense => {
     const searchLower = searchTerm.toLowerCase();
     const matchesSearch = 
-      expense.description.toLowerCase().includes(searchLower) ||
-      expense.category.toLowerCase().includes(searchLower) ||
-      expense.expenseId.toLowerCase().includes(searchLower) ||
+      (expense.description && expense.description.toLowerCase().includes(searchLower)) ||
+      (expense.category && expense.category.toLowerCase().includes(searchLower)) ||
+      (expense.expenseType && expense.expenseType.toLowerCase().includes(searchLower)) ||
+      (expense.expenseId && expense.expenseId.toLowerCase().includes(searchLower)) ||
       (expense.recordedByName && expense.recordedByName.toLowerCase().includes(searchLower));
     
     const matchesCategory = categoryFilter === 'All' || expense.category === categoryFilter;
+    const matchesType = typeFilter === 'All' || expense.expenseType === typeFilter;
     
-    return matchesSearch && matchesCategory;
+    return matchesSearch && matchesCategory && matchesType;
   }).sort((a, b) => new Date(b.expenseDate) - new Date(a.expenseDate));
 
   // Pagination
@@ -232,23 +253,53 @@ function OtherExpenses() {
       <div className="bg-white rounded-lg shadow-sm">
         <div className="border-b border-gray-200 p-6">
           <h2 className="text-xl font-bold text-gray-900 mb-4">All Expenses ({filteredExpenses.length})</h2>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-4">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-4 flex-wrap">
             <select
               value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+              onChange={(e) => {
+                setCategoryFilter(e.target.value);
+                setTypeFilter('All');
+              }}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
             >
               <option value="All">All Categories</option>
               {EXPENSE_CATEGORIES.map(cat => (
                 <option key={cat} value={cat}>{cat}</option>
               ))}
             </select>
+
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
+            >
+              <option value="All">All Expense Types</option>
+              {categoryFilter === 'All' ? (
+                <>
+                  <optgroup label="General">
+                    {(expenseTypes.General || []).map(t => (
+                      <option key={`gen-${t.typeId}`} value={t.typeName}>{t.typeName}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Operational">
+                    {(expenseTypes.Operational || []).map(t => (
+                      <option key={`op-${t.typeId}`} value={t.typeName}>{t.typeName}</option>
+                    ))}
+                  </optgroup>
+                </>
+              ) : (
+                (expenseTypes[categoryFilter] || []).map(t => (
+                  <option key={t.typeId} value={t.typeName}>{t.typeName}</option>
+                ))
+              )}
+            </select>
+
             <input
               type="text"
-              placeholder="Search by description, category, or ID..."
+              placeholder="Search by description, type, category, or ID..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+              className="flex-1 min-w-[220px] px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
             />
           </div>
         </div>
@@ -258,7 +309,7 @@ function OtherExpenses() {
         ) : filteredExpenses.length === 0 ? (
           <div className="p-8 text-center">
             <div className="text-4xl mb-3">💰</div>
-            <p className="text-gray-600">{searchTerm || categoryFilter !== 'All' ? 'No expenses found matching your filters' : 'No expenses recorded yet'}</p>
+            <p className="text-gray-600">{searchTerm || categoryFilter !== 'All' || typeFilter !== 'All' ? 'No expenses found matching your filters' : 'No expenses recorded yet'}</p>
           </div>
         ) : (
           <>
@@ -269,6 +320,7 @@ function OtherExpenses() {
                     <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Expense ID</th>
                     <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Date</th>
                     <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Category</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Expense Type</th>
                     <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Description</th>
                     <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Amount</th>
                     <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Payment Method</th>
@@ -283,7 +335,14 @@ function OtherExpenses() {
                         <td className="px-6 py-4 text-sm font-semibold text-gray-900">{expense.expenseId}</td>
                         <td className="px-6 py-4 text-sm text-gray-600">{formatDate(expense.expenseDate)}</td>
                         <td className="px-6 py-4 text-sm">
-                          <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">{expense.category}</span>
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                            expense.category === 'Operational' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'
+                          }`}>
+                            {expense.category}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                          {expense.expenseType || '-'}
                         </td>
                         <td className="px-6 py-4 text-sm text-gray-600">{expense.description}</td>
                         <td className="px-6 py-4 text-sm font-semibold text-gray-900">{formatCurrency(expense.amount)}</td>
@@ -321,14 +380,22 @@ function OtherExpenses() {
                       </tr>
                       {expandedRow === expense.expenseId && (
                         <tr className="border-b border-gray-200 bg-gray-50">
-                          <td colSpan="8" className="px-6 py-6">
+                          <td colSpan="9" className="px-6 py-6">
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                               <div>
                                 <h4 className="font-semibold text-gray-900 mb-4">Expense Details</h4>
                                 <div className="space-y-3">
                                   <div>
                                     <p className="text-xs font-medium text-gray-600 mb-1">Category:</p>
-                                    <p className="text-sm text-gray-900">{expense.category}</p>
+                                    <span className={`px-2.5 py-0.5 rounded text-xs font-semibold ${
+                                      expense.category === 'Operational' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'
+                                    }`}>
+                                      {expense.category}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <p className="text-xs font-medium text-gray-600 mb-1">Expense Type:</p>
+                                    <p className="text-sm font-semibold text-gray-900">{expense.expenseType || '-'}</p>
                                   </div>
                                   <div>
                                     <p className="text-xs font-medium text-gray-600 mb-1">Date:</p>
@@ -362,7 +429,7 @@ function OtherExpenses() {
                               </div>
 
                               <div>
-                                <h4 className="font-semibold text-gray-900 mb-4">Description</h4>
+                                <h4 className="font-semibold text-gray-900 mb-4">Description & Notes</h4>
                                 <p className="text-sm text-gray-900 mb-4">{expense.description}</p>
                                 {expense.notes && (
                                   <>
@@ -410,26 +477,77 @@ function OtherExpenses() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
           <div className="bg-white rounded-xl max-w-2xl w-full my-8">
             <div className="flex items-center justify-between p-6 border-b border-gray-200 sticky top-0 bg-white">
-              <h2 className="text-2xl font-bold text-gray-900">{isEditing ? 'Edit Expense' : 'New Expense'}</h2>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">{isEditing ? 'Edit Expense' : 'New Expense'}</h2>
+                <p className="text-xs text-gray-500 mt-1">Record a General or Operational expense with customizable type</p>
+              </div>
               <button onClick={resetForm} className="text-gray-500 hover:text-gray-700 text-2xl font-bold">×</button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-6 max-h-96 overflow-y-auto">
-              <div className="grid grid-cols-2 gap-4">
+            <form onSubmit={handleSubmit} className="p-6 space-y-5 max-h-[80vh] overflow-y-auto">
+              {/* Category Selector */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Expense Category <span className="text-red-600">*</span>
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    className={`py-2.5 px-4 rounded-lg font-medium text-sm border flex items-center justify-center gap-2 transition ${
+                      formData.category === 'General'
+                        ? 'bg-blue-50 border-blue-600 text-blue-700 font-semibold shadow-sm'
+                        : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+                    }`}
+                    onClick={() => setFormData(prev => ({ ...prev, category: 'General', expenseType: '' }))}
+                  >
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
+                    General Expense
+                  </button>
+                  <button
+                    type="button"
+                    className={`py-2.5 px-4 rounded-lg font-medium text-sm border flex items-center justify-center gap-2 transition ${
+                      formData.category === 'Operational'
+                        ? 'bg-amber-50 border-amber-600 text-amber-700 font-semibold shadow-sm'
+                        : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+                    }`}
+                    onClick={() => setFormData(prev => ({ ...prev, category: 'Operational', expenseType: '' }))}
+                  >
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-600"></span>
+                    Operational Expense
+                  </button>
+                </div>
+              </div>
+
+              {/* Expense Type and Date */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Category <span className="text-red-600">*</span>
-                  </label>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Expense Type <span className="text-red-600">*</span>
+                    </label>
+                    {['Admin', 'Super Admin'].includes(user?.role) && (
+                      <a
+                        href="/settings"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                      >
+                        ⚙️ Settings
+                      </a>
+                    )}
+                  </div>
                   <select
-                    name="category"
-                    value={formData.category}
+                    name="expenseType"
+                    value={formData.expenseType}
                     onChange={handleChange}
                     required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
                   >
-                    <option value="">Select Category</option>
-                    {EXPENSE_CATEGORIES.map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
+                    <option value="">Select Expense Type</option>
+                    {(expenseTypes[formData.category] || []).map(t => (
+                      <option key={t.typeId} value={t.typeName}>
+                        {t.typeName}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -444,11 +562,12 @@ function OtherExpenses() {
                     value={formData.expenseDate}
                     onChange={handleChange}
                     required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
                   />
                 </div>
               </div>
 
+              {/* Description */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Description <span className="text-red-600">*</span>
@@ -457,14 +576,15 @@ function OtherExpenses() {
                   name="description"
                   value={formData.description}
                   onChange={handleChange}
-                  placeholder="Enter expense description"
-                  rows="3"
+                  placeholder="Enter specific expense description or notes"
+                  rows="2"
                   required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none text-sm"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              {/* Amount and Payment Method */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Amount (LKR) <span className="text-red-600">*</span>
@@ -478,7 +598,7 @@ function OtherExpenses() {
                     step="0.01"
                     min="0"
                     required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm font-medium"
                   />
                 </div>
 
@@ -490,7 +610,7 @@ function OtherExpenses() {
                     name="paymentMethod"
                     value={formData.paymentMethod}
                     onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
                   >
                     <option value="">Select Method</option>
                     {PAYMENT_METHODS.map(method => (
@@ -500,6 +620,7 @@ function OtherExpenses() {
                 </div>
               </div>
 
+              {/* Reference / Cheque Number */}
               {formData.paymentMethod === 'Cheque' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -511,7 +632,7 @@ function OtherExpenses() {
                     value={formData.referenceNumber}
                     onChange={handleChange}
                     placeholder="Enter cheque number"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
                   />
                 </div>
               )}
@@ -526,32 +647,33 @@ function OtherExpenses() {
                     value={formData.referenceNumber}
                     onChange={handleChange}
                     placeholder="Transaction ID, reference number, etc."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
                   />
                 </div>
               )}
 
+              {/* Notes */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Notes
+                  Additional Notes
                 </label>
                 <textarea
                   name="notes"
                   value={formData.notes}
                   onChange={handleChange}
-                  placeholder="Additional notes (optional)"
+                  placeholder="Optional details, vendor info, voucher numbers..."
                   rows="2"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none text-sm"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-6 border-t border-gray-200">
-                <button type="button" onClick={resetForm} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition font-medium">
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
+                <button type="button" onClick={resetForm} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition font-medium text-sm">
                   Cancel
                 </button>
                 <button 
                   type="submit" 
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium text-sm shadow-sm"
                 >
                   {isEditing ? 'Update Expense' : 'Create Expense'}
                 </button>

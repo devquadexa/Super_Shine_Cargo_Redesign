@@ -14,17 +14,8 @@ const getLocalDateString = () => {
 
 const today = getLocalDateString();
 
-// Predefined categories
-const CATEGORIES = [
-  'Food & Beverages',
-  'Utility Bills',
-  'WiFi/Internet',
-  'Phone Cards',
-  'Office Supplies',
-  'Maintenance',
-  'Transportation',
-  'Other'
-];
+// 2 Primary Categories
+const CATEGORIES = ['General', 'Operational'];
 
 function OtherExpensesReport() {
   const { user } = useAuth();
@@ -376,6 +367,7 @@ function OtherExpensesReport() {
                       <th className="px-6 py-3 text-left font-medium text-gray-700">#</th>
                       <th className="px-6 py-3 text-left font-medium text-gray-700">Expense ID</th>
                       <th className="px-6 py-3 text-left font-medium text-gray-700">Category</th>
+                      <th className="px-6 py-3 text-left font-medium text-gray-700">Expense Type</th>
                       <th className="px-6 py-3 text-left font-medium text-gray-700">Description</th>
                       <th className="px-6 py-3 text-right font-medium text-gray-700">Amount</th>
                       <th className="px-6 py-3 text-left font-medium text-gray-700">Expense Date</th>
@@ -388,10 +380,13 @@ function OtherExpensesReport() {
                         <td className="px-6 py-4 text-gray-700">{(currentPage - 1) * recordsPerPage + index + 1}</td>
                         <td className="px-6 py-4 font-mono text-xs bg-gray-50 rounded">{exp.expenseId}</td>
                         <td className="px-6 py-4">
-                          <span className="inline-block px-2 py-1 text-xs font-medium rounded-full bg-blue-50 text-blue-700">
+                          <span className={`inline-block px-2.5 py-1 text-xs font-semibold rounded-full ${
+                            exp.category === 'Operational' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'
+                          }`}>
                             {exp.category}
                           </span>
                         </td>
+                        <td className="px-6 py-4 font-medium text-gray-900">{exp.expenseType || '-'}</td>
                         <td className="px-6 py-4 text-gray-700 max-w-xs truncate">{exp.description || '-'}</td>
                         <td className="px-6 py-4 text-right text-gray-900 font-medium">{formatCurrency(exp.amount)}</td>
                         <td className="px-6 py-4 text-gray-600">{formatDate(exp.expenseDate)}</td>

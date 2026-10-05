@@ -7,6 +7,11 @@ class MySQLCashWithdrawalRepository extends BaseMySQLRepository {
     super(dbConnection);
   }
 
+  clearCache() {
+    this._cache = null;
+    this._cacheTime = 0;
+  }
+
   async create(withdrawal) {
     const data = {
       withdrawalId: withdrawal.withdrawalId,
@@ -20,10 +25,16 @@ class MySQLCashWithdrawalRepository extends BaseMySQLRepository {
     };
 
     await this.prisma.cashwithdrawals.create({ data });
+    this.clearCache();
     return withdrawal;
   }
 
   async findAll() {
+    const now = Date.now();
+    if (this._cache && (now - this._cacheTime < 60000)) {
+      return this._cache;
+    }
+
     const rows = await this.prisma.cashwithdrawals.findMany({
       include: { users: true },
       orderBy: [
@@ -31,7 +42,10 @@ class MySQLCashWithdrawalRepository extends BaseMySQLRepository {
         { createdAt: 'desc' }
       ]
     });
-    return rows.map(r => this.mapToEntity(r));
+    const result = rows.map(r => this.mapToEntity(r));
+    this._cache = result;
+    this._cacheTime = now;
+    return result;
   }
 
   async findById(withdrawalId) {

@@ -30,10 +30,8 @@ class MSSQLPettyCashAssignmentRepository extends IPettyCashAssignmentRepository 
           ];
           if (settledStatuses.includes(last.status)) {
             groupId = `${assignmentData.jobId}_${assignmentData.assignedTo}_${Date.now()}`;
-            console.log('create - Settled status detected, creating new independent group:', groupId);
           } else {
             groupId = last.groupId || `${assignmentData.jobId}_${assignmentData.assignedTo}`;
-            console.log('create - Using existing groupId for same job+user:', groupId);
           }
         }
       }
@@ -46,8 +44,6 @@ class MSSQLPettyCashAssignmentRepository extends IPettyCashAssignmentRepository 
         .input('Notes',          this.sql.NVarChar(4000), assignmentData.notes || null)
         .input('GroupId',        this.sql.NVarChar(200),  groupId)
         .execute('usp_CreatePettyCashAssignment');
-
-      console.log('create - New assignment created with groupId:', groupId);
 
       await pool.request()
         .input('JobId', this.sql.VarChar(50), assignmentData.jobId)
@@ -105,17 +101,13 @@ class MSSQLPettyCashAssignmentRepository extends IPettyCashAssignmentRepository 
 
   async getByJob(jobId) {
     try {
-      console.log('getByJob - jobId:', jobId);
       const pool = await this.getConnection();
 
       const queryResult = await pool.request()
         .input('JobId', this.sql.VarChar(50), jobId)
         .execute('usp_GetPettyCashAssignmentsByJob');
 
-      console.log('getByJob - result count:', queryResult.recordset.length);
-
       if (queryResult.recordset.length === 0) {
-        console.log('getByJob - No assignment found');
         return null;
       }
 
@@ -174,7 +166,6 @@ class MSSQLPettyCashAssignmentRepository extends IPettyCashAssignmentRepository 
 
   async settle(assignmentId, settlementData, options = {}) {
     try {
-      console.log('=== SETTLE START ===');
       const pool = await this.getConnection();
       const transaction = new this.sql.Transaction(pool);
 
@@ -195,7 +186,6 @@ class MSSQLPettyCashAssignmentRepository extends IPettyCashAssignmentRepository 
 
             if (existingResult.recordset.length > 0) {
               const existing = existingResult.recordset[0];
-              console.log(`settle - skipping predefined item '${item.itemName}' - already in assignment ${existing.assignmentId}`);
               continue;
             }
 
@@ -283,8 +273,6 @@ class MSSQLPettyCashAssignmentRepository extends IPettyCashAssignmentRepository 
           newStatus = options.overrideStatus;
         }
 
-        console.log('settle - status:', newStatus, '| actualSpent:', actualSpent, '| balance:', balanceAmount, '| over:', overAmount);
-
         await transaction.request()
           .input('AssignmentId',  this.sql.Int,            assignmentId)
           .input('Status',        this.sql.NVarChar(100),  newStatus)
@@ -305,7 +293,6 @@ class MSSQLPettyCashAssignmentRepository extends IPettyCashAssignmentRepository 
         }
 
         await transaction.commit();
-        console.log('=== SETTLE END ===');
 
         return await this.getById(assignmentId);
       } catch (error) {
@@ -435,7 +422,6 @@ class MSSQLPettyCashAssignmentRepository extends IPettyCashAssignmentRepository 
 
   async getByJobAndUser(jobId, userId, assignmentId = null) {
     try {
-      console.log('getByJobAndUser - jobId:', jobId, 'userId:', userId, 'assignmentId:', assignmentId);
       const pool = await this.getConnection();
 
       const queryResult = await pool.request()
@@ -479,7 +465,6 @@ class MSSQLPettyCashAssignmentRepository extends IPettyCashAssignmentRepository 
 
   async getAllByJob(jobId) {
     try {
-      console.log('getAllByJob - jobId:', jobId);
       const pool = await this.getConnection();
 
       const queryResult = await pool.request()

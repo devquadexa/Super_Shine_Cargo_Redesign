@@ -48,9 +48,17 @@ function TransportersReport() {
       setMessage('');
       setCurrentPage(1);
 
-      // Fetch all jobs and transporters
-      const jobsData = await jobService.getAll();
-      const transportersData = await transporterService.getAll();
+      // Fetch all jobs and transporters in parallel
+      const [jobsData, transportersData] = await Promise.all([
+        jobService.getAll().catch(err => {
+          console.error('Error fetching jobs:', err);
+          return [];
+        }),
+        transporterService.getAll().catch(err => {
+          console.error('Error fetching transporters:', err);
+          return [];
+        })
+      ]);
 
       const jobs = Array.isArray(jobsData) ? jobsData : [];
       const transporters = Array.isArray(transportersData) ? transportersData : [];

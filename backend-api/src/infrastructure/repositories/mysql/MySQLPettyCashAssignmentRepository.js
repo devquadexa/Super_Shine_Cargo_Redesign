@@ -57,10 +57,33 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
       data: { pettyCashStatus: 'Assigned' }
     }).catch(() => null);
 
-    return this.mapToEntity({ ...created, groupId, settlementItems: [] });
+    const entity = this.mapToEntity({ ...created, groupId, settlementItems: [] });
+    if (this._cache) {
+      this._cache.unshift(entity);
+    }
+    this.clearCache(false);
+    return entity;
+  }
+
+  clearCache(clearMemory = true) {
+    if (clearMemory) {
+      this._cache = null;
+      this._cacheTime = 0;
+      this._userCache = null;
+    }
+    try {
+      const container = require('../../di/container');
+      const jobRepo = container.get('jobRepository');
+      if (jobRepo && typeof jobRepo.clearCache === 'function') jobRepo.clearCache(true);
+    } catch (e) {}
   }
 
   async getAll() {
+    const now = Date.now();
+    if (this._cache && (now - this._cacheTime < 30000)) {
+      return this._cache;
+    }
+
     const rows = await this.prisma.pettycashassignments.findMany({
       include: {
         users_pettycashassignments_assignedToTousers: true,
@@ -72,7 +95,10 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
       orderBy: { assignedDate: 'desc' }
     });
 
-    return rows.map(r => this.mapToEntity(r));
+    const result = rows.map(r => this.mapToEntity(r));
+    this._cache = result;
+    this._cacheTime = now;
+    return result;
   }
 
   async findAll() {
@@ -80,6 +106,19 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
   }
 
   async getByUser(userId) {
+    const now = Date.now();
+    // 1. If global cache is hot, filter in memory immediately (0ms)
+    if (this._cache && (now - this._cacheTime < 30000)) {
+      return this._cache.filter(a => a.assignedTo === userId);
+    }
+
+    // 2. Check per-user cache
+    if (!this._userCache) this._userCache = new Map();
+    const userCached = this._userCache.get(userId);
+    if (userCached && (now - userCached.time < 30000)) {
+      return userCached.data;
+    }
+
     const rows = await this.prisma.pettycashassignments.findMany({
       where: { assignedTo: userId },
       include: {
@@ -92,7 +131,9 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
       orderBy: { assignedDate: 'desc' }
     });
 
-    return rows.map(r => this.mapToEntity(r));
+    const result = rows.map(r => this.mapToEntity(r));
+    this._userCache.set(userId, { data: result, time: now });
+    return result;
   }
 
   async getByJob(jobId) {
@@ -147,8 +188,37 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
   }
 
   async getSettlementItems(assignmentId) {
+    const id = parseInt(assignmentId, 10);
+    if (isNaN(id)) return [];
+
+    let targetIds = [id];
+    try {
+      const assignment = await this.prisma.pettycashassignments.findUnique({
+        where: { assignmentId: id },
+        select: { groupId: true, jobId: true, assignedTo: true }
+      });
+
+      if (assignment) {
+        const gid = assignment.groupId || `${assignment.jobId}_${assignment.assignedTo}`;
+        const related = await this.prisma.pettycashassignments.findMany({
+          where: {
+            OR: [
+              { groupId: gid },
+              { jobId: assignment.jobId, assignedTo: assignment.assignedTo }
+            ]
+          },
+          select: { assignmentId: true }
+        });
+        if (related.length > 0) {
+          targetIds = related.map(r => r.assignmentId);
+        }
+      }
+    } catch (e) {
+      console.warn('Error fetching group assignments for items:', e.message);
+    }
+
     const rows = await this.prisma.pettycashsettlementitems.findMany({
-      where: { assignmentId: parseInt(assignmentId, 10) },
+      where: { assignmentId: { in: targetIds } },
       orderBy: { createdDate: 'asc' }
     });
 
@@ -165,86 +235,61 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
     const assignment = await this.getById(id);
     if (!assignment) throw new Error('Assignment not found');
 
-    for (const item of settlementData.items || []) {
-      if (!item.isCustomItem) {
-        const existing = await this.prisma.pettycashsettlementitems.findFirst({
-          where: {
-            itemName: item.itemName,
-            isCustomItem: false,
-            pettycashassignments: {
-              jobId: assignment.jobId,
-              assignmentId: { not: id }
-            }
-          }
-        });
+    const incomingItems = settlementData.items || [];
 
-        if (existing) {
-          continue;
+    // 1. In ONE single query: find any predefined items already claimed by other assignments for this job
+    const otherClaimedItems = await this.prisma.pettycashsettlementitems.findMany({
+      where: {
+        isCustomItem: false,
+        pettycashassignments: {
+          jobId: assignment.jobId,
+          assignmentId: { not: id }
         }
+      },
+      select: { itemName: true }
+    });
+    const claimedSet = new Set(otherClaimedItems.map(i => i.itemName));
 
-        await this.prisma.pettycashsettlementitems.deleteMany({
-          where: {
-            assignmentId: id,
-            itemName: item.itemName,
-            isCustomItem: false
-          }
-        });
-      } else {
-        await this.prisma.pettycashsettlementitems.deleteMany({
-          where: {
-            assignmentId: id,
-            itemName: item.itemName,
-            isCustomItem: true
-          }
-        });
-      }
+    // 2. Delete all existing items for this assignment in ONE single batch operation
+    await this.prisma.pettycashsettlementitems.deleteMany({
+      where: { assignmentId: id }
+    });
 
-      const hasBillValue = (item.hasBill === true || item.hasBill === 1 || item.hasBill === 'true');
-      await this.prisma.pettycashsettlementitems.create({
-        data: {
-          assignmentId: id,
-          itemName: item.itemName,
-          actualCost: item.actualCost,
-          isCustomItem: Boolean(item.isCustomItem),
-          paidBy: item.paidBy || assignment.assignedTo,
-          hasBill: hasBillValue,
-          createdDate: new Date()
-        }
+    // 3. Prepare all non-duplicate items
+    const itemsToInsert = incomingItems
+      .filter(item => item.isCustomItem || !claimedSet.has(item.itemName))
+      .map(item => ({
+        assignmentId: id,
+        itemName: item.itemName,
+        actualCost: parseFloat(item.actualCost || 0),
+        isCustomItem: Boolean(item.isCustomItem),
+        paidBy: item.paidBy || assignment.assignedTo,
+        hasBill: (item.hasBill === true || item.hasBill === 1 || item.hasBill === 'true'),
+        createdDate: new Date()
+      }));
+
+    // 4. Batch insert all settlement items at once
+    if (itemsToInsert.length > 0) {
+      await this.prisma.pettycashsettlementitems.createMany({
+        data: itemsToInsert
       });
     }
 
-    let actualSpent = 0;
-    let assignedAmount = parseFloat(assignment.assignedAmount);
+    // Calculate spent directly from incoming items without waiting on a remote aggregate roundtrip
+    const currentItemsSpent = itemsToInsert.reduce((sum, item) => sum + item.actualCost, 0);
+    let actualSpent = currentItemsSpent;
+    let assignedAmount = options.groupTotalAssigned ? parseFloat(options.groupTotalAssigned) : parseFloat(assignment.assignedAmount);
 
-    if (assignment.isMainAssignment) {
+    if (!options.groupTotalAssigned && assignment.isMainAssignment) {
       const subAssignments = await this.prisma.pettycashassignments.findMany({
         where: { parentAssignmentId: id },
         select: { assignmentId: true, assignedAmount: true }
       });
 
       if (subAssignments.length > 0) {
-        const targetIds = [id, ...subAssignments.map(s => s.assignmentId)];
-        const sumResult = await this.prisma.pettycashsettlementitems.aggregate({
-          where: { assignmentId: { in: targetIds } },
-          _sum: { actualCost: true }
-        });
-        actualSpent = parseFloat(sumResult._sum.actualCost || 0);
-
         const subTotal = subAssignments.reduce((acc, s) => acc + parseFloat(s.assignedAmount || 0), 0);
         if (subTotal > 0) assignedAmount = subTotal;
-      } else {
-        const sumResult = await this.prisma.pettycashsettlementitems.aggregate({
-          where: { assignmentId: id },
-          _sum: { actualCost: true }
-        });
-        actualSpent = parseFloat(sumResult._sum.actualCost || 0);
       }
-    } else {
-      const sumResult = await this.prisma.pettycashsettlementitems.aggregate({
-        where: { assignmentId: id },
-        _sum: { actualCost: true }
-      });
-      actualSpent = parseFloat(sumResult._sum.actualCost || 0);
     }
 
     const balanceAmount = assignedAmount > actualSpent ? assignedAmount - actualSpent : 0;
@@ -263,20 +308,38 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
       newStatus = options.overrideStatus;
     }
 
-    await this.prisma.pettycashassignments.update({
-      where: { assignmentId: id },
-      data: {
-        status: newStatus,
-        actualSpent,
-        balanceAmount,
-        overAmount,
-        settlementDate: new Date()
-      }
+    // Run assignment update and job status check concurrently to cut latency in half
+    await Promise.all([
+      this.prisma.pettycashassignments.update({
+        where: { assignmentId: id },
+        data: {
+          status: newStatus,
+          actualSpent,
+          balanceAmount,
+          overAmount,
+          settlementDate: new Date()
+        }
+      }),
+      this._checkAndUpdateJobPettyCashStatus(assignment.jobId)
+    ]);
+
+    const settledEntity = this.mapToEntity({
+      ...assignment,
+      status: newStatus,
+      actualSpent,
+      balanceAmount,
+      overAmount,
+      settlementDate: new Date(),
+      settlementItems: itemsToInsert
     });
 
-    await this._checkAndUpdateJobPettyCashStatus(assignment.jobId);
+    if (this._cache) {
+      const idx = this._cache.findIndex(a => a.assignmentId === id);
+      if (idx !== -1) this._cache[idx] = settledEntity;
+    }
+    this.clearCache(false);
 
-    return await this.getById(id);
+    return settledEntity;
   }
 
   async _checkAndUpdateJobPettyCashStatus(jobId) {
@@ -299,12 +362,13 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
       }
     });
 
-    if (unsettledCount === 0) {
-      await this.prisma.jobs.update({
-        where: { jobId },
-        data: { pettyCashStatus: 'Settled' }
-      }).catch(() => null);
-    }
+    const newJobStatus = unsettledCount === 0 ? 'Settled' : 'Assigned';
+    await this.prisma.jobs.update({
+      where: { jobId },
+      data: { pettyCashStatus: newJobStatus }
+    }).catch(() => null);
+
+    this.clearCache(false);
   }
 
   async updateStatus(assignmentId, status) {
@@ -313,8 +377,45 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
       where: { assignmentId: id },
       data: { status }
     });
+    if (this._cache) {
+      const item = this._cache.find(a => a.assignmentId === id);
+      if (item) item.status = status;
+    }
     await this._checkAndUpdateJobPettyCashStatus(updated.jobId);
-    return await this.getById(id);
+    this.clearCache(false);
+    return updated;
+  }
+
+  async updateStatuses(assignmentIds, status) {
+    if (!assignmentIds || assignmentIds.length === 0) return true;
+    const ids = assignmentIds.map(id => parseInt(id, 10)).filter(id => !isNaN(id));
+    if (ids.length === 0) return true;
+
+    await this.prisma.pettycashassignments.updateMany({
+      where: { assignmentId: { in: ids } },
+      data: { status }
+    });
+
+    if (this._cache) {
+      const idSet = new Set(ids);
+      this._cache.forEach(item => {
+        if (idSet.has(item.assignmentId)) {
+          item.status = status;
+        }
+      });
+    }
+
+    const first = await this.prisma.pettycashassignments.findFirst({
+      where: { assignmentId: { in: ids } },
+      select: { jobId: true }
+    });
+
+    if (first?.jobId) {
+      await this._checkAndUpdateJobPettyCashStatus(first.jobId);
+    } else {
+      this.clearCache(false);
+    }
+    return true;
   }
 
   async recalculateStatus(assignmentId) {
@@ -345,6 +446,15 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
       }
     });
 
+    if (this._cache) {
+      const item = this._cache.find(a => a.assignmentId === id);
+      if (item) {
+        item.status = correctStatus;
+        item.balanceAmount = recalcBalance;
+        item.overAmount = recalcOver;
+      }
+    }
+
     await this._checkAndUpdateJobPettyCashStatus(row.jobId);
 
     return await this.getById(id);
@@ -355,6 +465,11 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
       where: { jobId },
       data: { status: 'Closed' }
     });
+    if (this._cache) {
+      this._cache.forEach(item => {
+        if (item.jobId === jobId) item.status = 'Closed';
+      });
+    }
     await this._checkAndUpdateJobPettyCashStatus(jobId);
   }
 
@@ -371,7 +486,16 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
       where: { assignmentId: id },
       data
     });
+    if (this._cache) {
+      const item = this._cache.find(a => a.assignmentId === id);
+      if (item) {
+        item.status = newStatus;
+        if (settlementType === 'BALANCE_RETURN') item.balanceAmount = 0;
+        if (settlementType === 'OVERDUE_COLLECTION') item.overAmount = 0;
+      }
+    }
     await this._checkAndUpdateJobPettyCashStatus(updated.jobId);
+    this.clearCache(false);
     return await this.getById(id);
   }
 
@@ -381,7 +505,12 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
       where: { assignmentId: id },
       data: { status: 'Settled / Balance Returned' }
     });
+    if (this._cache) {
+      const item = this._cache.find(a => a.assignmentId === id);
+      if (item) item.status = 'Settled / Balance Returned';
+    }
     await this._checkAndUpdateJobPettyCashStatus(updated.jobId);
+    this.clearCache(false);
     return await this.getById(id);
   }
 
@@ -391,7 +520,12 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
       where: { assignmentId: id },
       data: { status: 'Settled / Over Due Collected' }
     });
+    if (this._cache) {
+      const item = this._cache.find(a => a.assignmentId === id);
+      if (item) item.status = 'Settled / Over Due Collected';
+    }
     await this._checkAndUpdateJobPettyCashStatus(updated.jobId);
+    this.clearCache(false);
     return await this.getById(id);
   }
 
@@ -492,6 +626,7 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
       where: { settlementItemId: id },
       data: { itemName, actualCost }
     });
+    this.clearCache(false);
     return {
       ...updated,
       actualCost: Number(updated.actualCost) || 0,
@@ -505,6 +640,7 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
     await this.prisma.pettycashsettlementitems.delete({
       where: { settlementItemId: id }
     }).catch(() => null);
+    this.clearCache(false);
     return true;
   }
 
@@ -533,6 +669,16 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
       }
     });
 
+    if (this._cache) {
+      const item = this._cache.find(a => a.assignmentId === id);
+      if (item) {
+        item.actualSpent = actualSpent;
+        item.balanceAmount = balanceAmount;
+        item.overAmount = overAmount;
+      }
+    }
+
+    this.clearCache(false);
     return {
       ...updated,
       assignedAmount: Number(updated.assignedAmount) || 0,
@@ -558,6 +704,10 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
       }
     });
 
+    if (this._cache) {
+      this._cache.unshift(this.mapToEntity({ ...created, settlementItems: [] }));
+    }
+    this.clearCache(false);
     return {
       ...created,
       assignedAmount: Number(created.assignedAmount) || 0

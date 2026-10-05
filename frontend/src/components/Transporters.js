@@ -429,11 +429,15 @@ function Transporters() {
 
     try {
       if (editingTransporter) {
-        await transporterService.update(editingTransporter.transporterId, formData);
+        const updated = await transporterService.update(editingTransporter.transporterId, formData);
         setMessage('Transporter updated successfully');
+        setTransporters(prev => prev.map(t => t.transporterId === editingTransporter.transporterId ? { ...t, ...formData, ...(updated || {}) } : t));
       } else {
-        await transporterService.create(formData);
+        const created = await transporterService.create(formData);
         setMessage('Transporter created successfully');
+        if (created) {
+          setTransporters(prev => [created, ...prev]);
+        }
       }
 
       setShowModal(false);
@@ -451,12 +455,14 @@ function Transporters() {
     }
 
     try {
-      await transporterService.delete(transporterId);
+      setTransporters(prev => prev.map(t => t.transporterId === transporterId ? { ...t, isActive: false } : t));
       setMessage('Transporter deactivated successfully');
+      await transporterService.delete(transporterId);
       fetchTransporters();
     } catch (error) {
       console.error('Error deactivating transporter:', error);
       setMessage(error.response?.data?.message || 'Error deactivating transporter');
+      fetchTransporters();
     }
   };
 

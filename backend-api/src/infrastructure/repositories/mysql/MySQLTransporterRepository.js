@@ -7,6 +7,11 @@ class MySQLTransporterRepository extends BaseMySQLRepository {
     super(dbConnection);
   }
 
+  clearCache() {
+    this._cache = null;
+    this._cacheTime = 0;
+  }
+
   async create(transporter) {
     await this.prisma.transporters.create({
       data: {
@@ -34,29 +39,32 @@ class MySQLTransporterRepository extends BaseMySQLRepository {
         size: transporter.size || null
       }
     });
-
+    this.clearCache();
     return transporter;
   }
 
   async findById(transporterId) {
-    const row = await this.prisma.transporters.findUnique({
-      where: { transporterId }
-    });
-    if (!row) return null;
-    return this.mapToEntity(row);
+    const row = await this.prisma.transporters.findUnique({ where: { transporterId } });
+    return row ? this.mapToEntity(row) : null;
   }
 
   async findAll(filters = {}) {
-    const where = {};
     if (filters.name) {
-      where.name = { contains: filters.name };
+      const rows = await this.prisma.transporters.findMany({
+        where: { name: { contains: filters.name } },
+        orderBy: { name: 'asc' }
+      });
+      return rows.map(row => this.mapToEntity(row));
     }
 
-    const rows = await this.prisma.transporters.findMany({
-      where,
-      orderBy: { name: 'asc' }
-    });
-    return rows.map(row => this.mapToEntity(row));
+    const now = Date.now();
+    if (this._cache && (now - this._cacheTime < 60000)) return this._cache;
+
+    const rows = await this.prisma.transporters.findMany({ orderBy: { name: 'asc' } });
+    const result = rows.map(row => this.mapToEntity(row));
+    this._cache = result;
+    this._cacheTime = now;
+    return result;
   }
 
   async update(transporterId, transporter) {
@@ -85,7 +93,7 @@ class MySQLTransporterRepository extends BaseMySQLRepository {
         isActive: transporter.isActive !== undefined ? Boolean(transporter.isActive) : true
       }
     });
-
+    this.clearCache();
     return transporter;
   }
 
@@ -94,30 +102,23 @@ class MySQLTransporterRepository extends BaseMySQLRepository {
       where: { transporterId },
       data: { isActive: false }
     });
+    this.clearCache();
     return true;
   }
 
   async exists(transporterId) {
-    const count = await this.prisma.transporters.count({
-      where: { transporterId }
-    });
+    const count = await this.prisma.transporters.count({ where: { transporterId } });
     return count > 0;
   }
 
   async findByEmail(email) {
-    const row = await this.prisma.transporters.findFirst({
-      where: { email }
-    });
-    if (!row) return null;
-    return this.mapToEntity(row);
+    const row = await this.prisma.transporters.findFirst({ where: { email } });
+    return row ? this.mapToEntity(row) : null;
   }
 
   async findByName(name) {
-    const row = await this.prisma.transporters.findFirst({
-      where: { name }
-    });
-    if (!row) return null;
-    return this.mapToEntity(row);
+    const row = await this.prisma.transporters.findFirst({ where: { name } });
+    return row ? this.mapToEntity(row) : null;
   }
 
   async generateNextId() {

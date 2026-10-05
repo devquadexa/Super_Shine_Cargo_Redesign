@@ -8,17 +8,26 @@ const { auth } = require('../../middleware/auth');
 
 const isMySQL = (process.env.DB_TYPE || 'mysql').toLowerCase() === 'mysql';
 
+let cachedDistricts = null;
+let cachedCitiesByDistrict = {};
+let cachedAllCities = null;
+
 // Get all districts
 router.get('/districts', auth, async (req, res) => {
   try {
+    if (cachedDistricts) {
+      return res.json(cachedDistricts);
+    }
+
     if (isMySQL) {
       const mysqlDb = require('../../config/mysqlDatabase');
       const rows = await mysqlDb.query(`
         SELECT districtId, districtName, province 
-        FROM Districts 
+        FROM districts 
         WHERE isActive = 1 
         ORDER BY districtName
       `);
+      cachedDistricts = rows;
       return res.json(rows);
     }
 
@@ -32,6 +41,7 @@ router.get('/districts', auth, async (req, res) => {
         WHERE isActive = 1 
         ORDER BY districtName
       `);
+    cachedDistricts = result.recordset;
     res.json(result.recordset);
   } catch (error) {
     console.error('Error fetching districts:', error);
@@ -44,14 +54,19 @@ router.get('/cities/:districtId', auth, async (req, res) => {
   try {
     const { districtId } = req.params;
 
+    if (cachedCitiesByDistrict[districtId]) {
+      return res.json(cachedCitiesByDistrict[districtId]);
+    }
+
     if (isMySQL) {
       const mysqlDb = require('../../config/mysqlDatabase');
       const rows = await mysqlDb.query(`
         SELECT cityId, cityName 
-        FROM Cities 
+        FROM cities 
         WHERE districtId = ? AND isActive = 1 
         ORDER BY cityName
       `, [districtId]);
+      cachedCitiesByDistrict[districtId] = rows;
       return res.json(rows);
     }
 
@@ -66,6 +81,7 @@ router.get('/cities/:districtId', auth, async (req, res) => {
         WHERE districtId = @districtId AND isActive = 1 
         ORDER BY cityName
       `);
+    cachedCitiesByDistrict[districtId] = result.recordset;
     res.json(result.recordset);
   } catch (error) {
     console.error('Error fetching cities:', error);
@@ -76,15 +92,20 @@ router.get('/cities/:districtId', auth, async (req, res) => {
 // Get all cities (for search/autocomplete)
 router.get('/cities', auth, async (req, res) => {
   try {
+    if (cachedAllCities) {
+      return res.json(cachedAllCities);
+    }
+
     if (isMySQL) {
       const mysqlDb = require('../../config/mysqlDatabase');
       const rows = await mysqlDb.query(`
         SELECT c.cityId, c.cityName, c.districtId, d.districtName, d.province
-        FROM Cities c
-        JOIN Districts d ON c.districtId = d.districtId
+        FROM cities c
+        JOIN districts d ON c.districtId = d.districtId
         WHERE c.isActive = 1 AND d.isActive = 1
         ORDER BY c.cityName
       `);
+      cachedAllCities = rows;
       return res.json(rows);
     }
 
@@ -99,6 +120,7 @@ router.get('/cities', auth, async (req, res) => {
         WHERE c.isActive = 1 AND d.isActive = 1
         ORDER BY c.cityName
       `);
+    cachedAllCities = result.recordset;
     res.json(result.recordset);
   } catch (error) {
     console.error('Error fetching all cities:', error);
@@ -117,8 +139,8 @@ router.get('/address-info', auth, async (req, res) => {
         SELECT 
           d.districtId, d.districtName, d.province,
           c.cityId, c.cityName
-        FROM Districts d
-        LEFT JOIN Cities c ON d.districtId = c.districtId
+        FROM districts d
+        LEFT JOIN cities c ON d.districtId = c.districtId
         WHERE d.isActive = 1
       `;
       const params = [];

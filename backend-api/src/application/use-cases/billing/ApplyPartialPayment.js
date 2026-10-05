@@ -52,7 +52,6 @@ class ApplyPartialPayment {
       try {
         const newJobStatus = updatedBill.paymentStatus === 'Paid' ? 'Payment Collected' : 'Partially Paid';
         await this.jobRepository.updateStatus(bill.jobId, newJobStatus);
-        console.log(`✓ Job ${bill.jobId} status updated to: ${newJobStatus}`);
       } catch (err) {
         console.error('Error updating job status after partial payment:', err);
         // Non-fatal - payment is already recorded

@@ -9,10 +9,6 @@ class UpdateOfficePayItem {
 
   async execute(officePayItemId, updateData) {
     try {
-      console.log('UpdateOfficePayItem.execute - START');
-      console.log('officePayItemId:', officePayItemId);
-      console.log('updateData:', updateData);
-      
       // Check if item exists
       const existingItem = await this.officePayItemRepository.findById(officePayItemId);
       if (!existingItem) {
@@ -25,10 +21,7 @@ class UpdateOfficePayItem {
       }
       
       // Update
-      const updatedItem = await this.officePayItemRepository.update(officePayItemId, updateData);
-      
-      console.log('UpdateOfficePayItem.execute - SUCCESS');
-      return updatedItem;
+      return await this.officePayItemRepository.update(officePayItemId, updateData);
     } catch (error) {
       console.error('UpdateOfficePayItem.execute - ERROR:', error);
       throw error;

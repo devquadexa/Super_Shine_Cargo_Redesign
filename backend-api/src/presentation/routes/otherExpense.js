@@ -30,6 +30,7 @@ module.exports = (container) => {
     try {
       const filters = {
         category: req.query.category,
+        expenseType: req.query.expenseType,
         fromDate: req.query.fromDate,
         toDate: req.query.toDate
       };

@@ -1,6 +1,6 @@
 /**
  * Reject Cash Balance Settlement Use Case
- * Handles rejection of settlement requests by Management
+ * Handles rejection of settlement requests by Management.
  */
 class RejectCashBalanceSettlement {
   constructor(cashBalanceSettlementRepository, pettyCashAssignmentRepository) {
@@ -9,36 +9,25 @@ class RejectCashBalanceSettlement {
   }
 
   async execute(settlementId, managerId, managerName, managerNotes) {
-    // Find the settlement
     const settlement = await this.cashBalanceSettlementRepository.findById(settlementId);
-    if (!settlement) {
-      throw new Error('Settlement not found');
-    }
+    if (!settlement) throw new Error('Settlement not found');
 
-    // Reject the settlement using domain logic
     settlement.reject(managerId, managerName, managerNotes);
 
-    // Update in database
-    const rejectedSettlement = await this.cashBalanceSettlementRepository.update(settlementId, {
-      status: settlement.status,
-      managerId: settlement.managerId,
-      managerName: settlement.managerName,
-      managerNotes: settlement.managerNotes,
-      updatedBy: settlement.updatedBy,
-      updatedDate: settlement.updatedDate
-    });
-
-    // Mark related assignment statuses as rejected to make manager decision explicit to clerks.
-    if (settlement.relatedAssignments && settlement.relatedAssignments.length > 0) {
-      for (const assignmentId of settlement.relatedAssignments) {
-        try {
-          await this.pettyCashAssignmentRepository.updateStatus(assignmentId, 'Settled/Rejected');
-        } catch (error) {
-          console.error(`Failed to update assignment ${assignmentId} status:`, error);
-          // Don't throw - settlement was rejected successfully, just log the error
-        }
-      }
-    }
+    // Update settlement + batch-revert related assignment statuses in parallel
+    const [rejectedSettlement] = await Promise.all([
+      this.cashBalanceSettlementRepository.update(settlementId, {
+        status: settlement.status,
+        managerId: settlement.managerId,
+        managerName: settlement.managerName,
+        managerNotes: settlement.managerNotes,
+        updatedBy: settlement.updatedBy,
+        updatedDate: settlement.updatedDate
+      }),
+      settlement.relatedAssignments && settlement.relatedAssignments.length > 0
+        ? this.pettyCashAssignmentRepository.updateStatuses(settlement.relatedAssignments, 'Settled/Rejected')
+        : Promise.resolve()
+    ]);
 
     return rejectedSettlement;
   }

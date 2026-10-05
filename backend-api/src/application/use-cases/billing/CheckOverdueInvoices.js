@@ -24,14 +24,11 @@ class CheckOverdueInvoices {
         const job = await this.jobRepository.findById(bill.jobId);
         
         if (!job) {
-          console.log(`CheckOverdueInvoices - Job ${bill.jobId} not found`);
           continue;
         }
         
         // Only update if not already in final status or already overdue
         if (!['Payment Collected', 'Completed', 'Canceled', 'Overdue'].includes(job.status)) {
-          console.log(`CheckOverdueInvoices - Updating job ${bill.jobId} to Overdue (was ${job.status})`);
-          
           await this.jobRepository.updateStatus(bill.jobId, 'Overdue');
           await this.billRepository.update(bill.billId, { isOverdue: true });
           
@@ -45,8 +42,6 @@ class CheckOverdueInvoices {
         }
       }
     }
-    
-    console.log(`CheckOverdueInvoices - Updated ${updatedCount} jobs to Overdue status`);
     
     return { 
       updatedCount,

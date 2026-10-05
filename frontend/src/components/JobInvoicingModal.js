@@ -168,6 +168,10 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
   const [updatingItemIndex, setUpdatingItemIndex] = useState(null); // Track which cost item is being updated
   const [editingItemIndex, setEditingItemIndex] = useState(null); // Track which row is actively being edited inline
   const [editingBackup, setEditingBackup] = useState(null); // Backup of row data before edit
+  const [loadingPayItems, setLoadingPayItems] = useState(false);
+  const [savingPayItems, setSavingPayItems] = useState(false);
+  const [generatingBill, setGeneratingBill] = useState(false);
+  const [submittingPayment, setSubmittingPayment] = useState(false);
 
   // Check if invoice has received payment and should be locked
   const isInvoiceLocked = useMemo(() => {
@@ -331,6 +335,7 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
   };
 
   const loadPayItems = async () => {
+    setLoadingPayItems(true);
     try {
       setEditingItemIndex(null);
       setEditingBackup(null);
@@ -454,6 +459,8 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
     } catch (error) {
       console.error('Error loading pay items:', error);
       setMessage('Error loading pay items');
+    } finally {
+      setLoadingPayItems(false);
     }
   };
 
@@ -660,6 +667,7 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
       return;
     }
 
+    setSavingPayItems(true);
     try {
       // Update office pay items billing amounts
       const officePayItems = validPayItems.filter(item => item.isOfficePayItem);
@@ -710,6 +718,8 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
       console.error('Error saving pay items:', error);
       setMessage('Error saving pay items');
       setTimeout(() => setMessage(''), 5000);
+    } finally {
+      setSavingPayItems(false);
     }
   };
 
@@ -779,6 +789,7 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
       return;
     }
 
+    setGeneratingBill(true);
     try {
       // Calculate totals from pay items
       const { totalActualCost, totalBillingAmount } = calculateTotals();
@@ -810,6 +821,8 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
       const errorMessage = error.response?.data?.message || error.message || 'Error generating invoice';
       setMessage(`❌ ${errorMessage}`);
       setTimeout(() => setMessage(''), 5000);
+    } finally {
+      setGeneratingBill(false);
     }
   };
 
@@ -952,6 +965,7 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
   const submitPayment = async () => {
     if (!selectedBillForPayment) return;
     
+    setSubmittingPayment(true);
     try {
       const { totalActualCost, totalBillingAmount } = calculateTotals();
       const billingTotal = parseFloat(selectedBillForPayment.billingAmount) || totalBillingAmount || parseFloat(selectedBillForPayment.grossTotal) || parseFloat(selectedBillForPayment.amount) || 0;
@@ -1055,6 +1069,8 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
       const errorMsg = error.response?.data?.message || error.message || 'Error recording payment';
       setMessage(`Error: ${errorMsg}`);
       setTimeout(() => setMessage(''), 5000);
+    } finally {
+      setSubmittingPayment(false);
     }
   };
 
@@ -1715,9 +1731,17 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
               Pay Items Management
             </h3>
             
-            {loadingSettlement && <p className="text-blue-600">Loading pay items...</p>}
+            {(loadingSettlement || loadingPayItems) && (
+              <div className="flex items-center gap-3 py-6 px-4 bg-white rounded-xl border border-blue-100 shadow-xs mb-4">
+                <svg className="w-5 h-5 animate-spin text-blue-600" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+                <span className="text-sm font-medium text-gray-700">Loading pay items...</span>
+              </div>
+            )}
             
-            {!loadingSettlement && payItems.length > 0 && (
+            {!loadingSettlement && !loadingPayItems && payItems.length > 0 && (
                   <div className="mt-4">
                     {/* Invoice Locked Notification */}
                     {isInvoiceLocked && (
@@ -1989,9 +2013,22 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
                               )}
                               <button
                                 onClick={savePayItems}
-                                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition"
+                                disabled={savingPayItems}
+                                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white rounded-lg font-medium transition flex items-center gap-2 shadow-sm"
                               >
-                                💾 Save Pay Items with Billing Amounts
+                                {savingPayItems ? (
+                                  <>
+                                    <svg className="w-4 h-4 animate-spin text-white" viewBox="0 0 24 24" fill="none">
+                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                                    </svg>
+                                    <span>Saving Pay Items with Billing Amounts...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span>💾 Save Pay Items with Billing Amounts</span>
+                                  </>
+                                )}
                               </button>
                             </div>
                           )}
@@ -2016,16 +2053,29 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
                               )}
                               <button
                                 onClick={generateBill}
-                                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition flex items-center gap-2 shadow-sm"
+                                disabled={generatingBill}
+                                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 disabled:cursor-not-allowed text-white rounded-lg font-medium transition flex items-center gap-2 shadow-sm"
                               >
-                                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                                  <polyline points="14 2 14 8 20 8"></polyline>
-                                  <line x1="16" y1="13" x2="8" y2="13"></line>
-                                  <line x1="16" y1="17" x2="8" y2="17"></line>
-                                  <polyline points="10 9 9 9 8 9"></polyline>
-                                </svg>
-                                {bills.length === 0 ? 'Generate Invoice' : 'Update Invoice'}
+                                {generatingBill ? (
+                                  <>
+                                    <svg className="w-4 h-4 animate-spin text-white" viewBox="0 0 24 24" fill="none">
+                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                                    </svg>
+                                    <span>{bills.length === 0 ? 'Generating Invoice...' : 'Updating Invoice...'}</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                      <polyline points="14 2 14 8 20 8"></polyline>
+                                      <line x1="16" y1="13" x2="8" y2="13"></line>
+                                      <line x1="16" y1="17" x2="8" y2="17"></line>
+                                      <polyline points="10 9 9 9 8 9"></polyline>
+                                    </svg>
+                                    {bills.length === 0 ? 'Generate Invoice' : 'Update Invoice'}
+                                  </>
+                                )}
                               </button>
                             </div>
                           )}
@@ -2529,11 +2579,23 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
                 </button>
                 <button
                   onClick={submitPayment}
-                  disabled={paymentMode === 'partial' && (!partialPaymentAmount || parseFloat(partialPaymentAmount) <= 0)}
-                  className="px-5 py-2.5 bg-gray-900 hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg font-semibold text-sm transition flex items-center gap-2"
+                  disabled={submittingPayment || (paymentMode === 'partial' && (!partialPaymentAmount || parseFloat(partialPaymentAmount) <= 0))}
+                  className="px-5 py-2.5 bg-gray-900 hover:bg-gray-800 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-lg font-semibold text-sm transition flex items-center gap-2"
                 >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-4 h-4"><polyline points="20 6 9 17 4 12"/></svg>
-                  Confirm Payment
+                  {submittingPayment ? (
+                    <>
+                      <svg className="w-4 h-4 animate-spin text-white" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                      </svg>
+                      <span>Processing Payment...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-4 h-4"><polyline points="20 6 9 17 4 12"/></svg>
+                      <span>Confirm Payment</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>

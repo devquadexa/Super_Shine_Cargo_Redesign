@@ -160,7 +160,7 @@ class MSSQLCashBalanceSettlementRepository {
     let relatedAssignments = [];
     if (row.relatedAssignments) {
       try { relatedAssignments = JSON.parse(row.relatedAssignments); }
-      catch (e) { console.log('Error parsing relatedAssignments JSON:', e.message); }
+      catch (e) { console.error('Error parsing relatedAssignments JSON:', e.message); }
     }
 
     const entity = new CashBalanceSettlement({

@@ -14,14 +14,12 @@ class UpdatePaymentStatus {
       throw new Error(`Invalid status: ${status}. Must be one of: ${validStatuses.join(', ')}`);
     }
     
-    // Check if payment exists
-    const payment = await this.paymentRepository.findById(paymentId);
-    if (!payment) {
+    // Update status
+    const updated = await this.paymentRepository.updateStatus(paymentId, status, new Date());
+    if (!updated) {
       throw new Error('Payment not found');
     }
-    
-    // Update status
-    return await this.paymentRepository.updateStatus(paymentId, status, new Date());
+    return updated;
   }
 }
 

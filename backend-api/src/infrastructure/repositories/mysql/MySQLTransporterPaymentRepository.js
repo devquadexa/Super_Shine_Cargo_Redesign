@@ -28,10 +28,33 @@ class MySQLTransporterPaymentRepository extends BaseMySQLRepository {
       }
     });
 
+    this.clearCache();
     return { ...paymentData, paymentId, createdDate: created.createdDate };
   }
 
+  clearCache() {
+    this._cache = null;
+    this._cacheTime = 0;
+    try {
+      const container = require('../../di/container');
+      const jobRepo = container.get('jobRepository');
+      if (jobRepo && typeof jobRepo.clearCache === 'function') {
+        jobRepo.clearCache();
+      }
+      const transRepo = container.get('transporterRepository');
+      if (transRepo && typeof transRepo.clearCache === 'function') {
+        transRepo.clearCache();
+      }
+    } catch (e) {}
+  }
+
   async findAll(filters = {}) {
+    const hasFilters = Boolean((filters.status && filters.status !== 'All') || (filters.method && filters.method !== 'All') || filters.fromDate || filters.toDate);
+    const now = Date.now();
+    if (!hasFilters && this._cache && (now - this._cacheTime < 60000)) {
+      return this._cache;
+    }
+
     const where = {};
 
     if (filters.status && filters.status !== 'All') {
@@ -60,7 +83,7 @@ class MySQLTransporterPaymentRepository extends BaseMySQLRepository {
       ]
     });
 
-    return rows.map(tp => ({
+    const result = rows.map(tp => ({
       ...tp,
       amount: Number(tp.amount),
       chequeAmount: tp.chequeAmount ? Number(tp.chequeAmount) : null,
@@ -68,6 +91,12 @@ class MySQLTransporterPaymentRepository extends BaseMySQLRepository {
       shipmentCategory: tp.jobs?.shipmentCategory || null,
       customerName: tp.jobs?.customers?.name || null
     }));
+
+    if (!hasFilters) {
+      this._cache = result;
+      this._cacheTime = now;
+    }
+    return result;
   }
 
   async findByTransporterId(transporterId, filters = {}) {
@@ -132,6 +161,8 @@ class MySQLTransporterPaymentRepository extends BaseMySQLRepository {
       where: { paymentId },
       data
     });
+
+    this.clearCache();
 
     return {
       ...updated,

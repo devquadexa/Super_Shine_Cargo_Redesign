@@ -1,4 +1,7 @@
 const mysql = require('mysql2/promise');
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../../../.env') });
+require('dotenv').config();
 
 const requiredEnvVars = ['DB_USER'];
 const missingEnvVars = requiredEnvVars.filter(varName => process.env[varName] === undefined);
@@ -7,6 +10,9 @@ if (missingEnvVars.length > 0) {
   console.warn('⚠️ Missing recommended MySQL environment variables:', missingEnvVars.join(', '));
 }
 
+const isRemoteHost = process.env.DB_HOST && process.env.DB_HOST !== 'localhost' && process.env.DB_HOST !== '127.0.0.1';
+const useSSL = process.env.DB_SSL === 'true' || isRemoteHost;
+
 const config = {
   host: process.env.DB_HOST || process.env.DB_SERVER || 'localhost',
   port: parseInt(process.env.DB_PORT, 10) || 3306,
@@ -14,14 +20,18 @@ const config = {
   password: process.env.DB_PASSWORD !== undefined ? process.env.DB_PASSWORD : '',
   database: process.env.DB_NAME || process.env.DB_DATABASE || 'super_shine_cargo',
   waitForConnections: true,
-  connectionLimit: 15,
+  connectionLimit: 25,
   queueLimit: 0,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 0,
   dateStrings: true, // Prevents unintended timezone shifts on date/time columns
-  multipleStatements: true
+  multipleStatements: true,
+  ...(useSSL ? { ssl: { rejectUnauthorized: false } } : {})
 };
 
 console.log('📊 MySQL Database Configuration:');
 console.log(`   Host: ${config.host}:${config.port}`);
+console.log(`   SSL: ${useSSL ? 'Enabled (Google Cloud SQL / Remote)' : 'Disabled (Local)'}`);
 console.log(`   Database: ${config.database}`);
 console.log(`   User: ${config.user}`);
 console.log(`   Password: ${config.password ? '*'.repeat(config.password.length) : '(empty)'}`);

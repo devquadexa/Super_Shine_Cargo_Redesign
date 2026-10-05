@@ -39,7 +39,6 @@ class MarkBillAsPaid {
     if (this.jobRepository) {
       try {
         await this.jobRepository.updateStatus(bill.jobId, 'Payment Collected');
-        console.log(`✓ Job ${bill.jobId} status updated to: Payment Collected`);
       } catch (err) {
         console.error('Error updating job status after full payment:', err);
         // Non-fatal - payment is already recorded
@@ -88,7 +87,6 @@ class MarkBillAsPaid {
         });
         
         await this.paymentRepository.create(payment);
-        console.log(`✓ Payment record created: ${paymentId} for bill ${billId}`);
       } catch (error) {
         console.error('Error creating payment record:', error);
         // Don't fail the bill update if payment record creation fails

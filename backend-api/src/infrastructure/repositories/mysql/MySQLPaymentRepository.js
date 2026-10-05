@@ -7,28 +7,41 @@ class MySQLPaymentRepository extends BaseMySQLRepository {
     super(dbConnection);
   }
 
-  async create(payment) {
-    const data = {
-      paymentId: payment.paymentId,
-      jobId: payment.jobId,
-      customerId: payment.customerId,
-      customerName: payment.customerName || null,
-      invoiceNumber: payment.invoiceNumber || null,
-      billId: payment.billId || null,
-      paymentMethod: payment.paymentMethod,
-      paymentDate: payment.paymentDate ? new Date(payment.paymentDate) : new Date(),
-      amount: payment.amount,
-      status: payment.status || 'Pending',
-      chequeNumber: payment.chequeNumber || null,
-      chequeDate: payment.chequeDate ? new Date(payment.chequeDate) : null,
-      bankName: payment.bankName || null,
-      referenceNumber: payment.referenceNumber || null,
-      notes: payment.notes || null,
-      createdBy: payment.createdBy || null,
-      createdDate: new Date()
-    };
+  clearCache() {
+    this._cache = null;
+    this._cacheTime = 0;
+    try {
+      const container = require('../../di/container');
+      const jobRepo = container.get('jobRepository');
+      if (jobRepo && typeof jobRepo.clearCache === 'function') jobRepo.clearCache();
+      const billRepo = container.get('billRepository');
+      if (billRepo && typeof billRepo.clearCache === 'function') billRepo.clearCache();
+    } catch (e) {}
+  }
 
-    await this.prisma.payments.create({ data });
+  async create(payment) {
+    await this.prisma.payments.create({
+      data: {
+        paymentId: payment.paymentId,
+        jobId: payment.jobId,
+        customerId: payment.customerId,
+        customerName: payment.customerName || null,
+        invoiceNumber: payment.invoiceNumber || null,
+        billId: payment.billId || null,
+        paymentMethod: payment.paymentMethod,
+        paymentDate: payment.paymentDate ? new Date(payment.paymentDate) : new Date(),
+        amount: payment.amount,
+        status: payment.status || 'Pending',
+        chequeNumber: payment.chequeNumber || null,
+        chequeDate: payment.chequeDate ? new Date(payment.chequeDate) : null,
+        bankName: payment.bankName || null,
+        referenceNumber: payment.referenceNumber || null,
+        notes: payment.notes || null,
+        createdBy: payment.createdBy || null,
+        createdDate: new Date()
+      }
+    });
+    this.clearCache();
     return payment;
   }
 
@@ -41,6 +54,12 @@ class MySQLPaymentRepository extends BaseMySQLRepository {
   }
 
   async findAll(filters = {}) {
+    const hasFilters = Boolean(filters.status || filters.paymentMethod || filters.customerId || filters.jobId);
+    const now = Date.now();
+    if (!hasFilters && this._cache && (now - this._cacheTime < 60000)) {
+      return this._cache;
+    }
+
     const where = {};
     if (filters.status) where.status = filters.status;
     if (filters.paymentMethod) where.paymentMethod = filters.paymentMethod;
@@ -52,25 +71,20 @@ class MySQLPaymentRepository extends BaseMySQLRepository {
       include: { jobs: true },
       orderBy: { paymentDate: 'desc' }
     });
-    return rows.map(r => this.mapToEntity(r));
+    const result = rows.map(r => this.mapToEntity(r));
+    if (!hasFilters) {
+      this._cache = result;
+      this._cacheTime = now;
+    }
+    return result;
   }
 
   async findByJob(jobId) {
-    const rows = await this.prisma.payments.findMany({
-      where: { jobId },
-      include: { jobs: true },
-      orderBy: { paymentDate: 'desc' }
-    });
-    return rows.map(r => this.mapToEntity(r));
+    return this.findAll({ jobId });
   }
 
   async findByCustomer(customerId) {
-    const rows = await this.prisma.payments.findMany({
-      where: { customerId },
-      include: { jobs: true },
-      orderBy: { paymentDate: 'desc' }
-    });
-    return rows.map(r => this.mapToEntity(r));
+    return this.findAll({ customerId });
   }
 
   async findByBillId(billId) {
@@ -92,67 +106,63 @@ class MySQLPaymentRepository extends BaseMySQLRepository {
   }
 
   async findByStatus(status) {
-    const rows = await this.prisma.payments.findMany({
-      where: { status },
-      include: { jobs: true },
-      orderBy: { paymentDate: 'desc' }
-    });
-    return rows.map(r => this.mapToEntity(r));
+    return this.findAll({ status });
   }
 
   async findByPaymentMethod(paymentMethod) {
-    const rows = await this.prisma.payments.findMany({
-      where: { paymentMethod },
-      include: { jobs: true },
-      orderBy: { paymentDate: 'desc' }
-    });
-    return rows.map(r => this.mapToEntity(r));
+    return this.findAll({ paymentMethod });
   }
 
   async updateStatus(paymentId, status, statusDate = new Date()) {
-    const data = {
-      status,
-      updatedDate: new Date()
-    };
-    if (status === 'Cleared') {
-      data.clearedDate = statusDate ? new Date(statusDate) : new Date();
-    } else if (status === 'Bounced') {
-      data.bouncedDate = statusDate ? new Date(statusDate) : new Date();
-    }
+    const data = { status, updatedDate: new Date() };
+    if (status === 'Cleared') data.clearedDate = statusDate ? new Date(statusDate) : new Date();
+    else if (status === 'Bounced') data.bouncedDate = statusDate ? new Date(statusDate) : new Date();
 
-    await this.prisma.payments.update({
+    const row = await this.prisma.payments.update({
       where: { paymentId },
+      data,
+      include: { jobs: true }
+    });
+    this.clearCache();
+    return row ? this.mapToEntity(row) : null;
+  }
+
+  async updateStatusByChequeNumber(chequeNumber, status, statusDate = new Date()) {
+    const data = { status, updatedDate: new Date() };
+    if (status === 'Cleared') data.clearedDate = statusDate ? new Date(statusDate) : new Date();
+    else if (status === 'Bounced') data.bouncedDate = statusDate ? new Date(statusDate) : new Date();
+
+    const result = await this.prisma.payments.updateMany({
+      where: { chequeNumber },
       data
     });
-    return this.findById(paymentId);
+    this.clearCache();
+    return result;
   }
 
   async update(paymentId, payment) {
-    const existing = await this.findById(paymentId);
-    if (!existing) return null;
+    const data = { updatedDate: new Date() };
+    if (payment.status !== undefined) data.status = payment.status;
+    if (payment.amount !== undefined) data.amount = payment.amount;
+    if (payment.chequeNumber !== undefined) data.chequeNumber = payment.chequeNumber;
+    if (payment.chequeDate !== undefined) data.chequeDate = payment.chequeDate ? new Date(payment.chequeDate) : null;
+    if (payment.bankName !== undefined) data.bankName = payment.bankName;
+    if (payment.referenceNumber !== undefined) data.referenceNumber = payment.referenceNumber;
+    if (payment.notes !== undefined) data.notes = payment.notes;
 
-    const data = {
-      status: payment.status !== undefined ? payment.status : existing.status,
-      amount: payment.amount !== undefined ? payment.amount : existing.amount,
-      chequeNumber: payment.chequeNumber !== undefined ? payment.chequeNumber : existing.chequeNumber,
-      chequeDate: payment.chequeDate !== undefined ? (payment.chequeDate ? new Date(payment.chequeDate) : null) : existing.chequeDate,
-      bankName: payment.bankName !== undefined ? payment.bankName : existing.bankName,
-      referenceNumber: payment.referenceNumber !== undefined ? payment.referenceNumber : existing.referenceNumber,
-      notes: payment.notes !== undefined ? payment.notes : existing.notes,
-      updatedDate: new Date()
-    };
-
-    await this.prisma.payments.update({
+    const row = await this.prisma.payments.update({
       where: { paymentId },
-      data
+      data,
+      include: { jobs: true }
     });
-    return this.findById(paymentId);
+    this.clearCache();
+    return row ? this.mapToEntity(row) : null;
   }
 
   async delete(paymentId) {
-    await this.prisma.payments.delete({
-      where: { paymentId }
-    }).catch(() => null);
+    await this.prisma.payments.delete({ where: { paymentId } }).catch(() => null);
+    this.clearCache();
+    return true;
   }
 
   async generateNextId() {

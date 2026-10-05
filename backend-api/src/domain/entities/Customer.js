@@ -16,7 +16,7 @@ class Customer {
     addressDistrict, // District (left side)
     addressCity, // City (right side)
     addressCountry = 'Sri Lanka', // Country with default
-    // Office Address (Same structure)
+    // Office Address (Same structure - kept for backward compatibility)
     officeAddressNumber,
     officeAddressStreet1,
     officeAddressStreet2,
@@ -24,6 +24,7 @@ class Customer {
     officeAddressCity, // City (right side)
     officeAddressCountry = 'Sri Lanka', // Country with default
     isOfficeAddressSame = false,
+    deliveryAddresses = [], // Array of delivery address objects
     website,
     registrationDate = new Date(),
     creditPeriodDays = 30,
@@ -42,17 +43,44 @@ class Customer {
     this.addressDistrict = addressDistrict; // District (left side)
     this.addressCity = addressCity; // City (right side)
     this.addressCountry = addressCountry; // Country
-    // Office Address
-    this.officeAddressNumber = officeAddressNumber;
-    this.officeAddressStreet1 = officeAddressStreet1;
-    this.officeAddressStreet2 = officeAddressStreet2;
-    this.officeAddressDistrict = officeAddressDistrict; // District (left side)
-    this.officeAddressCity = officeAddressCity; // City (right side)
-    this.officeAddressCountry = officeAddressCountry; // Country
-    this.isOfficeAddressSame = isOfficeAddressSame;
+    
+    // Delivery Addresses (Multiple delivery locations)
+    if (deliveryAddresses && deliveryAddresses.length > 0) {
+      this.deliveryAddresses = deliveryAddresses;
+      const primaryDA = deliveryAddresses[0];
+      this.officeAddressNumber = officeAddressNumber || primaryDA.addressNumber || addressNumber;
+      this.officeAddressStreet1 = officeAddressStreet1 || primaryDA.addressStreet1 || addressStreet1;
+      this.officeAddressStreet2 = officeAddressStreet2 || primaryDA.addressStreet2 || addressStreet2;
+      this.officeAddressDistrict = officeAddressDistrict || primaryDA.addressDistrict || addressDistrict;
+      this.officeAddressCity = officeAddressCity || primaryDA.addressCity || addressCity;
+      this.officeAddressCountry = officeAddressCountry || primaryDA.addressCountry || addressCountry || 'Sri Lanka';
+      this.isOfficeAddressSame = isOfficeAddressSame !== undefined ? isOfficeAddressSame : Boolean(primaryDA.isSameAsResidential);
+    } else {
+      this.officeAddressNumber = officeAddressNumber;
+      this.officeAddressStreet1 = officeAddressStreet1;
+      this.officeAddressStreet2 = officeAddressStreet2;
+      this.officeAddressDistrict = officeAddressDistrict;
+      this.officeAddressCity = officeAddressCity;
+      this.officeAddressCountry = officeAddressCountry;
+      this.isOfficeAddressSame = isOfficeAddressSame;
+      this.deliveryAddresses = officeAddressStreet1 ? [{
+        deliveryAddressId: 1,
+        label: 'Primary Delivery Address',
+        addressNumber: officeAddressNumber,
+        addressStreet1: officeAddressStreet1,
+        addressStreet2: officeAddressStreet2,
+        addressDistrict: officeAddressDistrict,
+        addressCity: officeAddressCity,
+        addressCountry: officeAddressCountry || 'Sri Lanka',
+        isSameAsResidential: Boolean(isOfficeAddressSame)
+      }] : [];
+    }
+
     this.website = website;
     this.registrationDate = registrationDate;
-    this.creditPeriodDays = creditPeriodDays;
+    this.creditPeriodDays = (creditPeriodDays !== undefined && creditPeriodDays !== null && creditPeriodDays !== '')
+      ? (parseInt(creditPeriodDays, 10) || 30)
+      : 30;
     this.isActive = isActive;
     this.contactPersons = contactPersons;
     this.categories = categories;
@@ -95,26 +123,36 @@ class Customer {
       errors.push('Country is required');
     }
 
-    // Office address validation (if not same as residential)
-    if (!this.isOfficeAddressSame) {
+    // Delivery addresses validation
+    if (this.deliveryAddresses && this.deliveryAddresses.length > 0) {
+      this.deliveryAddresses.forEach((da, idx) => {
+        if (!da.isSameAsResidential) {
+          if (!da.addressNumber || !da.addressNumber.trim()) {
+            errors.push(`Delivery Address ${idx + 1}: Address number is required`);
+          }
+          if (!da.addressStreet1 || !da.addressStreet1.trim()) {
+            errors.push(`Delivery Address ${idx + 1}: Street name 1 is required`);
+          }
+          if (!da.addressDistrict || !da.addressDistrict.trim()) {
+            errors.push(`Delivery Address ${idx + 1}: District is required`);
+          }
+          if (!da.addressCity || !da.addressCity.trim()) {
+            errors.push(`Delivery Address ${idx + 1}: City is required`);
+          }
+        }
+      });
+    } else if (!this.isOfficeAddressSame && this.officeAddressStreet1) {
       if (!this.officeAddressNumber || this.officeAddressNumber.trim().length === 0) {
-        errors.push('Office address number is required');
+        errors.push('Delivery address number is required');
       }
-      
       if (!this.officeAddressStreet1 || this.officeAddressStreet1.trim().length === 0) {
-        errors.push('Office street name is required');
+        errors.push('Delivery street name is required');
       }
-      
       if (!this.officeAddressDistrict || this.officeAddressDistrict.trim().length === 0) {
-        errors.push('Office district is required');
+        errors.push('Delivery district is required');
       }
-      
       if (!this.officeAddressCity || this.officeAddressCity.trim().length === 0) {
-        errors.push('Office city is required');
-      }
-
-      if (!this.officeAddressCountry || this.officeAddressCountry.trim().length === 0) {
-        errors.push('Office country is required');
+        errors.push('Delivery city is required');
       }
     }
 

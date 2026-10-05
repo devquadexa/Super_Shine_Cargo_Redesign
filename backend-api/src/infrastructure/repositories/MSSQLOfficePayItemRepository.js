@@ -14,7 +14,6 @@ class MSSQLOfficePayItemRepository extends IOfficePayItemRepository {
 
   async create(officePayItem) {
     try {
-      console.log('MSSQLOfficePayItemRepository.create - START');
       const pool = await this.db();
 
       await pool.request()
@@ -26,7 +25,6 @@ class MSSQLOfficePayItemRepository extends IOfficePayItemRepository {
         .input('HasBill',         this.sql.Bit,            officePayItem.hasBill || false)
         .execute('usp_CreateOfficePayItem');
 
-      console.log('MSSQLOfficePayItemRepository.create - SUCCESS');
       return officePayItem;
     } catch (error) {
       console.error('MSSQLOfficePayItemRepository.create - ERROR:', error);
@@ -52,14 +50,12 @@ class MSSQLOfficePayItemRepository extends IOfficePayItemRepository {
 
   async findByJobId(jobId) {
     try {
-      console.log('MSSQLOfficePayItemRepository.findByJobId - jobId:', jobId);
       const pool = await this.db();
 
       const result = await pool.request()
         .input('JobId', this.sql.VarChar(50), jobId)
         .execute('usp_GetOfficePayItemsByJob');
 
-      console.log('MSSQLOfficePayItemRepository.findByJobId - found items:', result.recordset.length);
       return result.recordset.map(row => new OfficePayItem(row));
     } catch (error) {
       console.error('MSSQLOfficePayItemRepository.findByJobId - ERROR:', error);
@@ -83,7 +79,6 @@ class MSSQLOfficePayItemRepository extends IOfficePayItemRepository {
 
   async update(officePayItemId, updateData) {
     try {
-      console.log('MSSQLOfficePayItemRepository.update - START');
       const pool = await this.db();
 
       await pool.request()
@@ -94,7 +89,6 @@ class MSSQLOfficePayItemRepository extends IOfficePayItemRepository {
         .input('HasBill',         this.sql.Bit,            updateData.hasBill       ?? null)
         .execute('usp_UpdateOfficePayItem');
 
-      console.log('MSSQLOfficePayItemRepository.update - SUCCESS');
       return this.findById(officePayItemId);
     } catch (error) {
       console.error('MSSQLOfficePayItemRepository.update - ERROR:', error);

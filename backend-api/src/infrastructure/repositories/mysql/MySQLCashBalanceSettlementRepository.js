@@ -6,6 +6,11 @@ class MySQLCashBalanceSettlementRepository extends BaseMySQLRepository {
     super(dbConnection);
   }
 
+  clearCache() {
+    this._cache = null;
+    this._cacheTime = 0;
+  }
+
   async create(settlement) {
     const data = {
       settlementId: settlement.settlementId,
@@ -26,6 +31,7 @@ class MySQLCashBalanceSettlementRepository extends BaseMySQLRepository {
     };
 
     await this.prisma.cashbalancesettlements.create({ data });
+    this.clearCache();
     return settlement;
   }
 
@@ -37,6 +43,12 @@ class MySQLCashBalanceSettlementRepository extends BaseMySQLRepository {
   }
 
   async findAll(filters = {}) {
+    const hasFilters = Boolean(filters.userId || filters.managerId || filters.status || filters.settlementType);
+    const now = Date.now();
+    if (!hasFilters && this._cache && (now - this._cacheTime < 30000)) {
+      return this._cache;
+    }
+
     const where = {};
     if (filters.userId) where.userId = filters.userId;
     if (filters.managerId) where.managerId = filters.managerId;
@@ -47,69 +59,53 @@ class MySQLCashBalanceSettlementRepository extends BaseMySQLRepository {
       where,
       orderBy: { requestDate: 'desc' }
     });
-    return rows.map(r => this.mapToEntity(r));
+    const result = rows.map(r => this.mapToEntity(r));
+
+    if (!hasFilters) {
+      this._cache = result;
+      this._cacheTime = now;
+    }
+    return result;
   }
 
   async findByUser(userId) {
-    const rows = await this.prisma.cashbalancesettlements.findMany({
-      where: { userId },
-      orderBy: { requestDate: 'desc' }
-    });
-    return rows.map(r => this.mapToEntity(r));
+    return this.findAll({ userId });
   }
 
   async findByManager(managerId) {
-    const rows = await this.prisma.cashbalancesettlements.findMany({
-      where: { managerId },
-      orderBy: { requestDate: 'desc' }
-    });
-    return rows.map(r => this.mapToEntity(r));
+    return this.findAll({ managerId });
   }
 
   async findPendingSettlements() {
-    const rows = await this.prisma.cashbalancesettlements.findMany({
-      where: { status: 'PENDING' },
-      orderBy: { requestDate: 'desc' }
-    });
-    return rows.map(r => this.mapToEntity(r));
+    return this.findAll({ status: 'PENDING' });
   }
 
   async findApprovedSettlements() {
-    const rows = await this.prisma.cashbalancesettlements.findMany({
-      where: { status: 'APPROVED' },
-      orderBy: { requestDate: 'desc' }
-    });
-    return rows.map(r => this.mapToEntity(r));
+    return this.findAll({ status: 'APPROVED' });
   }
 
   async findRejectedSettlements() {
-    const rows = await this.prisma.cashbalancesettlements.findMany({
-      where: { status: 'REJECTED' },
-      orderBy: { requestDate: 'desc' }
-    });
-    return rows.map(r => this.mapToEntity(r));
+    return this.findAll({ status: 'REJECTED' });
   }
 
   async update(settlementId, settlement) {
-    const existing = await this.findById(settlementId);
-    if (!existing) return null;
-
+    // Avoid double-fetch: update directly and return the updated row
     const data = {
-      managerId: settlement.managerId !== undefined ? settlement.managerId : existing.managerId,
-      managerName: settlement.managerName !== undefined ? settlement.managerName : existing.managerName,
-      status: settlement.status !== undefined ? settlement.status : existing.status,
-      approvedDate: settlement.approvedDate !== undefined ? (settlement.approvedDate ? new Date(settlement.approvedDate) : null) : existing.approvedDate,
-      completedDate: settlement.completedDate !== undefined ? (settlement.completedDate ? new Date(settlement.completedDate) : null) : existing.completedDate,
-      managerNotes: settlement.managerNotes !== undefined ? settlement.managerNotes : existing.managerNotes,
-      updatedBy: settlement.updatedBy !== undefined ? settlement.updatedBy : existing.updatedBy,
       updatedDate: new Date()
     };
+    if (settlement.managerId !== undefined) data.managerId = settlement.managerId;
+    if (settlement.managerName !== undefined) data.managerName = settlement.managerName;
+    if (settlement.status !== undefined) data.status = settlement.status;
+    if (settlement.approvedDate !== undefined) data.approvedDate = settlement.approvedDate ? new Date(settlement.approvedDate) : null;
+    if (settlement.completedDate !== undefined) data.completedDate = settlement.completedDate ? new Date(settlement.completedDate) : null;
+    if (settlement.managerNotes !== undefined) data.managerNotes = settlement.managerNotes;
+    if (settlement.updatedBy !== undefined) data.updatedBy = settlement.updatedBy;
 
     const updated = await this.prisma.cashbalancesettlements.update({
       where: { settlementId },
       data
     });
-
+    this.clearCache();
     return this.mapToEntity(updated);
   }
 
@@ -117,85 +113,70 @@ class MySQLCashBalanceSettlementRepository extends BaseMySQLRepository {
     await this.prisma.cashbalancesettlements.delete({
       where: { settlementId }
     }).catch(() => null);
+    this.clearCache();
   }
 
   async generateNextId() {
     return this.generateNextFormattedId('cashbalancesettlements', 'settlementId', 'CBS', 6);
   }
 
+  /**
+   * Returns summary stats via a single GROUP BY SQL query instead of
+   * fetching all rows and counting in JS.
+   */
   async getSettlementsSummary() {
-    const all = await this.prisma.cashbalancesettlements.findMany({
-      select: { status: true, amount: true }
-    });
+    const mysqlDb = require('../../../config/mysqlDatabase');
+    const rows = await mysqlDb.query(
+      `SELECT status, COUNT(*) AS cnt, COALESCE(SUM(amount),0) AS total
+       FROM cashbalancesettlements
+       GROUP BY status`
+    );
 
-    let totalSettlements = all.length;
-    let pendingCount = 0;
-    let approvedCount = 0;
-    let completedCount = 0;
-    let rejectedCount = 0;
-    let totalAmount = 0;
-    let completedAmount = 0;
+    let totalSettlements = 0, pendingCount = 0, approvedCount = 0,
+      completedCount = 0, rejectedCount = 0, totalAmount = 0, completedAmount = 0;
 
-    for (const item of all) {
-      const amt = Number(item.amount) || 0;
+    for (const r of rows) {
+      const cnt = Number(r.cnt || 0);
+      const amt = Number(r.total || 0);
+      totalSettlements += cnt;
       totalAmount += amt;
-      if (item.status === 'PENDING') pendingCount++;
-      else if (item.status === 'APPROVED') approvedCount++;
-      else if (item.status === 'COMPLETED') {
-        completedCount++;
-        completedAmount += amt;
-      } else if (item.status === 'REJECTED') {
-        rejectedCount++;
-      }
+      if (r.status === 'PENDING') { pendingCount = cnt; }
+      else if (r.status === 'APPROVED') { approvedCount = cnt; }
+      else if (r.status === 'COMPLETED') { completedCount = cnt; completedAmount = amt; }
+      else if (r.status === 'REJECTED') { rejectedCount = cnt; }
     }
 
-    return [{
-      totalSettlements,
-      pendingCount,
-      approvedCount,
-      completedCount,
-      rejectedCount,
-      totalAmount,
-      completedAmount
-    }];
+    return [{ totalSettlements, pendingCount, approvedCount, completedCount, rejectedCount, totalAmount, completedAmount }];
   }
 
+  /**
+   * Per-user summary via single GROUP BY query.
+   */
   async getUserSettlementsSummary(userId) {
-    const all = await this.prisma.cashbalancesettlements.findMany({
-      where: { userId },
-      select: { status: true, amount: true }
-    });
+    const mysqlDb = require('../../../config/mysqlDatabase');
+    const rows = await mysqlDb.query(
+      `SELECT status, COUNT(*) AS cnt, COALESCE(SUM(amount),0) AS total
+       FROM cashbalancesettlements
+       WHERE userId = ?
+       GROUP BY status`,
+      [userId]
+    );
 
-    let totalSettlements = all.length;
-    let pendingCount = 0;
-    let approvedCount = 0;
-    let completedCount = 0;
-    let rejectedCount = 0;
-    let totalAmount = 0;
-    let completedAmount = 0;
+    let totalSettlements = 0, pendingCount = 0, approvedCount = 0,
+      completedCount = 0, rejectedCount = 0, totalAmount = 0, completedAmount = 0;
 
-    for (const item of all) {
-      const amt = Number(item.amount) || 0;
+    for (const r of rows) {
+      const cnt = Number(r.cnt || 0);
+      const amt = Number(r.total || 0);
+      totalSettlements += cnt;
       totalAmount += amt;
-      if (item.status === 'PENDING') pendingCount++;
-      else if (item.status === 'APPROVED') approvedCount++;
-      else if (item.status === 'COMPLETED') {
-        completedCount++;
-        completedAmount += amt;
-      } else if (item.status === 'REJECTED') {
-        rejectedCount++;
-      }
+      if (r.status === 'PENDING') { pendingCount = cnt; }
+      else if (r.status === 'APPROVED') { approvedCount = cnt; }
+      else if (r.status === 'COMPLETED') { completedCount = cnt; completedAmount = amt; }
+      else if (r.status === 'REJECTED') { rejectedCount = cnt; }
     }
 
-    return [{
-      totalSettlements,
-      pendingCount,
-      approvedCount,
-      completedCount,
-      rejectedCount,
-      totalAmount,
-      completedAmount
-    }];
+    return [{ totalSettlements, pendingCount, approvedCount, completedCount, rejectedCount, totalAmount, completedAmount }];
   }
 
   mapToEntity(row) {

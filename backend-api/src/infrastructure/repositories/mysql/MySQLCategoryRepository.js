@@ -8,10 +8,12 @@ class MySQLCategoryRepository extends BaseMySQLRepository {
   }
 
   async findAll() {
+    if (this._cache) return this._cache;
     const rows = await this.prisma.categories.findMany({
       orderBy: { categoryName: 'asc' }
     });
-    return rows.map(row => this.mapToEntity(row));
+    this._cache = rows.map(row => this.mapToEntity(row));
+    return this._cache;
   }
 
   async findById(categoryId) {

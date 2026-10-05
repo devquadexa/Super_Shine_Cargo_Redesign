@@ -76,12 +76,15 @@ class MySQLPayItemTemplateRepository extends BaseMySQLRepository {
   }
 
   async reorder(shipmentCategory, items) {
-    for (let i = 0; i < items.length; i++) {
-      await this.prisma.payitemtemplates.update({
-        where: { templateId: parseInt(items[i].templateId, 10) },
-        data: { itemOrder: i + 1 }
-      });
-    }
+    if (!items || items.length === 0) return { success: true };
+    await this.prisma.$transaction(
+      items.map((item, i) =>
+        this.prisma.payitemtemplates.update({
+          where: { templateId: parseInt(item.templateId, 10) },
+          data: { itemOrder: i + 1 }
+        })
+      )
+    );
     return { success: true };
   }
 }

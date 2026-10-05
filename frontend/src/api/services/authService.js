@@ -2,7 +2,10 @@ import apiClient from '../client';
 
 export const authService = {
   login: async (username, password) => {
-    const response = await apiClient.post('/auth/login', { username, password });
+    const response = await apiClient.post('/auth/login', { username, password }, {
+      skipMutation: true,
+      headers: { 'x-skip-mutation': 'true' }
+    });
     return response.data;
   },
 

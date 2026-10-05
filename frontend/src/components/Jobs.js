@@ -68,12 +68,15 @@ function Jobs() {
   const [pettyCashAssignments, setPettyCashAssignments] = useState({}); // Track petty cash assignments by jobId
   const [invoicedJobIds, setInvoicedJobIds] = useState(new Set()); // Track jobs with invoices
   const [loadingPettyCash, setLoadingPettyCash] = useState(true); // Track loading state
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     fetchJobs();
     fetchCustomers(); // All users need to see customer names
     fetchTransporters();
-    fetchInvoicedJobs(); // Fetch jobs that already have invoices
+    if (user?.role !== 'Waff Clerk') {
+      fetchInvoicedJobs(); // Fetch jobs that already have invoices
+    }
     if (user?.role === 'Admin' || user?.role === 'Super Admin' || user?.role === 'Manager' || user?.role === 'Office Executive') {
       fetchUsers();
     }
@@ -119,63 +122,48 @@ function Jobs() {
 
   const fetchJobs = async () => {
     try {
-      setLoadingPettyCash(true); // Set loading state
+      setLoadingPettyCash(true);
       const data = await jobService.getAll();
-      console.log('Fetched jobs data:', data);
-      console.log('First job details:', JSON.stringify(data[0], null, 2));
-      console.log('First job assignments:', data[0]?.assignments);
-      // Ensure all jobs have a status
-      const jobsWithStatus = data.map(job => ({
+      const jobsWithStatus = (data || []).map(job => ({
         ...job,
         status: job.status || 'Open'
-        // Don't override assignments - keep what came from backend
       }));
-      console.log('Jobs with status:', jobsWithStatus);
-      console.log('First job after mapping:', JSON.stringify(jobsWithStatus[0], null, 2));
       setJobs(jobsWithStatus);
       
       // Fetch petty cash assignments for all jobs
       await fetchAllPettyCashAssignments(jobsWithStatus);
+
+      // Automatically keep the view job modal synced with latest data without manual refresh
+      setViewJobModal(prev => {
+        if (!prev) return null;
+        const fresh = jobsWithStatus.find(j => j.jobId === prev.jobId);
+        return fresh || prev;
+      });
+
+      return jobsWithStatus;
     } catch (error) {
       console.error('Error fetching jobs:', error);
-      setLoadingPettyCash(false); // Reset loading state on error
+      setLoadingPettyCash(false);
+      return [];
     }
   };
 
-  // Fetch all petty cash assignments to determine settlement status
+  // Process petty cash assignments from job list (already loaded from backend)
   const fetchAllPettyCashAssignments = async (jobsList) => {
     try {
-      const token = localStorage.getItem('token');
       const assignmentsMap = {};
       
-      // Fetch petty cash assignments for each job
-      await Promise.all(
-        jobsList.map(async (job) => {
-          try {
-            const response = await fetch(`${API_BASE}/api/petty-cash-assignments/job/${job.jobId}/all`, {
-              headers: {
-                'Authorization': `Bearer ${token}`
-              }
-            });
-            
-            if (response.ok) {
-              const assignments = await response.json();
-              assignmentsMap[job.jobId] = Array.isArray(assignments) ? assignments : [];
-            } else {
-              assignmentsMap[job.jobId] = [];
-            }
-          } catch (error) {
-            console.error(`Error fetching petty cash for job ${job.jobId}:`, error);
-            assignmentsMap[job.jobId] = [];
-          }
-        })
-      );
+      // Each job already includes its petty cash assignments from the backend
+      // Eliminates firing dozens of simultaneous HTTP requests across the network
+      jobsList.forEach((job) => {
+        assignmentsMap[job.jobId] = Array.isArray(job.assignments) ? job.assignments : [];
+      });
       
       setPettyCashAssignments(assignmentsMap);
-      setLoadingPettyCash(false); // Data loaded successfully
+      setLoadingPettyCash(false);
     } catch (error) {
-      console.error('Error fetching petty cash assignments:', error);
-      setLoadingPettyCash(false); // Reset loading state on error
+      console.error('Error processing petty cash assignments:', error);
+      setLoadingPettyCash(false);
     }
   };
 
@@ -343,7 +331,9 @@ function Jobs() {
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     try {
       // Create the job first
       const jobResponse = await jobService.create(formData);
@@ -359,20 +349,13 @@ function Jobs() {
             notes: 'Initial assignment from job creation'
           });
           
-          if (response.data.success) {
+          if (response.data && response.data.success) {
             assignmentMessage = ` and assigned to ${selectedUsers.length} user${selectedUsers.length > 1 ? 's' : ''}`;
-          } else {
-            console.error('Assignment failed:', response.data);
-            assignmentMessage = ' (Note: Job created but user assignment failed)';
           }
         } catch (assignmentError) {
           console.error('Failed to assign users to job:', assignmentError);
-          console.error('Error response:', assignmentError.response?.data);
-          assignmentMessage = ' (Note: Job created but user assignment failed)';
         }
       }
-      
-      const customerName = customers.find(c => c.customerId === formData.customerId)?.name || formData.customerId;
       
       // Optionally create petty cash assignments
       if (pcAssignments.length > 0) {
@@ -390,7 +373,20 @@ function Jobs() {
         }
       }
 
-      setMessage(`Job created successfully${assignmentMessage}!`);
+      const customerObj = customers.find(c => c.customerId === formData.customerId);
+      const optimisticJob = {
+        ...formData,
+        jobId,
+        customerName: customerObj?.name || formData.customerId,
+        status: 'Open',
+        assignments: [],
+        assignedUsers: selectedUsers.map(uId => {
+          const u = users.find(usr => usr.userId === uId);
+          return { userId: uId, userName: u?.fullName || uId };
+        })
+      };
+
+      setJobs(prev => [optimisticJob, ...prev]);
       setFormData({ 
         customerId: '', 
         blNumber: '', 
@@ -411,12 +407,13 @@ function Jobs() {
       setPcAssignments([]);
       setPcFormRow({ userId: '', amount: '' });
       fetchJobs();
-      setTimeout(() => setMessage(''), 5000);
     } catch (error) {
       console.error('Job creation error:', error);
       const errorMessage = error.response?.data?.message || error.message || 'Error creating job';
       setMessage(`Error creating job: ${errorMessage}`);
       setTimeout(() => setMessage(''), 5000);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -504,15 +501,14 @@ function Jobs() {
   };
 
   const updateStatus = async (jobId, status) => {
+    // Optimistic UI update immediately (0ms latency!)
+    setJobs(prev => prev.map(j => j.jobId === jobId ? { ...j, status } : j));
     try {
-      console.log('updateStatus called - jobId:', jobId, 'status:', status);
       await jobService.updateStatus(jobId, status);
       fetchJobs();
-      setMessage('Job status updated!');
-      setTimeout(() => setMessage(''), 3000);
     } catch (error) {
       console.error('Error updating status:', error);
-      console.error('Error response:', error.response?.data);
+      fetchJobs();
       setMessage(`Error updating status: ${error.response?.data?.message || error.message}`);
       setTimeout(() => setMessage(''), 5000);
     }
@@ -623,42 +619,77 @@ function Jobs() {
       if (!confirmFullReturn) return;
     }
 
+    const itemsPayload = validItems.map(item => ({
+      itemName: item.itemName,
+      actualCost: parseFloat(item.actualCost),
+      hasBill: item.hasBill || false
+    }));
+
+    // Calculate optimistic amounts
+    const totalSpent = itemsPayload.reduce((sum, item) => sum + item.actualCost, 0);
+    const assignedAmt = parseFloat(settleModal.assignedAmount || 0);
+    let optStatus = 'Settled';
+    if (totalSpent === 0 && assignedAmt > 0) optStatus = 'Full Petty Cash Returned';
+    else if (assignedAmt > totalSpent) optStatus = 'Balance To Be Return';
+    else if (totalSpent > assignedAmt) optStatus = 'Over Due';
+
+    const targetAssignmentId = settleModal.pettyAssignmentId || settleModal.assignmentId;
+    const targetGroupId = settleModal.groupId || `${viewJobModal?.jobId}_${settleModal.userId}`;
+
+    // 1. Immediately update viewJobModal in-place (0ms latency!)
+    setViewJobModal(prev => {
+      if (!prev) return null;
+      const prevAssignments = (prev.assignments || []).map(a => {
+        const matches = (targetAssignmentId && (a.pettyAssignmentId === targetAssignmentId || a.assignmentId === targetAssignmentId)) ||
+                        (a.groupId && a.groupId === targetGroupId) ||
+                        (a.userId === settleModal.userId);
+        if (matches) {
+          return {
+            ...a,
+            settledAmount: totalSpent,
+            status: optStatus
+          };
+        }
+        return a;
+      });
+      return {
+        ...prev,
+        assignments: prevAssignments
+      };
+    });
+
+    // 2. Close modal immediately (0ms UI latency!)
+    setSettleModal(null);
+    setSettleItems([{ itemName: '', actualCost: '', hasBill: false }]);
+
     setSettleLoading(true);
     try {
-      const itemsPayload = validItems.map(item => ({
-        itemName: item.itemName,
-        actualCost: parseFloat(item.actualCost),
-        hasBill: item.hasBill || false
-      }));
-
       // Use group settle if multiple assignments (like PettyCash.js)
       let url;
       if (settleModal.isGroupedSettlement && settleModal.groupAssignments?.length > 1) {
         const groupId = settleModal.groupId || `${settleModal.groupAssignments[0].jobId}_${settleModal.groupAssignments[0].userId}`;
         url = `/petty-cash-assignments/group/${encodeURIComponent(groupId)}/settle`;
       } else {
-        url = `/petty-cash-assignments/${settleModal.pettyAssignmentId}/settle`;
+        url = `/petty-cash-assignments/${targetAssignmentId}/settle`;
       }
 
-      const response = await apiClient.post(url, { items: itemsPayload });
+      await apiClient.post(url, { items: itemsPayload }, {
+        headers: {
+          'x-action-loading-message': 'Submitting settlement...',
+          'x-action-success-message': 'Settlement submitted successfully'
+        }
+      });
 
-      setMessage('✅ Settlement submitted successfully!');
-      setSettleModal(null);
-      setSettleItems([{ itemName: '', actualCost: '', hasBill: false }]);
+      // Refresh in background
       fetchJobs();
-      // Refresh view modal
-      if (viewJobModal) {
-        const data = await jobService.getAll();
-        const updatedJob = data.find(j => j.jobId === viewJobModal.jobId);
-        if (updatedJob) setViewJobModal(updatedJob);
-      }
     } catch (error) {
       console.error('Error settling:', error);
+      fetchJobs();
       const errorMsg = error.response?.data?.message || error.message || 'Error settling assignment';
       setMessage(`❌ ${errorMsg}`);
+      setTimeout(() => setMessage(''), 5000);
     } finally {
       setSettleLoading(false);
-      setTimeout(() => setMessage(''), 5000);
     }
   };
 
@@ -668,7 +699,8 @@ function Jobs() {
       setTimeout(() => setMessage(''), 3000);
       return;
     }
-    if (!assignPcForm.assignedAmount || parseFloat(assignPcForm.assignedAmount) <= 0) {
+    const amountVal = parseFloat(assignPcForm.assignedAmount);
+    if (!assignPcForm.assignedAmount || isNaN(amountVal) || amountVal <= 0) {
       setMessage('Please enter a valid amount');
       setTimeout(() => setMessage(''), 3000);
       return;
@@ -676,28 +708,68 @@ function Jobs() {
 
     setAssignPcLoading(true);
     try {
-      await apiClient.post('/petty-cash-assignments', {
+      const response = await apiClient.post('/petty-cash-assignments', {
         jobId: viewJobModal.jobId,
         assignedTo: assignPcForm.assignedTo,
-        assignedAmount: parseFloat(assignPcForm.assignedAmount),
+        assignedAmount: amountVal,
         notes: assignPcForm.notes || null
       });
 
-      setMessage('✅ Petty cash assigned successfully!');
+      const newAssignment = response.data;
+      const assignedUserObj = users.find(u => u.userId === assignPcForm.assignedTo);
+      const assignedName = assignedUserObj?.fullName || newAssignment?.assignedToName || assignPcForm.assignedTo;
+
+      const formattedNewAssignment = {
+        pettyAssignmentId: newAssignment?.assignmentId || Date.now(),
+        assignmentId: newAssignment?.assignmentId || Date.now(),
+        jobId: viewJobModal.jobId,
+        userId: assignPcForm.assignedTo,
+        userName: assignedName,
+        waff_clerk_name: assignedName,
+        assignedAmount: amountVal,
+        settledAmount: 0,
+        status: 'Assigned',
+        groupId: newAssignment?.groupId || `${viewJobModal.jobId}_${assignPcForm.assignedTo}`,
+        assignedDate: newAssignment?.assignedDate || new Date().toISOString(),
+        notes: assignPcForm.notes || null
+      };
+
+      // 1. Instantly update viewJobModal assignments in-place (0ms latency!)
+      setViewJobModal(prev => {
+        if (!prev) return null;
+        const prevAssignments = Array.isArray(prev.assignments) ? prev.assignments : [];
+        return {
+          ...prev,
+          pettyCashStatus: 'Assigned',
+          assignments: [...prevAssignments, formattedNewAssignment]
+        };
+      });
+
+      // 2. Also update jobs list in-place so table has latest assignments
+      setJobs(prev => prev.map(j => {
+        if (j.jobId === viewJobModal.jobId) {
+          const jAssignments = Array.isArray(j.assignments) ? j.assignments : [];
+          return {
+            ...j,
+            pettyCashStatus: 'Assigned',
+            assignments: [...jAssignments, formattedNewAssignment]
+          };
+        }
+        return j;
+      }));
+
       setAssignPcModal(false);
       setAssignPcForm({ assignedTo: '', assignedAmount: '', notes: '' });
-      fetchJobs();
-      // Refresh view modal
-      const data = await jobService.getAll();
-      const updatedJob = data.find(j => j.jobId === viewJobModal.jobId);
-      if (updatedJob) setViewJobModal(updatedJob);
+
+      // Refresh in background to sync from server
+      await fetchJobs();
     } catch (error) {
       console.error('Error assigning petty cash:', error);
       const errorMsg = error.response?.data?.message || error.message || 'Error assigning petty cash';
       setMessage(`❌ ${errorMsg}`);
+      setTimeout(() => setMessage(''), 5000);
     } finally {
       setAssignPcLoading(false);
-      setTimeout(() => setMessage(''), 5000);
     }
   };
 
@@ -734,52 +806,59 @@ function Jobs() {
   };
 
   const handleUpdate = async (e) => {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     try {
-      await jobService.update(selectedJob.jobId, formData);
-      
-      // Always synchronize assignments on edit, including clearing all assignees.
-      try {
-        const response = await apiClient.post(`/job-assignments/jobs/${selectedJob.jobId}/assign-users`, {
-          userIds: selectedUsers,
-          notes: 'Updated assignment from job edit'
-        });
-        
-        if (!response.data.success) {
-          console.error('Failed to update user assignments');
+      const jobId = selectedJob.jobId;
+      const initialUserIds = (selectedJob.assignedUsers || []).map(a => a.userId).sort().join(',');
+      const currentUserIds = [...selectedUsers].sort().join(',');
+      const assignmentsChanged = initialUserIds !== currentUserIds;
+
+      // Optimistically update jobs in-place immediately (0ms UI latency!)
+      const customerObj = customers.find(c => c.customerId === formData.customerId);
+      setJobs(prev => prev.map(j => {
+        if (j.jobId === jobId) {
+          return {
+            ...j,
+            ...formData,
+            customerName: customerObj?.name || j.customerName,
+            assignedUsers: selectedUsers.map(uId => {
+              const u = users.find(usr => usr.userId === uId);
+              return { userId: uId, userName: u?.fullName || uId };
+            })
+          };
         }
-      } catch (assignmentError) {
-        console.error('Failed to update user assignments:', assignmentError);
-      }
-      
-      setMessage('Job updated successfully!');
-      setFormData({
-        customerId: '',
-        blNumber: '',
-        cusdecNumber: '',
-        cusdecDate: '',
-        openDate: '',
-        shipmentCategory: '',
-        chassisNumber: '',
-        exporter: '',
-        lcNumber: '',
-        containerNumber: '',
-        transporter: '',
-        transportDeliveryDate: '',
-        assignedTo: ''
-      });
-      setSelectedUsers([]);
-      setShowUserDropdown(false);
+        return j;
+      }));
+
+      // Close modal immediately so UI feels instantaneous
       setShowModal(false);
       setIsEditing(false);
       setSelectedJob(null);
+
+      const updatePromises = [jobService.update(jobId, formData)];
+      if (assignmentsChanged) {
+        updatePromises.push(
+          apiClient.post(`/job-assignments/jobs/${jobId}/assign-users`, {
+            userIds: selectedUsers,
+            notes: 'Updated assignment from job edit'
+          }).catch(err => {
+            console.error('Failed to update user assignments:', err);
+          })
+        );
+      }
+
+      await Promise.all(updatePromises);
       fetchJobs();
-      setTimeout(() => setMessage(''), 3000);
     } catch (error) {
       console.error('Job update error:', error);
       const errorMessage = error.response?.data?.message || error.message || 'Error updating job';
       setMessage(`Error updating job: ${errorMessage}`);
+      fetchJobs();
       setTimeout(() => setMessage(''), 5000);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -923,7 +1002,12 @@ function Jobs() {
         )}
       </div>
 
-      {message && <div className={`mb-6 p-4 rounded-lg border-l-4 ${message.includes('Error') ? 'bg-red-50 border-red-500 text-red-700' : 'bg-green-50 border-green-500 text-green-700'}`}>{message}</div>}
+      {message && (message.toLowerCase().includes('error') || message.includes('❌') || message.toLowerCase().includes('fail')) && (
+        <div className="mb-6 p-4 rounded-lg border-l-4 bg-red-50 border-red-500 text-red-700 flex items-center justify-between shadow-sm animate-fade-in">
+          <span>{message}</span>
+          <button onClick={() => setMessage('')} className="text-red-500 hover:text-red-700 font-bold ml-4 text-sm">✕</button>
+        </div>
+      )}
 
       <div className="bg-white rounded-xl border-2 border-gray-200 shadow-sm overflow-hidden">
         {/* ── Search + Status filter on one line ── */}
@@ -1161,14 +1245,10 @@ function Jobs() {
       {officePayModal && (
         <OfficePayItems
           jobId={officePayModal}
-          onUpdate={() => { 
-            fetchJobs(); 
+          onUpdate={async () => { 
+            await fetchJobs(); 
             fetchJobPayments(officePayModal);
-            // Refresh the view modal data
-            const updatedJob = jobs.find(j => j.jobId === viewJobModal?.jobId);
-            if (updatedJob) setViewJobModal(updatedJob);
             setOfficePayModal(null);
-            // Keep viewJobModal open
           }}
           forceOpen
         />
@@ -1178,14 +1258,10 @@ function Jobs() {
       {advancePayModal && (
         <AdvancePayment
           job={advancePayModal}
-          onUpdate={() => { 
-            fetchJobs(); 
+          onUpdate={async () => { 
+            await fetchJobs(); 
             fetchJobPayments(advancePayModal.jobId);
-            // Refresh the view modal data
-            const updatedJob = jobs.find(j => j.jobId === advancePayModal?.jobId);
-            if (updatedJob) setViewJobModal(updatedJob);
             setAdvancePayModal(null);
-            // Keep viewJobModal open
           }}
           forceOpen
         />
@@ -1199,7 +1275,7 @@ function Jobs() {
               <h3 className="text-lg font-bold text-gray-900">Edit Office Payment</h3>
               <button onClick={() => setEditingOfficePayItem(null)} className="text-gray-500 hover:text-gray-700 text-2xl font-bold">×</button>
             </div>
-            <form onSubmit={async (e) => { e.preventDefault(); try { await apiClient.put(`/office-pay-items/${editingOfficePayItem.officePayItemId}`, { description: editingOfficePayItem.description, actualCost: parseFloat(editingOfficePayItem.actualCost) }); fetchJobs(); fetchJobPayments(editingOfficePayItem.jobId); setEditingOfficePayItem(null); } catch(err) { console.error('Update error:', err); } }} className="p-6 space-y-4">
+            <form onSubmit={async (e) => { e.preventDefault(); try { await apiClient.put(`/office-pay-items/${editingOfficePayItem.officePayItemId}`, { description: editingOfficePayItem.description, actualCost: parseFloat(editingOfficePayItem.actualCost) }); await fetchJobs(); fetchJobPayments(editingOfficePayItem.jobId); setEditingOfficePayItem(null); } catch(err) { console.error('Update error:', err); } }} className="p-6 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Description <span className="text-red-600">*</span></label>
@@ -1657,7 +1733,7 @@ function Jobs() {
                                       </svg>
                                     </button>
                                     <button
-                                      onClick={async () => { if (!window.confirm('Are you sure you want to delete this office pay item?')) return; try { await apiClient.delete(`/office-pay-items/${item.officePayItemId}`); fetchJobs(); fetchJobPayments(viewJobModal.jobId); } catch(err) { console.error('Delete error:', err); } }}
+                                      onClick={async () => { if (!window.confirm('Are you sure you want to delete this office pay item?')) return; try { await apiClient.delete(`/office-pay-items/${item.officePayItemId}`); await fetchJobs(); fetchJobPayments(viewJobModal.jobId); } catch(err) { console.error('Delete error:', err); } }}
                                       className="p-1.5 rounded text-red-500 hover:bg-red-50 transition" title="Delete"
                                     >
                                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
@@ -1725,7 +1801,7 @@ function Jobs() {
                                         </svg>
                                       </button>
                                       <button
-                                        onClick={async () => { if (pmt.isLegacy || !pmt.advancePaymentId) return; if (!window.confirm('Are you sure you want to delete this advance payment?')) return; try { await apiClient.delete(`/jobs/${viewJobModal.jobId}/advance-payments/${pmt.advancePaymentId}`); fetchJobs(); fetchJobPayments(viewJobModal.jobId); } catch(err) { console.error('Delete error:', err); } }}
+                                        onClick={async () => { if (pmt.isLegacy || !pmt.advancePaymentId) return; if (!window.confirm('Are you sure you want to delete this advance payment?')) return; try { await apiClient.delete(`/jobs/${viewJobModal.jobId}/advance-payments/${pmt.advancePaymentId}`); await fetchJobs(); fetchJobPayments(viewJobModal.jobId); } catch(err) { console.error('Delete error:', err); } }}
                                         className={`p-1.5 rounded transition ${pmt.isLegacy ? 'text-gray-300 cursor-not-allowed' : 'text-red-500 hover:bg-red-50'}`}
                                         title={pmt.isLegacy ? 'Legacy records cannot be deleted' : 'Delete'}
                                         disabled={pmt.isLegacy}
@@ -2077,6 +2153,12 @@ function Jobs() {
                                                   amount: Math.abs(balanceAmount),
                                                   notes: `Balance return for Job #${viewJobModal.jobId}`,
                                                   relatedAssignments: relatedIds
+                                                }, {
+                                                  headers: {
+                                                    'x-action-type': 'request',
+                                                    'x-action-loading-message': 'Sending request...',
+                                                    'x-action-success-message': 'Request sent successfully'
+                                                  }
                                                 });
                                                 setMessage('✅ Balance return request submitted!');
 
@@ -2091,17 +2173,8 @@ function Jobs() {
                                                   return { ...prev, assignments: updatedAssignments };
                                                 });
 
-                                                // Refresh jobs and job details
-                                                try {
-                                                  const freshJob = await jobService.getById(viewJobModal.jobId);
-                                                  if (freshJob) setViewJobModal(freshJob);
-                                                } catch (e) {
-                                                  const data = await jobService.getAll();
-                                                  const updatedJob = data.find(j => j.jobId === viewJobModal.jobId);
-                                                  if (updatedJob) setViewJobModal(updatedJob);
-                                                }
-
-                                                fetchJobs();
+                                                // Automatically refresh jobs and sync modal with fast query
+                                                await fetchJobs();
                                                 setTimeout(() => setMessage(''), 3000);
                                               } catch (err) {
                                                 setMessage(`❌ ${err.response?.data?.message || 'Error submitting balance return'}`);
@@ -2124,6 +2197,12 @@ function Jobs() {
                                                   amount: Math.abs(balanceAmount),
                                                   notes: `Overdue collection for Job #${viewJobModal.jobId}`,
                                                   relatedAssignments: relatedIds
+                                                }, {
+                                                  headers: {
+                                                    'x-action-type': 'request',
+                                                    'x-action-loading-message': 'Sending request...',
+                                                    'x-action-success-message': 'Request sent successfully'
+                                                  }
                                                 });
                                                 setMessage('✅ Overdue collection request submitted!');
 
@@ -2138,17 +2217,8 @@ function Jobs() {
                                                   return { ...prev, assignments: updatedAssignments };
                                                 });
 
-                                                // Refresh jobs and job details
-                                                try {
-                                                  const freshJob = await jobService.getById(viewJobModal.jobId);
-                                                  if (freshJob) setViewJobModal(freshJob);
-                                                } catch (e) {
-                                                  const data = await jobService.getAll();
-                                                  const updatedJob = data.find(j => j.jobId === viewJobModal.jobId);
-                                                  if (updatedJob) setViewJobModal(updatedJob);
-                                                }
-
-                                                fetchJobs();
+                                                // Automatically refresh jobs and sync modal with fast query
+                                                await fetchJobs();
                                                 setTimeout(() => setMessage(''), 3000);
                                               } catch (err) {
                                                 setMessage(`❌ ${err.response?.data?.message || 'Error submitting overdue request'}`);
@@ -2162,7 +2232,13 @@ function Jobs() {
                                           </button>
                                         )}
                                         <button
-                                          onClick={() => setSettlementItemsModal({pettyAssignmentId: a.pettyAssignmentId, userName: a.userName || getUserFullName(a.userId)})}
+                                          onClick={() => {
+                                            const activeId = group.find(g => parseFloat(g.settledAmount || 0) > 0)?.pettyAssignmentId || a.pettyAssignmentId || a.assignmentId;
+                                            setSettlementItemsModal({
+                                              pettyAssignmentId: activeId,
+                                              userName: a.userName || a.waff_clerk_name || getUserFullName(a.userId)
+                                            });
+                                          }}
                                           className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition"
                                           title="View settlement items"
                                         >
@@ -2445,9 +2521,16 @@ function Jobs() {
               <div className="flex items-center gap-3">
                 <button type="button" onClick={()=>{setShowModal(false);setIsEditing(false);setSelectedJob(null);setSelectedUsers([]);setShowUserDropdown(false);setFormStep(1);setPcAssignments([]);setPcFormRow({userId:'',amount:''}); }} className="px-5 py-2.5 rounded-lg text-sm font-semibold text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 transition">Cancel</button>
                 {!isEditing&&formStep===2&&<button type="button" onClick={()=>setFormStep(1)} className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-[#1E3F63] bg-[#eef3f8] hover:bg-[#dce8f4] border border-[#c8d8e8] transition"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><polyline points="15 18 9 12 15 6"/></svg>Back</button>}
-                {!isEditing&&formStep===2&&<button type="button" onClick={handleSubmit} className="px-4 py-2.5 rounded-lg text-sm font-semibold text-[#0f766e] bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition">Skip &amp; Create Job</button>}
+                {!isEditing&&formStep===2&&<button type="button" disabled={isSubmitting} onClick={handleSubmit} className="px-4 py-2.5 rounded-lg text-sm font-semibold text-[#0f766e] bg-emerald-50 hover:bg-emerald-100 disabled:opacity-50 border border-emerald-200 transition">{isSubmitting ? 'Creating...' : 'Skip & Create Job'}</button>}
                 {!isEditing&&formStep===1&&<button type="button" onClick={()=>{if(!formData.customerId){setMessage('Please select a customer.');setTimeout(()=>setMessage(''),3000);return;}if(!formData.openDate){setMessage('Please select an open date.');setTimeout(()=>setMessage(''),3000);return;}if(!formData.shipmentCategory){setMessage('Please select a shipment category.');setTimeout(()=>setMessage(''),3000);return;}setFormStep(2);}} className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-white bg-[#1E3F63] hover:bg-[#193552] transition shadow-sm">Next<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><polyline points="9 18 15 12 9 6"/></svg></button>}
-                {(isEditing||formStep===2)&&<button type="button" onClick={isEditing?handleUpdate:handleSubmit} className="flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold text-white bg-[#1E3F63] hover:bg-[#193552] transition shadow-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M20 6 9 17l-5-5"/></svg>{isEditing?'Save Changes':'Create Job'}</button>}
+                {(isEditing||formStep===2)&&<button type="button" disabled={isSubmitting} onClick={isEditing?handleUpdate:handleSubmit} className="flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-bold text-white bg-[#1E3F63] hover:bg-[#193552] disabled:opacity-50 transition shadow-sm">
+                  {isSubmitting ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-1" />
+                  ) : (
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M20 6 9 17l-5-5"/></svg>
+                  )}
+                  {isEditing ? (isSubmitting ? 'Saving...' : 'Save Changes') : (isSubmitting ? 'Creating...' : 'Create Job')}
+                </button>}
               </div>
             </div>
 

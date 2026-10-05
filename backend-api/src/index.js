@@ -15,6 +15,7 @@ const pettyCashRoutes = require('./presentation/routes/pettycash');
 const cashWithdrawalRoutes = require('./presentation/routes/cashWithdrawalRoutes');
 const cashSummaryRoutes = require('./presentation/routes/cashSummaryRoutes');
 const payItemTemplateRoutes = require('./presentation/routes/payItemTemplateRoutes');
+const expenseTypeRoutes = require('./presentation/routes/expenseTypeRoutes');
 const pettyCashAssignmentRoutes = require('./presentation/routes/pettyCashAssignmentRoutes');
 const pettyCashReportRoutes = require('./presentation/routes/pettyCashReportRoutes');
 const officePayItemRoutes = require('./presentation/routes/officePayItems');
@@ -31,9 +32,11 @@ const testNotificationRoutes = require('./presentation/routes/testNotification')
 const container = require('./infrastructure/di/container');
 const { startOverdueChecker } = require('./infrastructure/scheduler/overdueChecker');
 
+const compression = require('compression');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+app.use(compression());
 app.use(cors());
 app.use(bodyParser.json());
 
@@ -76,6 +79,7 @@ app.use('/api/petty-cash', pettyCashRoutes);
 app.use('/api/cash-withdrawals', cashWithdrawalRoutes);
 app.use('/api/cash-summary', cashSummaryRoutes);
 app.use('/api/pay-item-templates', payItemTemplateRoutes(container));
+app.use('/api/expense-types', expenseTypeRoutes(container));
 app.use('/api/petty-cash-assignments', pettyCashAssignmentRoutes(container));
 app.use('/api/pettycash-assignment', pettyCashReportRoutes(container));
 app.use('/api/office-pay-items', officePayItemRoutes);

@@ -8,8 +8,6 @@ class DeleteOfficePayItem {
 
   async execute(officePayItemId) {
     try {
-      console.log('DeleteOfficePayItem.execute - officePayItemId:', officePayItemId);
-      
       // Check if item exists
       const existingItem = await this.officePayItemRepository.findById(officePayItemId);
       if (!existingItem) {
@@ -18,8 +16,6 @@ class DeleteOfficePayItem {
       
       // Delete
       await this.officePayItemRepository.delete(officePayItemId);
-      
-      console.log('DeleteOfficePayItem.execute - SUCCESS');
       return true;
     } catch (error) {
       console.error('DeleteOfficePayItem.execute - ERROR:', error);

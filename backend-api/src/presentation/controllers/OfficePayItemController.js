@@ -12,10 +12,6 @@ class OfficePayItemController {
 
   async create(req, res) {
     try {
-      console.log('OfficePayItemController.create - START');
-      console.log('req.body:', req.body);
-      console.log('req.user:', req.user);
-      
       const payItemData = {
         jobId: req.body.jobId,
         description: req.body.description,
@@ -24,8 +20,6 @@ class OfficePayItemController {
       };
       
       const officePayItem = await this.createOfficePayItem.execute(payItemData);
-      
-      console.log('OfficePayItemController.create - SUCCESS');
       res.status(201).json(officePayItem);
     } catch (error) {
       console.error('OfficePayItemController.create - ERROR:', error);
@@ -35,11 +29,7 @@ class OfficePayItemController {
 
   async getByJobId(req, res) {
     try {
-      console.log('OfficePayItemController.getByJobId - jobId:', req.params.jobId);
-      
       const items = await this.getOfficePayItemsByJob.execute(req.params.jobId);
-      
-      console.log('OfficePayItemController.getByJobId - SUCCESS, items:', items.length);
       res.json(items);
     } catch (error) {
       console.error('OfficePayItemController.getByJobId - ERROR:', error);
@@ -49,10 +39,6 @@ class OfficePayItemController {
 
   async update(req, res) {
     try {
-      console.log('OfficePayItemController.update - START');
-      console.log('officePayItemId:', req.params.id);
-      console.log('updateData:', req.body);
-      
       const updateData = {
         description: req.body.description,
         actualCost: req.body.actualCost
@@ -66,8 +52,6 @@ class OfficePayItemController {
       });
       
       const updatedItem = await this.updateOfficePayItem.execute(req.params.id, updateData);
-      
-      console.log('OfficePayItemController.update - SUCCESS');
       res.json(updatedItem);
     } catch (error) {
       console.error('OfficePayItemController.update - ERROR:', error);
@@ -77,11 +61,7 @@ class OfficePayItemController {
 
   async delete(req, res) {
     try {
-      console.log('OfficePayItemController.delete - officePayItemId:', req.params.id);
-      
       await this.deleteOfficePayItem.execute(req.params.id);
-      
-      console.log('OfficePayItemController.delete - SUCCESS');
       res.json({ message: 'Office pay item deleted successfully' });
     } catch (error) {
       console.error('OfficePayItemController.delete - ERROR:', error);

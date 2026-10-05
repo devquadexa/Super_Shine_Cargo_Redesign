@@ -67,7 +67,7 @@ class ExportOtherExpensesReportExcel {
 
     // Headers
     const headerRow = worksheet.getRow(5);
-    const headers = ['#', 'Expense ID', 'Date', 'Category', 'Description', 'Amount', 'Payment Method', 'Recorded By'];
+    const headers = ['#', 'Expense ID', 'Date', 'Category', 'Expense Type', 'Description', 'Amount', 'Payment Method', 'Recorded By'];
     headers.forEach((header, index) => {
       const cell = headerRow.getCell(index + 1);
       cell.value = header;
@@ -95,6 +95,7 @@ class ExportOtherExpensesReportExcel {
         exp.expenseId,
         fmtDate(exp.expenseDate),
         exp.category,
+        exp.expenseType || '-',
         exp.description,
         exp.amount,
         exp.paymentMethod || '-',

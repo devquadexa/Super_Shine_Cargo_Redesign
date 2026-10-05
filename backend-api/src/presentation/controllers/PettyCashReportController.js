@@ -19,8 +19,6 @@ class PettyCashReportController {
       const from = fromDate || date;
       const to   = toDate   || fromDate || date;
 
-      console.log(`[PettyCashReport] getReport - from: ${from}, to: ${to}, user role: "${req.user?.role}"`);
-
       if (!from) {
         return res.status(400).json({ message: 'fromDate parameter is required' });
       }

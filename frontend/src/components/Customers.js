@@ -12,7 +12,6 @@ function Customers() {
   const [districts, setDistricts] = useState([]);
   const [cities, setCities] = useState([]);
   const [filteredCities, setFilteredCities] = useState([]);
-  const [filteredOfficeCities, setFilteredOfficeCities] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState(null);
   const [viewCustomerModal, setViewCustomerModal] = useState(null); // Customer object being viewed
@@ -26,13 +25,18 @@ function Customers() {
     addressDistrict: '',
     addressCity: '',
     addressCountry: 'Sri Lanka',
-    officeAddressNumber: '',
-    officeAddressStreet1: '',
-    officeAddressStreet2: '',
-    officeAddressDistrict: '',
-    officeAddressCity: '',
-    officeAddressCountry: 'Sri Lanka',
-    isOfficeAddressSame: false,
+    deliveryAddresses: [
+      {
+        label: 'Main Delivery Address',
+        addressNumber: '',
+        addressStreet1: '',
+        addressStreet2: '',
+        addressDistrict: '',
+        addressCity: '',
+        addressCountry: 'Sri Lanka',
+        isSameAsResidential: false
+      }
+    ],
     website: '',
     registrationDate: new Date().toISOString().split('T')[0],
     creditPeriodDays: 30,
@@ -45,6 +49,7 @@ function Customers() {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [recordsPerPage, setRecordsPerPage] = useState(20);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const isAdminOrSuperAdmin = () => {
     return user && (user.role === 'Admin' || user.role === 'Super Admin' || user.role === 'Manager' || user.role === 'Office Executive');
@@ -98,20 +103,6 @@ function Customers() {
     }
   };
 
-  const fetchCities = async (districtId) => {
-    try {
-      const response = await fetch(`${getAPIBase()}/api/locations/cities/${districtId}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-      const data = await response.json();
-      setCities(data);
-    } catch (error) {
-      console.error('Error fetching cities:', error);
-      setCities([]);
-    }
-  };
 
   const fetchAllCities = async () => {
     try {
@@ -131,17 +122,7 @@ function Customers() {
   const fetchCustomers = async () => {
     try {
       const data = await customerService.getAll();
-      if (user?.role === 'Waff Clerk') {
-        try {
-          const jobs = await jobService.getAll();
-          const assignedCustomerIds = new Set((jobs || []).map(j => j.customerId).filter(Boolean));
-          setCustomers((data || []).filter(c => assignedCustomerIds.has(c.customerId)));
-        } catch (je) {
-          setCustomers(data || []);
-        }
-      } else {
-        setCustomers(data || []);
-      }
+      setCustomers(data || []);
     } catch (error) {
       console.error('Error fetching customers:', error);
       if (error.response?.status === 403) {
@@ -206,26 +187,26 @@ function Customers() {
       errors.addressCountry = 'Country is required';
     }
 
-    if (!formData.isOfficeAddressSame) {
-      if (!formData.officeAddressNumber.trim()) {
-        errors.officeAddressNumber = 'Office address number is required';
-      }
-      
-      if (!formData.officeAddressStreet1.trim()) {
-        errors.officeAddressStreet1 = 'Office street name is required';
-      }
-      
-      if (!formData.officeAddressDistrict.trim()) {
-        errors.officeAddressDistrict = 'Office district is required';
-      }
-      
-      if (!formData.officeAddressCity.trim()) {
-        errors.officeAddressCity = 'Office city is required';
-      }
-
-      if (!formData.officeAddressCountry.trim()) {
-        errors.officeAddressCountry = 'Office country is required';
-      }
+    if (formData.deliveryAddresses && formData.deliveryAddresses.length > 0) {
+      formData.deliveryAddresses.forEach((da, index) => {
+        if (!da.isSameAsResidential) {
+          if (!da.addressNumber || !da.addressNumber.trim()) {
+            errors[`deliveryAddress_${index}_addressNumber`] = 'Address number is required';
+          }
+          if (!da.addressStreet1 || !da.addressStreet1.trim()) {
+            errors[`deliveryAddress_${index}_addressStreet1`] = 'Street name is required';
+          }
+          if (!da.addressDistrict || !da.addressDistrict.trim()) {
+            errors[`deliveryAddress_${index}_addressDistrict`] = 'District is required';
+          }
+          if (!da.addressCity || !da.addressCity.trim()) {
+            errors[`deliveryAddress_${index}_addressCity`] = 'City is required';
+          }
+          if (!da.addressCountry || !da.addressCountry.trim()) {
+            errors[`deliveryAddress_${index}_addressCountry`] = 'Country is required';
+          }
+        }
+      });
     }
     
     const validContactPersons = formData.contactPersons.filter(
@@ -270,21 +251,47 @@ function Customers() {
     }
     
     try {
+      setIsSubmitting(true);
       const filteredContactPersons = formData.contactPersons.filter(
         cp => cp.name.trim() !== '' && cp.phone.trim() !== ''
       );
       
+      const validDeliveryAddresses = (formData.deliveryAddresses || []).map((da, idx) => ({
+        deliveryAddressId: idx + 1,
+        label: da.label || `Delivery Address ${idx + 1}`,
+        addressNumber: da.isSameAsResidential ? formData.addressNumber : da.addressNumber,
+        addressStreet1: da.isSameAsResidential ? formData.addressStreet1 : da.addressStreet1,
+        addressStreet2: da.isSameAsResidential ? formData.addressStreet2 : da.addressStreet2,
+        addressDistrict: da.isSameAsResidential ? formData.addressDistrict : da.addressDistrict,
+        addressCity: da.isSameAsResidential ? formData.addressCity : da.addressCity,
+        addressCountry: da.isSameAsResidential ? formData.addressCountry : (da.addressCountry || 'Sri Lanka'),
+        isSameAsResidential: Boolean(da.isSameAsResidential)
+      }));
+
       const submitData = {
         ...formData,
-        contactPersons: filteredContactPersons
+        creditPeriodDays: parseInt(formData.creditPeriodDays, 10) || 30,
+        contactPersons: filteredContactPersons,
+        deliveryAddresses: validDeliveryAddresses,
+        officeAddressNumber: validDeliveryAddresses[0]?.addressNumber || formData.addressNumber,
+        officeAddressStreet1: validDeliveryAddresses[0]?.addressStreet1 || formData.addressStreet1,
+        officeAddressStreet2: validDeliveryAddresses[0]?.addressStreet2 || formData.addressStreet2,
+        officeAddressDistrict: validDeliveryAddresses[0]?.addressDistrict || formData.addressDistrict,
+        officeAddressCity: validDeliveryAddresses[0]?.addressCity || formData.addressCity,
+        officeAddressCountry: validDeliveryAddresses[0]?.addressCountry || formData.addressCountry,
+        isOfficeAddressSame: Boolean(validDeliveryAddresses[0]?.isSameAsResidential)
       };
       
       if (editingCustomer) {
-        await customerService.update(editingCustomer.customerId, submitData);
+        const updated = await customerService.update(editingCustomer.customerId, submitData);
         setMessage('Customer updated successfully!');
+        setCustomers(prev => prev.map(c => c.customerId === editingCustomer.customerId ? { ...c, ...submitData, ...(updated || {}) } : c));
       } else {
-        await customerService.create(submitData);
+        const created = await customerService.create(submitData);
         setMessage('Customer registered successfully!');
+        if (created) {
+          setCustomers(prev => [created, ...prev]);
+        }
       }
       
       resetForm();
@@ -297,6 +304,8 @@ function Customers() {
       const errorMessage = error.response?.data?.message || 'Error saving customer';
       setMessage(errorMessage);
       setTimeout(() => setMessage(''), 5000);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -311,13 +320,18 @@ function Customers() {
       addressDistrict: '',
       addressCity: '',
       addressCountry: 'Sri Lanka',
-      officeAddressNumber: '',
-      officeAddressStreet1: '',
-      officeAddressStreet2: '',
-      officeAddressDistrict: '',
-      officeAddressCity: '',
-      officeAddressCountry: 'Sri Lanka',
-      isOfficeAddressSame: false,
+      deliveryAddresses: [
+        {
+          label: 'Main Delivery Address',
+          addressNumber: '',
+          addressStreet1: '',
+          addressStreet2: '',
+          addressDistrict: '',
+          addressCity: '',
+          addressCountry: 'Sri Lanka',
+          isSameAsResidential: false
+        }
+      ],
       website: '',
       contactPersons: [{ name: '', phone: '' }],
       categories: [],
@@ -326,7 +340,6 @@ function Customers() {
     setFormErrors({});
     setEditingCustomer(null);
     setFilteredCities([]);
-    setFilteredOfficeCities([]);
   };
 
   const handleEdit = (customer) => {
@@ -337,6 +350,39 @@ function Customers() {
     }
     
     setEditingCustomer(customer);
+    const existingDAs = (customer.deliveryAddresses && customer.deliveryAddresses.length > 0)
+      ? customer.deliveryAddresses.map(da => ({
+          label: da.label || 'Delivery Address',
+          addressNumber: da.addressNumber || '',
+          addressStreet1: da.addressStreet1 || '',
+          addressStreet2: da.addressStreet2 || '',
+          addressDistrict: da.addressDistrict || '',
+          addressCity: da.addressCity || '',
+          addressCountry: da.addressCountry || 'Sri Lanka',
+          isSameAsResidential: Boolean(da.isSameAsResidential)
+        }))
+      : (customer.officeAddressStreet1 || customer.addressStreet1)
+        ? [{
+            label: 'Primary Delivery Address',
+            addressNumber: customer.officeAddressNumber || customer.addressNumber || '',
+            addressStreet1: customer.officeAddressStreet1 || customer.addressStreet1 || '',
+            addressStreet2: customer.officeAddressStreet2 || customer.addressStreet2 || '',
+            addressDistrict: customer.officeAddressDistrict || customer.addressDistrict || '',
+            addressCity: customer.officeAddressCity || customer.addressCity || '',
+            addressCountry: customer.officeAddressCountry || customer.addressCountry || 'Sri Lanka',
+            isSameAsResidential: Boolean(customer.isOfficeAddressSame)
+          }]
+        : [{
+            label: 'Main Delivery Address',
+            addressNumber: '',
+            addressStreet1: '',
+            addressStreet2: '',
+            addressDistrict: '',
+            addressCity: '',
+            addressCountry: 'Sri Lanka',
+            isSameAsResidential: false
+          }];
+
     setFormData({
       name: customer.name || '',
       mainPhone: customer.mainPhone || '',
@@ -347,13 +393,7 @@ function Customers() {
       addressDistrict: customer.addressDistrict || '',
       addressCity: customer.addressCity || '',
       addressCountry: customer.addressCountry || 'Sri Lanka',
-      officeAddressNumber: customer.officeAddressNumber || '',
-      officeAddressStreet1: customer.officeAddressStreet1 || '',
-      officeAddressStreet2: customer.officeAddressStreet2 || '',
-      officeAddressDistrict: customer.officeAddressDistrict || '',
-      officeAddressCity: customer.officeAddressCity || '',
-      officeAddressCountry: customer.officeAddressCountry || 'Sri Lanka',
-      isOfficeAddressSame: customer.isOfficeAddressSame || false,
+      deliveryAddresses: existingDAs,
       website: customer.website || '',
       registrationDate: customer.registrationDate ? new Date(customer.registrationDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
       creditPeriodDays: customer.creditPeriodDays || 30,
@@ -375,12 +415,6 @@ function Customers() {
         setFilteredCities(cities.filter(c => c.districtId === selectedDistrict.districtId));
       }
     }
-    if (customer.officeAddressDistrict) {
-      const selectedDistrict = districts.find(d => d.districtName === customer.officeAddressDistrict);
-      if (selectedDistrict) {
-        setFilteredOfficeCities(cities.filter(c => c.districtId === selectedDistrict.districtId));
-      }
-    }
     
     setShowModal(true);
   };
@@ -397,38 +431,103 @@ function Customers() {
     }
 
     try {
-      await customerService.delete(customerId);
+      setCustomers(prev => prev.map(c => c.customerId === customerId ? { ...c, isActive: false } : c));
       setMessage('Customer deactivated successfully');
-      fetchCustomers();
       setTimeout(() => setMessage(''), 3000);
+
+      await customerService.delete(customerId);
+      fetchCustomers();
     } catch (error) {
       console.error('Error deactivating customer:', error);
       setMessage('Failed to deactivate customer');
+      fetchCustomers();
       setTimeout(() => setMessage(''), 3000);
     }
   };
 
-  const handleDistrictChange = (districtName, isOffice = false) => {
+  const getCitiesForDistrict = (districtName) => {
+    if (!districtName) return [];
+    const d = districts.find(dist => dist.districtName === districtName);
+    if (!d) return [];
+    return cities.filter(c => c.districtId === d.districtId);
+  };
+
+  const addDeliveryAddress = () => {
+    setFormData(prev => ({
+      ...prev,
+      deliveryAddresses: [
+        ...prev.deliveryAddresses,
+        {
+          label: `Delivery Location ${prev.deliveryAddresses.length + 1}`,
+          addressNumber: '',
+          addressStreet1: '',
+          addressStreet2: '',
+          addressDistrict: '',
+          addressCity: '',
+          addressCountry: 'Sri Lanka',
+          isSameAsResidential: false
+        }
+      ]
+    }));
+  };
+
+  const removeDeliveryAddress = (index) => {
+    setFormData(prev => ({
+      ...prev,
+      deliveryAddresses: prev.deliveryAddresses.filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleDeliveryAddressChange = (index, field, value) => {
+    setFormData(prev => {
+      const updated = [...prev.deliveryAddresses];
+      if (field === 'isSameAsResidential') {
+        const isSame = Boolean(value);
+        updated[index] = {
+          ...updated[index],
+          isSameAsResidential: isSame,
+          addressNumber: isSame ? prev.addressNumber : updated[index].addressNumber,
+          addressStreet1: isSame ? prev.addressStreet1 : updated[index].addressStreet1,
+          addressStreet2: isSame ? prev.addressStreet2 : updated[index].addressStreet2,
+          addressDistrict: isSame ? prev.addressDistrict : updated[index].addressDistrict,
+          addressCity: isSame ? prev.addressCity : updated[index].addressCity,
+          addressCountry: isSame ? prev.addressCountry : (updated[index].addressCountry || 'Sri Lanka')
+        };
+      } else {
+        updated[index] = {
+          ...updated[index],
+          [field]: value
+        };
+        if (field === 'addressDistrict') {
+          updated[index].addressCity = '';
+        }
+      }
+      return {
+        ...prev,
+        deliveryAddresses: updated
+      };
+    });
+
+    if (formErrors[`deliveryAddress_${index}_${field}`]) {
+      setFormErrors(prev => {
+        const errs = { ...prev };
+        delete errs[`deliveryAddress_${index}_${field}`];
+        return errs;
+      });
+    }
+  };
+
+  const handleDistrictChange = (districtName) => {
     const selectedDistrict = districts.find(d => d.districtName === districtName);
     
     if (selectedDistrict) {
       const districtCities = cities.filter(c => c.districtId === selectedDistrict.districtId);
-      
-      if (isOffice) {
-        setFilteredOfficeCities(districtCities);
-        setFormData(prev => ({ 
-          ...prev, 
-          officeAddressDistrict: districtName,
-          officeAddressCity: ''
-        }));
-      } else {
-        setFilteredCities(districtCities);
-        setFormData(prev => ({ 
-          ...prev, 
-          addressDistrict: districtName,
-          addressCity: ''
-        }));
-      }
+      setFilteredCities(districtCities);
+      setFormData(prev => ({ 
+        ...prev, 
+        addressDistrict: districtName,
+        addressCity: ''
+      }));
     }
   };
 
@@ -448,13 +547,24 @@ function Customers() {
     if (type === 'checkbox') {
       setFormData({ ...formData, [name]: checked });
     } else {
-      setFormData({ ...formData, [name]: value });
+      const updatedFormData = { ...formData, [name]: value };
       
       if (name === 'addressDistrict') {
-        handleDistrictChange(value, false);
-      } else if (name === 'officeAddressDistrict') {
-        handleDistrictChange(value, true);
+        handleDistrictChange(value);
       }
+
+      // Auto-sync changes to any delivery address marked as same as residential
+      if (['addressNumber', 'addressStreet1', 'addressStreet2', 'addressDistrict', 'addressCity', 'addressCountry'].includes(name)) {
+        updatedFormData.deliveryAddresses = (formData.deliveryAddresses || []).map(da => {
+          if (!da.isSameAsResidential) return da;
+          return {
+            ...da,
+            [name]: value
+          };
+        });
+      }
+      
+      setFormData(updatedFormData);
     }
     
     if (formErrors[name]) {
@@ -564,9 +674,10 @@ function Customers() {
         )}
       </div>
 
-      {message && (
-        <div className={`mb-6 p-4 rounded-lg border-l-4 ${message.includes('Error') ? 'bg-red-50 border-red-500 text-red-700' : 'bg-green-50 border-green-500 text-green-700'}`}>
-          {message}
+      {message && (message.toLowerCase().includes('error') || message.toLowerCase().includes('failed') || message.toLowerCase().includes('denied') || message.toLowerCase().includes('fix')) && (
+        <div className="mb-6 p-4 rounded-lg border-l-4 bg-red-50 border-red-500 text-red-700 flex items-center justify-between shadow-sm animate-fade-in">
+          <span>{message}</span>
+          <button onClick={() => setMessage('')} className="text-red-500 hover:text-red-700 font-bold ml-4 text-sm">✕</button>
         </div>
       )}
 
@@ -750,54 +861,163 @@ function Customers() {
               </div>
 
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Office Address</h3>
-                <label className="flex items-center mb-4">
-                  <input type="checkbox" name="isOfficeAddressSame" checked={formData.isOfficeAddressSame} onChange={handleChange} className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500" />
-                  <span className="ml-2 text-sm font-medium text-gray-700">Office address is same as residential address</span>
-                </label>
-                {!formData.isOfficeAddressSame && (
-                  <>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Address Number <span className="text-red-600">*</span></label>
-                        <input type="text" name="officeAddressNumber" value={formData.officeAddressNumber} onChange={handleChange} className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${formErrors.officeAddressNumber ? 'border-red-500' : 'border-gray-300'}`} required={!formData.isOfficeAddressSame} />
-                        {formErrors.officeAddressNumber && <p className="text-red-600 text-xs mt-1">{formErrors.officeAddressNumber}</p>}
+                <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-100">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                      <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      Delivery Addresses
+                    </h3>
+                    <p className="text-xs text-gray-500 mt-0.5">Add one or multiple delivery warehouses, factories, or site addresses</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addDeliveryAddress}
+                    className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium text-xs rounded-lg transition flex items-center gap-1.5 shadow-sm"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+                    </svg>
+                    Add Delivery Address
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  {formData.deliveryAddresses.map((da, index) => (
+                    <div key={index} className="p-4 border border-gray-200 rounded-xl bg-gray-50/60 shadow-sm relative">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2 flex-1 max-w-md">
+                          <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-bold shrink-0">
+                            {index + 1}
+                          </span>
+                          <input
+                            type="text"
+                            placeholder="Location Name (e.g. Main Warehouse, Kelaniya Plant)"
+                            value={da.label || ''}
+                            onChange={(e) => handleDeliveryAddressChange(index, 'label', e.target.value)}
+                            className="text-sm font-semibold text-gray-800 bg-white border border-gray-300 rounded px-2.5 py-1 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none w-full"
+                          />
+                        </div>
+                        {formData.deliveryAddresses.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeDeliveryAddress(index)}
+                            className="text-red-500 hover:text-red-700 text-xs font-semibold flex items-center gap-1 transition px-2.5 py-1 rounded-lg hover:bg-red-50"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                            Remove
+                          </button>
+                        )}
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Street Name 1 <span className="text-red-600">*</span></label>
-                        <input type="text" name="officeAddressStreet1" value={formData.officeAddressStreet1} onChange={handleChange} className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${formErrors.officeAddressStreet1 ? 'border-red-500' : 'border-gray-300'}`} required={!formData.isOfficeAddressSame} />
-                        {formErrors.officeAddressStreet1 && <p className="text-red-600 text-xs mt-1">{formErrors.officeAddressStreet1}</p>}
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Street Name 2 (Optional)</label>
-                        <input type="text" name="officeAddressStreet2" value={formData.officeAddressStreet2} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
-                      </div>
+
+                      <label className="flex items-center mb-3 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={da.isSameAsResidential}
+                          onChange={(e) => handleDeliveryAddressChange(index, 'isSameAsResidential', e.target.checked)}
+                          className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                        />
+                        <span className="ml-2 text-sm font-medium text-gray-700">Delivery address is same as residential address</span>
+                      </label>
+
+                      {!da.isSameAsResidential ? (
+                        <>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">Address Number <span className="text-red-600">*</span></label>
+                              <input
+                                type="text"
+                                value={da.addressNumber}
+                                onChange={(e) => handleDeliveryAddressChange(index, 'addressNumber', e.target.value)}
+                                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white ${formErrors[`deliveryAddress_${index}_addressNumber`] ? 'border-red-500' : 'border-gray-300'}`}
+                                placeholder="e.g. 12/A"
+                                required
+                              />
+                              {formErrors[`deliveryAddress_${index}_addressNumber`] && <p className="text-red-600 text-xs mt-1">{formErrors[`deliveryAddress_${index}_addressNumber`]}</p>}
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">Street Name 1 <span className="text-red-600">*</span></label>
+                              <input
+                                type="text"
+                                value={da.addressStreet1}
+                                onChange={(e) => handleDeliveryAddressChange(index, 'addressStreet1', e.target.value)}
+                                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white ${formErrors[`deliveryAddress_${index}_addressStreet1`] ? 'border-red-500' : 'border-gray-300'}`}
+                                placeholder="e.g. Harbor Road"
+                                required
+                              />
+                              {formErrors[`deliveryAddress_${index}_addressStreet1`] && <p className="text-red-600 text-xs mt-1">{formErrors[`deliveryAddress_${index}_addressStreet1`]}</p>}
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">Street Name 2 (Optional)</label>
+                              <input
+                                type="text"
+                                value={da.addressStreet2}
+                                onChange={(e) => handleDeliveryAddressChange(index, 'addressStreet2', e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white"
+                                placeholder="e.g. Industrial Zone"
+                              />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">District <span className="text-red-600">*</span></label>
+                              <select
+                                value={da.addressDistrict}
+                                onChange={(e) => handleDeliveryAddressChange(index, 'addressDistrict', e.target.value)}
+                                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white ${formErrors[`deliveryAddress_${index}_addressDistrict`] ? 'border-red-500' : 'border-gray-300'}`}
+                                required
+                              >
+                                <option value="">Select District</option>
+                                {districts.map(district => (
+                                  <option key={district.districtId} value={district.districtName}>{district.districtName}</option>
+                                ))}
+                              </select>
+                              {formErrors[`deliveryAddress_${index}_addressDistrict`] && <p className="text-red-600 text-xs mt-1">{formErrors[`deliveryAddress_${index}_addressDistrict`]}</p>}
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">City/Town <span className="text-red-600">*</span></label>
+                              <select
+                                value={da.addressCity}
+                                onChange={(e) => handleDeliveryAddressChange(index, 'addressCity', e.target.value)}
+                                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white ${formErrors[`deliveryAddress_${index}_addressCity`] ? 'border-red-500' : 'border-gray-300'}`}
+                                disabled={!da.addressDistrict}
+                                required
+                              >
+                                <option value="">Select City</option>
+                                {getCitiesForDistrict(da.addressDistrict).map(city => (
+                                  <option key={city.cityId} value={city.cityName}>{city.cityName}</option>
+                                ))}
+                              </select>
+                              {formErrors[`deliveryAddress_${index}_addressCity`] && <p className="text-red-600 text-xs mt-1">{formErrors[`deliveryAddress_${index}_addressCity`]}</p>}
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">Country <span className="text-red-600">*</span></label>
+                              <input
+                                type="text"
+                                value={da.addressCountry}
+                                onChange={(e) => handleDeliveryAddressChange(index, 'addressCountry', e.target.value)}
+                                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white ${formErrors[`deliveryAddress_${index}_addressCountry`] ? 'border-red-500' : 'border-gray-300'}`}
+                                required
+                              />
+                              {formErrors[`deliveryAddress_${index}_addressCountry`] && <p className="text-red-600 text-xs mt-1">{formErrors[`deliveryAddress_${index}_addressCountry`]}</p>}
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-lg text-xs text-blue-800 flex items-center gap-2">
+                          <svg className="w-4 h-4 text-blue-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <span>This location matches residential address: <strong>{formData.addressNumber || '[No.]'} {formData.addressStreet1 || '[Street]'}, {formData.addressCity || '[City]'}, {formData.addressDistrict || '[District]'}</strong></span>
+                        </div>
+                      )}
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">District <span className="text-red-600">*</span></label>
-                        <select name="officeAddressDistrict" value={formData.officeAddressDistrict} onChange={handleChange} className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${formErrors.officeAddressDistrict ? 'border-red-500' : 'border-gray-300'}`} required={!formData.isOfficeAddressSame}>
-                          <option value="">Select District</option>
-                          {districts.map(district => (<option key={district.districtId} value={district.districtName}>{district.districtName}</option>))}
-                        </select>
-                        {formErrors.officeAddressDistrict && <p className="text-red-600 text-xs mt-1">{formErrors.officeAddressDistrict}</p>}
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">City/Town <span className="text-red-600">*</span></label>
-                        <select name="officeAddressCity" value={formData.officeAddressCity} onChange={handleChange} className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${formErrors.officeAddressCity ? 'border-red-500' : 'border-gray-300'}`} disabled={!formData.officeAddressDistrict} required={!formData.isOfficeAddressSame}>
-                          <option value="">Select City</option>
-                          {filteredOfficeCities.map(city => (<option key={city.cityId} value={city.cityName}>{city.cityName}</option>))}
-                        </select>
-                        {formErrors.officeAddressCity && <p className="text-red-600 text-xs mt-1">{formErrors.officeAddressCity}</p>}
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Country <span className="text-red-600">*</span></label>
-                        <input type="text" name="officeAddressCountry" value={formData.officeAddressCountry} onChange={handleChange} className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${formErrors.officeAddressCountry ? 'border-red-500' : 'border-gray-300'}`} required={!formData.isOfficeAddressSame} />
-                        {formErrors.officeAddressCountry && <p className="text-red-600 text-xs mt-1">{formErrors.officeAddressCountry}</p>}
-                      </div>
-                    </div>
-                  </>
-                )}
+                  ))}
+                </div>
               </div>
 
               <div>
@@ -862,7 +1082,19 @@ function Customers() {
 
             <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 bg-gray-50">
               <button onClick={() => { setShowModal(false); resetForm(); }} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition font-medium">Cancel</button>
-              <button onClick={handleSubmit} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium">{editingCustomer ? 'Update' : 'Register'}</button>
+              <button 
+                onClick={handleSubmit} 
+                disabled={isSubmitting}
+                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-lg transition font-medium flex items-center gap-2"
+              >
+                {isSubmitting && (
+                  <svg className="animate-spin w-4 h-4 text-white" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                )}
+                {isSubmitting ? (editingCustomer ? 'Updating...' : 'Registering...') : (editingCustomer ? 'Update' : 'Register')}
+              </button>
             </div>
           </div>
         </div>
@@ -997,34 +1229,47 @@ function Customers() {
                     </div>
                   </div>
 
-                  {/* Office Address */}
+                  {/* Delivery Addresses */}
                   <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                    <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 bg-gray-50">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="#1E3F63" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0">
-                        <path d="M3 21h18"/>
-                        <path d="M9 8h1"/>
-                        <path d="M9 12h1"/>
-                        <path d="M9 16h1"/>
-                        <path d="M14 8h1"/>
-                        <path d="M14 12h1"/>
-                        <path d="M14 16h1"/>
-                        <path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"/>
-                      </svg>
-                      <span className="text-xs font-bold text-[#1E3F63] uppercase tracking-wider">Office Address</span>
+                    <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50">
+                      <div className="flex items-center gap-2">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#1E3F63" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0">
+                          <path d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                          <path d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        <span className="text-xs font-bold text-[#1E3F63] uppercase tracking-wider">Delivery Addresses</span>
+                      </div>
+                      {viewCustomerModal.deliveryAddresses && (
+                        <span className="text-xs bg-blue-100 text-blue-800 font-semibold px-2 py-0.5 rounded-full">
+                          {viewCustomerModal.deliveryAddresses.length} {viewCustomerModal.deliveryAddresses.length === 1 ? 'Location' : 'Locations'}
+                        </span>
+                      )}
                     </div>
-                    <div className="px-4 py-4">
-                      <p className="text-sm text-gray-700 leading-relaxed">
-                        {viewCustomerModal.isOfficeAddressSame ? (
-                          <span className="text-gray-500 italic">Same as residential address</span>
-                        ) : (
-                          <>
-                            {viewCustomerModal.officeAddressNumber}, {viewCustomerModal.officeAddressStreet1}
-                            {viewCustomerModal.officeAddressStreet2 && <>, {viewCustomerModal.officeAddressStreet2}</>}
-                            <br/>{viewCustomerModal.officeAddressCity}, {viewCustomerModal.officeAddressDistrict}
-                            <br/>{viewCustomerModal.officeAddressCountry}
-                          </>
-                        )}
-                      </p>
+                    <div className="p-4 space-y-3">
+                      {viewCustomerModal.deliveryAddresses && viewCustomerModal.deliveryAddresses.length > 0 ? (
+                        viewCustomerModal.deliveryAddresses.map((da, idx) => (
+                          <div key={idx} className="p-3 bg-gray-50 rounded-lg border border-gray-100 text-sm">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-semibold text-gray-900 text-xs uppercase tracking-wide">
+                                {da.label || `Delivery Location ${idx + 1}`}
+                              </span>
+                              {da.isSameAsResidential && (
+                                <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-medium">
+                                  Matches Residential
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-gray-700 leading-relaxed text-sm">
+                              {da.addressNumber}, {da.addressStreet1}
+                              {da.addressStreet2 && <>, {da.addressStreet2}</>}
+                              <br/>{da.addressCity}, {da.addressDistrict}
+                              <br/>{da.addressCountry || 'Sri Lanka'}
+                            </p>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-sm text-gray-500 italic">No delivery addresses recorded.</p>
+                      )}
                     </div>
                   </div>
 

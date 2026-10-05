@@ -22,9 +22,6 @@ class BillingController {
         invoiceNumber: req.body.invoiceNumber
       };
       
-      console.log('BillingController.create - Received request body:', req.body);
-      console.log('BillingController.create - Extracted billData:', billData);
-      
       const bill = await this.createBill.execute(billData);
       
       // If bill generation was blocked (paid/partially paid), return 200 with message

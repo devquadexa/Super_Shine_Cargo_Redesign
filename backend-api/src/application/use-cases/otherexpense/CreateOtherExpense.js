@@ -14,6 +14,7 @@ class CreateOtherExpense {
     const expense = new OtherExpense({
       expenseId,
       category: expenseData.category,
+      expenseType: expenseData.expenseType || null,
       description: expenseData.description,
       amount: expenseData.amount,
       expenseDate: expenseData.expenseDate,

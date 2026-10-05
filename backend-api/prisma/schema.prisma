@@ -158,6 +158,23 @@ model customers {
   oldinvoices           oldinvoices[]
   payments              payments[]
   advancepaymentrequests advancepaymentrequests[]
+  customerdeliveryaddresses customerdeliveryaddresses[]
+}
+
+model customerdeliveryaddresses {
+  customerId          String    @db.VarChar(20)
+  deliveryAddressId   Int
+  label               String?   @db.VarChar(100)
+  addressNumber       String?   @db.VarChar(20)
+  addressStreet1      String?   @db.VarChar(200)
+  addressStreet2      String?   @db.VarChar(200)
+  addressCity         String?   @db.VarChar(100)
+  addressDistrict     String?   @db.VarChar(100)
+  addressCountry      String?   @default("Sri Lanka") @db.VarChar(100)
+  isSameAsResidential Boolean?  @default(false)
+  customers           customers @relation(fields: [customerId], references: [customerId], onDelete: Cascade, onUpdate: NoAction, map: "fk_cda_customers")
+
+  @@id([customerId, deliveryAddressId])
 }
 
 model districts {
@@ -368,6 +385,7 @@ model oldinvoices {
 model otherexpenses {
   expenseId       String    @id @db.VarChar(50)
   category        String    @db.VarChar(100)
+  expenseType     String?   @db.VarChar(100)
   description     String    @db.VarChar(500)
   amount          Decimal   @db.Decimal(18, 2)
   expenseDate     DateTime  @db.Date
@@ -380,6 +398,16 @@ model otherexpenses {
   users           users?    @relation(fields: [recordedBy], references: [userId], onUpdate: NoAction, map: "fk_otherexp_users")
 
   @@index([recordedBy], map: "fk_otherexp_users")
+}
+
+model expensetypes {
+  typeId      Int      @id @default(autoincrement())
+  category    String   @db.VarChar(50)
+  typeName    String   @db.VarChar(200)
+  description String?  @db.VarChar(500)
+  itemOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdDate DateTime @default(now()) @db.DateTime(0)
 }
 
 model passwordresetrequests {

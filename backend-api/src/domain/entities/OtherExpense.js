@@ -6,6 +6,7 @@ class OtherExpense {
   constructor({
     expenseId,
     category,
+    expenseType = null,
     description,
     amount,
     expenseDate,
@@ -19,6 +20,7 @@ class OtherExpense {
   }) {
     this.expenseId = expenseId;
     this.category = category;
+    this.expenseType = expenseType;
     this.description = description;
     this.amount = parseFloat(amount) || 0;
     this.expenseDate = expenseDate;
@@ -52,6 +54,7 @@ class OtherExpense {
     return {
       expenseId: this.expenseId,
       category: this.category,
+      expenseType: this.expenseType,
       description: this.description,
       amount: this.amount,
       expenseDate: this.expenseDate,

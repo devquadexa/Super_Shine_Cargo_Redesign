@@ -107,15 +107,16 @@ function PettyCash() {
   const [userSummaryFilterYear, setUserSummaryFilterYear] = useState(new Date().getFullYear());
 
   useEffect(() => {
-    fetchAssignments();
-    fetchJobs();
-    fetchCustomers();
-    fetchInvoicedJobs();
+    const promises = [
+      fetchAssignments(),
+      fetchJobs(),
+      fetchCustomers(),
+      fetchInvoicedJobs()
+    ];
     if (user?.role === 'Admin' || user?.role === 'Super Admin' || user?.role === 'Manager') {
-      fetchUsers();
-      fetchOverallBalance();
-      fetchCashWithdrawals();
+      promises.push(fetchUsers(), fetchOverallBalance(), fetchCashWithdrawals());
     }
+    Promise.all(promises);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
   
@@ -513,13 +514,13 @@ function PettyCash() {
         setMessage('Petty cash assigned successfully!');
         setAssignFormData({ jobId: '', assignedTo: '', assignedAmount: '', notes: '' });
         
-        // Fetch updated data before closing modal
-        await fetchAssignments();
-        await fetchJobs();
-        
-        // Close modal after data is refreshed
+        // Close modal immediately for instant UI responsiveness
         setShowAssignModal(false);
         setTimeout(() => setMessage(''), 3000);
+
+        // Fetch updated data in background
+        fetchAssignments();
+        fetchJobs();
       } else {
         const error = await response.json();
         console.error('API error response:', error);

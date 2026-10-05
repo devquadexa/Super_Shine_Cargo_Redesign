@@ -18,19 +18,11 @@ router.get('/test', (req, res) => {
 // Assign multiple users to a job
 router.post('/jobs/:jobId/assign-users', auth, async (req, res) => {
   try {
-    console.log('\n========================================');
-    console.log('=== ASSIGN USERS TO JOB ENDPOINT ===');
-    console.log('========================================');
-    console.log('Job ID:', req.params.jobId);
-    console.log('Request body:', req.body);
-    console.log('User:', req.user);
-    
     const { jobId } = req.params;
     const { userIds, notes } = req.body;
     const assignedBy = req.user.userId;
 
     if (!Array.isArray(userIds)) {
-      console.log('Invalid userIds:', userIds);
       return res.status(400).json({ 
         message: 'userIds must be an array' 
       });
@@ -57,15 +49,8 @@ router.post('/jobs/:jobId/assign-users', auth, async (req, res) => {
       });
     }
 
-    console.log('[ROUTE] Getting assignMultipleUsersToJob from container...');
     const assignMultipleUsersToJob = container.get('assignMultipleUsersToJob');
-    console.log('[ROUTE] assignMultipleUsersToJob retrieved:', !!assignMultipleUsersToJob);
-    console.log('[ROUTE] Has createNotification:', !!assignMultipleUsersToJob.createNotification);
-    
-    console.log('[ROUTE] Executing use case...');
     const result = await assignMultipleUsersToJob.execute(jobId, userIds, assignedBy, notes);
-    console.log('[ROUTE] Success! Result:', result);
-    console.log('========================================\n');
 
     res.status(200).json({
       success: true,

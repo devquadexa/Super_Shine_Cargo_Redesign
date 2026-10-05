@@ -68,51 +68,332 @@ class MySQLJobRepository extends BaseMySQLRepository {
     };
 
     await this.prisma.jobs.create({ data });
+    if (this._cache) {
+      this._cache.unshift(job);
+    }
+    this.clearCache(false);
     return job;
   }
 
   async findById(jobId) {
-    const row = await this.prisma.jobs.findUnique({
-      where: { jobId },
-      include: this._getStandardInclude()
+    if (!jobId) return null;
+    const now = Date.now();
+    if (this._cache && (now - this._cacheTime < 60000)) {
+      const cached = this._cache.find(j => j.jobId === jobId);
+      if (cached) return cached;
+    }
+
+    try {
+      const mysqlDb = require('../../../config/mysqlDatabase');
+      const sql = `
+        SELECT 
+          j.*,
+          c.name AS customerName,
+          (
+            SELECT JSON_ARRAYAGG(JSON_OBJECT(
+              'assignmentId', ja.assignmentId,
+              'userId', ja.userId,
+              'userName', u.fullName
+            ))
+            FROM jobassignments ja
+            LEFT JOIN users u ON ja.userId = u.userId
+            WHERE ja.jobId = j.jobId AND ja.isActive = 1
+          ) AS assignedUsersJson,
+          (
+            SELECT JSON_ARRAYAGG(JSON_OBJECT(
+              'pettyAssignmentId', pa.assignmentId,
+              'userId', pa.assignedTo,
+              'userName', u.fullName,
+              'waff_clerk_name', u.fullName,
+              'assignedAmount', pa.assignedAmount,
+              'settledAmount', pa.actualSpent,
+              'status', pa.status,
+              'groupId', pa.groupId,
+              'assignedDate', pa.assignedDate,
+              'notes', pa.notes
+            ))
+            FROM pettycashassignments pa
+            LEFT JOIN users u ON pa.assignedTo = u.userId
+            WHERE pa.jobId = j.jobId
+          ) AS assignmentsJson,
+          (
+            SELECT JSON_OBJECT(
+              'netTotal', b.netTotal,
+              'paidAmount', b.paidAmount
+            )
+            FROM bills b
+            WHERE b.jobId = j.jobId
+            ORDER BY b.createdDate DESC
+            LIMIT 1
+          ) AS latestBillJson
+        FROM jobs j
+        LEFT JOIN customers c ON j.customerId = c.customerId
+        WHERE j.jobId = ?
+        LIMIT 1
+      `;
+      const rows = await mysqlDb.query(sql, [jobId]);
+      if (rows && rows.length > 0) {
+        return this._mapFastRowToEntity(rows[0]);
+      }
+      return null;
+    } catch (err) {
+      console.warn('Fast findById fallback to Prisma:', err.message);
+      const row = await this.prisma.jobs.findUnique({
+        where: { jobId },
+        include: this._getStandardInclude()
+      });
+      if (!row) return null;
+      return this.mapToEntity(row);
+    }
+  }
+
+  clearCache(clearMemory = true) {
+    if (clearMemory) {
+      this._cache = null;
+      this._cacheTime = 0;
+      this._userCache = null;
+    }
+  }
+
+  _mapFastRowToEntity(row) {
+    let assignedUsers = [];
+    if (row.assignedUsersJson) {
+      const parsed = typeof row.assignedUsersJson === 'string' ? JSON.parse(row.assignedUsersJson) : row.assignedUsersJson;
+      if (Array.isArray(parsed)) assignedUsers = parsed;
+    }
+
+    let assignments = [];
+    if (row.assignmentsJson) {
+      const parsed = typeof row.assignmentsJson === 'string' ? JSON.parse(row.assignmentsJson) : row.assignmentsJson;
+      if (Array.isArray(parsed)) {
+        assignments = parsed.map(pa => ({
+          pettyAssignmentId: pa.pettyAssignmentId,
+          userId: pa.userId,
+          userName: pa.userName || null,
+          waff_clerk_name: pa.waff_clerk_name || null,
+          assignedAmount: parseFloat(pa.assignedAmount || 0),
+          settledAmount: parseFloat(pa.settledAmount || 0),
+          status: (pa.status && String(pa.status).toUpperCase() === 'ASSIGNED') ? 'Assigned' : pa.status,
+          groupId: pa.groupId,
+          assignedDate: pa.assignedDate,
+          notes: pa.notes
+        }));
+      }
+    }
+
+    let billTotalAmount = null;
+    let billPaidAmount = 0;
+    if (row.latestBillJson) {
+      const parsed = typeof row.latestBillJson === 'string' ? JSON.parse(row.latestBillJson) : row.latestBillJson;
+      if (parsed) {
+        if (parsed.netTotal !== undefined && parsed.netTotal !== null) billTotalAmount = parseFloat(parsed.netTotal);
+        if (parsed.paidAmount !== undefined && parsed.paidAmount !== null) billPaidAmount = parseFloat(parsed.paidAmount);
+      }
+    }
+
+    let payItems = [];
+    if (row.payItems) {
+      try {
+        const parsed = typeof row.payItems === 'string' ? JSON.parse(row.payItems) : row.payItems;
+        if (Array.isArray(parsed)) payItems = parsed;
+      } catch (e) {}
+    }
+
+    let officePayItems = [];
+    if (row.officePayItems) {
+      try {
+        officePayItems = typeof row.officePayItems === 'string' ? JSON.parse(row.officePayItems) : row.officePayItems;
+        if (Array.isArray(officePayItems)) officePayItems = officePayItems;
+      } catch (e) {}
+    }
+
+    let metadata = {};
+    if (row.metadata) {
+      try {
+        metadata = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
+      } catch (e) {}
+    }
+
+    return new Job({
+      jobId: row.jobId,
+      customerId: row.customerId,
+      customerName: row.customerName || null,
+      blNumber: row.blNumber,
+      cusdecNumber: row.cusdecNumber,
+      cusdecDate: row.CUSDECDate || row.cusdecDate,
+      openDate: row.openDate,
+      shipmentCategory: row.shipmentCategory,
+      chassisNumber: row.chassisNumber,
+      exporter: row.exporter,
+      transporter: row.transporter,
+      lcNumber: row.lcNumber,
+      containerNumber: row.containerNumber,
+      transportDeliveryDate: row.TransportDeliveryDate || row.transportDeliveryDate,
+      status: row.status || 'Open',
+      assignedTo: row.assignedTo,
+      assignedUsers,
+      assignments,
+      createdDate: row.createdDate,
+      completedDate: row.completedDate,
+      pettyCashStatus: row.pettyCashStatus,
+      advancePayment: row.advancePayment !== undefined ? parseFloat(row.advancePayment) : 0,
+      advancePaymentDate: row.advancePaymentDate,
+      advancePaymentType: row.advancePaymentType,
+      advancePaymentCheckNo: row.advancePaymentCheckNo,
+      advancePaymentNotes: row.advancePaymentNotes,
+      advancePaymentRecordedBy: row.advancePaymentRecordedBy,
+      payItems,
+      officePayItems,
+      metadata,
+      billTotalAmount,
+      billPaidAmount
     });
-    if (!row) return null;
-    return this.mapToEntity(row);
   }
 
   async findAll(filters = {}) {
-    if (filters.assignedTo) {
-      return this.findByAssignedUser(filters.assignedTo);
+    const now = Date.now();
+
+    // 1. If global cache is hot (within 60s), serve instantly from memory
+    if (this._cache && (now - this._cacheTime < 60000)) {
+      let filtered = this._cache;
+      if (filters.assignedTo) {
+        filtered = filtered.filter(j => 
+          j.assignedTo === filters.assignedTo || 
+          (Array.isArray(j.assignedUsers) && j.assignedUsers.some(u => u.userId === filters.assignedTo))
+        );
+      }
+      if (filters.status) {
+        filtered = filtered.filter(j => j.status === filters.status);
+      }
+      if (filters.customerId) {
+        filtered = filtered.filter(j => j.customerId === filters.customerId);
+      }
+      return filtered;
     }
 
-    const where = {};
-    if (filters.status) where.status = filters.status;
-    if (filters.customerId) where.customerId = filters.customerId;
+    // 2. Check per-user cache for assigned clerk
+    if (filters.assignedTo && !filters.status && !filters.customerId) {
+      if (!this._userCache) this._userCache = new Map();
+      const userCached = this._userCache.get(filters.assignedTo);
+      if (userCached && (now - userCached.time < 60000)) {
+        return userCached.data;
+      }
+    }
 
-    const rows = await this.prisma.jobs.findMany({
-      where,
-      include: this._getStandardInclude(),
-      orderBy: { jobId: 'asc' }
-    });
+    try {
+      const mysqlDb = require('../../../config/mysqlDatabase');
+      let whereClause = '1=1';
+      const params = [];
+      if (filters.status) {
+        whereClause += ' AND j.status = ?';
+        params.push(filters.status);
+      }
+      if (filters.customerId) {
+        whereClause += ' AND j.customerId = ?';
+        params.push(filters.customerId);
+      }
+      if (filters.assignedTo) {
+        whereClause += ` AND (
+          j.assignedTo = ? OR EXISTS (
+            SELECT 1 FROM jobassignments ja_filter 
+            WHERE ja_filter.jobId = j.jobId 
+              AND ja_filter.userId = ? 
+              AND ja_filter.isActive = 1
+          )
+        )`;
+        params.push(filters.assignedTo, filters.assignedTo);
+      }
 
-    return Promise.all(rows.map(row => this.mapToEntity(row)));
+      const sql = `
+        SELECT 
+          j.*,
+          c.name AS customerName,
+          (
+            SELECT JSON_ARRAYAGG(JSON_OBJECT(
+              'assignmentId', ja.assignmentId,
+              'userId', ja.userId,
+              'userName', u.fullName
+            ))
+            FROM jobassignments ja
+            LEFT JOIN users u ON ja.userId = u.userId
+            WHERE ja.jobId = j.jobId AND ja.isActive = 1
+          ) AS assignedUsersJson,
+          (
+            SELECT JSON_ARRAYAGG(JSON_OBJECT(
+              'pettyAssignmentId', pa.assignmentId,
+              'userId', pa.assignedTo,
+              'userName', u.fullName,
+              'waff_clerk_name', u.fullName,
+              'assignedAmount', pa.assignedAmount,
+              'settledAmount', pa.actualSpent,
+              'status', pa.status,
+              'groupId', pa.groupId,
+              'assignedDate', pa.assignedDate,
+              'notes', pa.notes
+            ))
+            FROM pettycashassignments pa
+            LEFT JOIN users u ON pa.assignedTo = u.userId
+            WHERE pa.jobId = j.jobId
+          ) AS assignmentsJson,
+          (
+            SELECT JSON_OBJECT(
+              'netTotal', b.netTotal,
+              'paidAmount', b.paidAmount
+            )
+            FROM bills b
+            WHERE b.jobId = j.jobId
+            ORDER BY b.createdDate DESC
+            LIMIT 1
+          ) AS latestBillJson
+        FROM jobs j
+        LEFT JOIN customers c ON j.customerId = c.customerId
+        WHERE ${whereClause}
+        ORDER BY j.jobId ASC
+      `;
+
+      const rows = await mysqlDb.query(sql, params);
+      const result = rows.map(r => this._mapFastRowToEntity(r));
+
+      const hasFilters = Boolean(filters.status || filters.customerId || filters.assignedTo);
+      if (!hasFilters) {
+        this._cache = result;
+        this._cacheTime = now;
+      } else if (filters.assignedTo && !filters.status && !filters.customerId) {
+        if (!this._userCache) this._userCache = new Map();
+        this._userCache.set(filters.assignedTo, { data: result, time: now });
+      }
+      return result;
+    } catch (err) {
+      console.warn('Fast jobs query fallback to Prisma:', err.message);
+      const where = {};
+      if (filters.status) where.status = filters.status;
+      if (filters.customerId) where.customerId = filters.customerId;
+      if (filters.assignedTo) {
+        where.OR = [
+          { assignedTo: filters.assignedTo },
+          {
+            jobassignments: {
+              some: {
+                userId: filters.assignedTo,
+                isActive: true
+              }
+            }
+          }
+        ];
+      }
+
+      const rows = await this.prisma.jobs.findMany({
+        where,
+        include: this._getStandardInclude(),
+        orderBy: { jobId: 'asc' }
+      });
+
+      return Promise.all(rows.map(row => this.mapToEntity(row)));
+    }
   }
 
   async findByAssignedUser(userId) {
-    const rows = await this.prisma.jobs.findMany({
-      where: {
-        jobassignments: {
-          some: {
-            userId,
-            isActive: true
-          }
-        }
-      },
-      include: this._getStandardInclude(),
-      orderBy: { openDate: 'desc' }
-    });
-
-    return Promise.all(rows.map(row => this.mapToEntity(row)));
+    return this.findAll({ assignedTo: userId });
   }
 
   async findByCustomer(customerId) {
@@ -149,6 +430,13 @@ class MySQLJobRepository extends BaseMySQLRepository {
       data
     });
 
+    if (this._cache) {
+      const idx = this._cache.findIndex(j => j.jobId === jobId);
+      if (idx !== -1) {
+        this._cache[idx] = { ...this._cache[idx], ...job, ...data };
+      }
+    }
+    this.clearCache(false);
     return job;
   }
 
@@ -180,6 +468,19 @@ class MySQLJobRepository extends BaseMySQLRepository {
         advancePaymentRecordedBy: latest?.recordedBy || null
       }
     });
+
+    if (this._cache) {
+      const item = this._cache.find(j => j.jobId === jobId);
+      if (item) {
+        item.advancePayment = total;
+        item.advancePaymentDate = sumResult._max.paymentMadeDate || null;
+        item.advancePaymentType = latest?.paymentType || null;
+        item.advancePaymentCheckNo = latest?.checkNo || null;
+        item.advancePaymentNotes = latest?.notes || null;
+        item.advancePaymentRecordedBy = latest?.recordedBy || null;
+      }
+    }
+    this.clearCache(false);
 
     return {
       totalAdvancePayment: total,
@@ -347,6 +648,11 @@ class MySQLJobRepository extends BaseMySQLRepository {
       where: { jobId },
       data: { status }
     });
+    if (this._cache) {
+      const item = this._cache.find(j => j.jobId === jobId);
+      if (item) item.status = status;
+    }
+    this.clearCache(false);
     return true;
   }
 
@@ -359,6 +665,14 @@ class MySQLJobRepository extends BaseMySQLRepository {
         isActive: true
       }
     });
+    if (this._cache) {
+      const item = this._cache.find(j => j.jobId === jobId);
+      if (item) {
+        if (!item.assignedUsers) item.assignedUsers = [];
+        item.assignedUsers.push({ userId });
+      }
+    }
+    this.clearCache(false);
     return true;
   }
 
@@ -366,6 +680,10 @@ class MySQLJobRepository extends BaseMySQLRepository {
     await this.prisma.jobs.delete({
       where: { jobId }
     }).catch(() => null);
+    if (this._cache) {
+      this._cache = this._cache.filter(j => j.jobId !== jobId);
+    }
+    this.clearCache(false);
     return true;
   }
 
@@ -387,6 +705,14 @@ class MySQLJobRepository extends BaseMySQLRepository {
         addedDate: new Date()
       }
     });
+    if (this._cache) {
+      const item = this._cache.find(j => j.jobId === jobId);
+      if (item) {
+        if (!item.payItems) item.payItems = [];
+        item.payItems.push({ payItemId, ...payItem, actualCost: Number(created.actualCost) || 0, billingAmount: Number(created.billingAmount) || 0 });
+      }
+    }
+    this.clearCache(false);
     return {
       payItemId,
       ...payItem,
@@ -404,24 +730,28 @@ class MySQLJobRepository extends BaseMySQLRepository {
     try {
       await this.prisma.payitems.deleteMany({ where: { jobId } });
       if (Array.isArray(payItems) && payItems.length > 0) {
-        for (const item of payItems) {
-          const payItemId = `PI${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-          await this.prisma.payitems.create({
-            data: {
-              payItemId,
-              jobId,
-              description: item.description,
-              actualCost: item.amount || item.actualCost || 0,
-              billingAmount: item.billingAmount || item.amount || 0,
-              addedBy: userId || 'System',
-              addedDate: new Date()
-            }
-          });
-        }
+        const itemsToInsert = payItems.map(item => ({
+          payItemId: `PI${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          jobId,
+          description: item.description || '',
+          actualCost: parseFloat(item.amount || item.actualCost || 0),
+          billingAmount: parseFloat(item.billingAmount || item.amount || 0),
+          addedBy: userId || 'System',
+          addedDate: new Date()
+        }));
+
+        await this.prisma.payitems.createMany({
+          data: itemsToInsert
+        });
       }
     } catch (e) {
       console.warn('Warning: Could not sync to PayItems table:', e.message);
     }
+    if (this._cache) {
+      const item = this._cache.find(j => j.jobId === jobId);
+      if (item) item.payItems = payItems;
+    }
+    this.clearCache(false);
     return true;
   }
 

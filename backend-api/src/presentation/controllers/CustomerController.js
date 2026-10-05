@@ -16,9 +16,7 @@ class CustomerController {
 
   async create(req, res) {
     try {
-      console.log('📝 Creating customer with data:', req.body);
       const customer = await this.createCustomer.execute(req.body);
-      console.log('✅ Customer created successfully:', customer.customerId);
       res.status(201).json(customer);
     } catch (error) {
       console.error('❌ Create customer error:', error.message);
@@ -29,7 +27,6 @@ class CustomerController {
 
   async getAll(req, res) {
     try {
-      console.log('📋 Getting all customers... User:', req.user?.username, 'Role:', req.user?.role);
       let customers = await this.getAllCustomers.execute(req.query);
 
       // Filter by user role - Waff Clerk only sees customers assigned to their jobs
@@ -39,7 +36,6 @@ class CustomerController {
         customers = customers.filter(c => assignedCustomerIds.has(c.customerId));
       }
 
-      console.log('✅ Found', customers.length, 'customers');
       res.json(customers);
     } catch (error) {
       console.error('❌ Get customers error:', error);
@@ -71,11 +67,7 @@ class CustomerController {
 
   async update(req, res) {
     try {
-      console.log('📝 Updating customer:', req.params.id);
-      console.log('   Update data:', req.body);
-      console.log('   IsActive value:', req.body.isActive);
       const customer = await this.updateCustomer.execute(req.params.id, req.body);
-      console.log('✅ Customer updated successfully');
       res.json(customer);
     } catch (error) {
       console.error('Update customer error:', error);

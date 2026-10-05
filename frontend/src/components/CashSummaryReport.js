@@ -83,66 +83,47 @@ function CashSummaryReport() {
         return dateOnly >= fromDateStr && dateOnly <= toDateStr;
       };
 
-      // Fetch cash withdrawals (exclude deposits)
-      const withdrawals = await cashWithdrawalService.getAll();
-      console.log('All withdrawals:', withdrawals);
-      const filteredWithdrawals = withdrawals.filter(w => 
+      // Fetch cash withdrawals, petty cash assignments, and other expenses in parallel
+      const [allWithdrawals, assignmentsRes, expenses] = await Promise.all([
+        cashWithdrawalService.getAll().catch(err => {
+          console.error('Error fetching withdrawals:', err);
+          return [];
+        }),
+        fetch(`${API_BASE}/api/petty-cash-assignments`, {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        }).then(res => res.ok ? res.json() : []).catch(err => {
+          console.error('Error fetching assignments:', err);
+          return [];
+        }),
+        otherExpenseService.getAll().catch(err => {
+          console.error('Error fetching expenses:', err);
+          return [];
+        })
+      ]);
+
+      // Filter withdrawals and deposits from the same dataset
+      const filteredWithdrawals = (allWithdrawals || []).filter(w => 
         w.transactionType !== 'deposit' &&
         isDateInRange(w.withdrawalDate, fromDate, toDate)
       );
-      console.log('Filtered withdrawals:', filteredWithdrawals);
       setCashWithdrawals(filteredWithdrawals);
 
-      // Fetch petty cash assignments
-      const response = await fetch(`${API_BASE}/api/petty-cash-assignments`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-      
-      if (response.ok) {
-        const assignments = await response.json();
-        console.log('All assignments:', assignments);
-        const filteredAssignments = assignments.filter(a => 
-          isDateInRange(a.assignedDate, fromDate, toDate)
-        );
-        console.log('Filtered assignments:', filteredAssignments);
-        setPettyCashAssignments(filteredAssignments);
-      }
+      const filteredDeposits = (allWithdrawals || [])
+        .filter(t => t.transactionType === 'deposit')
+        .filter(d => isDateInRange(d.withdrawalDate, fromDate, toDate));
+      setCashDeposits(filteredDeposits);
 
-      // Fetch other expenses
-      const expenses = await otherExpenseService.getAll();
-      console.log('All expenses:', expenses);
-      const filteredExpenses = expenses.filter(e => 
+      // Filter petty cash assignments
+      const filteredAssignments = (assignmentsRes || []).filter(a => 
+        isDateInRange(a.assignedDate, fromDate, toDate)
+      );
+      setPettyCashAssignments(filteredAssignments);
+
+      // Filter other expenses
+      const filteredExpenses = (expenses || []).filter(e => 
         isDateInRange(e.expenseDate, fromDate, toDate)
       );
-      console.log('Filtered expenses:', filteredExpenses);
       setOtherExpenses(filteredExpenses);
-
-      // Fetch cash deposits (from withdrawals table with transactionType === 'deposit')
-      try {
-        const depositsResponse = await fetch(`${API_BASE}/api/cash-withdrawals`, {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        });
-        
-        if (depositsResponse.ok) {
-          const allTransactions = await depositsResponse.json();
-          // Filter only deposits
-          const deposits = allTransactions
-            .filter(t => t.transactionType === 'deposit')
-            .filter(d => isDateInRange(d.withdrawalDate, fromDate, toDate));
-          
-          console.log('Filtered deposits:', deposits);
-          setCashDeposits(deposits);
-        } else {
-          setCashDeposits([]);
-        }
-      } catch (depositError) {
-        console.error('Error fetching deposits:', depositError);
-        setCashDeposits([]);
-      }
 
       setHasSearched(true);
       setLoading(false);

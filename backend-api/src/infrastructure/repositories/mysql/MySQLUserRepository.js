@@ -8,6 +8,11 @@ class MySQLUserRepository extends BaseMySQLRepository {
     super(dbConnection);
   }
 
+  clearCache() {
+    this._cache = null;
+    this._cacheTime = 0;
+  }
+
   async create(user) {
     await this.prisma.users.create({
       data: {
@@ -21,31 +26,32 @@ class MySQLUserRepository extends BaseMySQLRepository {
         isActive: user.isActive !== undefined ? Boolean(user.isActive) : true
       }
     });
+    this.clearCache();
     return user;
   }
 
   async findById(userId) {
-    const row = await this.prisma.users.findFirst({
-      where: { userId, isActive: true }
-    });
-    if (!row) return null;
-    return this.mapToEntity(row);
+    const row = await this.prisma.users.findFirst({ where: { userId, isActive: true } });
+    return row ? this.mapToEntity(row) : null;
   }
 
   async findByUsername(username) {
-    const row = await this.prisma.users.findFirst({
-      where: { username, isActive: true }
-    });
-    if (!row) return null;
-    return this.mapToEntity(row);
+    const row = await this.prisma.users.findFirst({ where: { username, isActive: true } });
+    return row ? this.mapToEntity(row) : null;
   }
 
   async findAll() {
+    const now = Date.now();
+    if (this._cache && (now - this._cacheTime < 60000)) return this._cache;
+
     const rows = await this.prisma.users.findMany({
       where: { isActive: true },
       orderBy: { fullName: 'asc' }
     });
-    return rows.map(row => this.mapToEntity(row));
+    const result = rows.map(row => this.mapToEntity(row));
+    this._cache = result;
+    this._cacheTime = now;
+    return result;
   }
 
   async update(userId, user) {
@@ -57,6 +63,7 @@ class MySQLUserRepository extends BaseMySQLRepository {
         email: user.email
       }
     });
+    this.clearCache();
     return user;
   }
 
@@ -65,13 +72,12 @@ class MySQLUserRepository extends BaseMySQLRepository {
       where: { userId },
       data: { isActive: false }
     });
+    this.clearCache();
     return true;
   }
 
   async authenticate(username, password) {
-    const row = await this.prisma.users.findFirst({
-      where: { username, isActive: true }
-    });
+    const row = await this.prisma.users.findFirst({ where: { username, isActive: true } });
     if (!row) return null;
 
     const user = this.mapToEntity(row);
@@ -83,18 +89,14 @@ class MySQLUserRepository extends BaseMySQLRepository {
     } else {
       isValid = (password === user.password);
       if (isValid) {
-        try {
-          const hashed = await bcrypt.hash(password, 10);
-          await this.updatePassword(user.userId, hashed, false, false);
-          console.log(`✅ Migrated password to bcrypt for user: ${username}`);
-        } catch (err) {
-          console.error(`⚠️ Failed to migrate password for user: ${username}`, err);
-        }
+        // Silently migrate plain-text password to bcrypt
+        bcrypt.hash(password, 10)
+          .then(hashed => this.updatePassword(user.userId, hashed, false, false))
+          .catch(() => {});
       }
     }
 
-    if (!isValid) return null;
-    return user;
+    return isValid ? user : null;
   }
 
   async generateNextId() {

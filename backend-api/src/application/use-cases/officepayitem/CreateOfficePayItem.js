@@ -12,9 +12,6 @@ class CreateOfficePayItem {
 
   async execute(payItemData) {
     try {
-      console.log('CreateOfficePayItem.execute - START');
-      console.log('payItemData:', payItemData);
-      
       // Validate job exists
       const job = await this.jobRepository.findById(payItemData.jobId);
       if (!job) {
@@ -40,10 +37,7 @@ class CreateOfficePayItem {
       }
       
       // Save
-      const savedItem = await this.officePayItemRepository.create(officePayItem);
-      
-      console.log('CreateOfficePayItem.execute - SUCCESS');
-      return savedItem;
+      return await this.officePayItemRepository.create(officePayItem);
     } catch (error) {
       console.error('CreateOfficePayItem.execute - ERROR:', error);
       throw error;

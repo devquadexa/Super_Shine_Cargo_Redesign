@@ -9,6 +9,7 @@ export const otherExpenseService = {
   getAll: async (filters = {}) => {
     const params = new URLSearchParams();
     if (filters.category) params.append('category', filters.category);
+    if (filters.expenseType) params.append('expenseType', filters.expenseType);
     if (filters.fromDate) params.append('fromDate', filters.fromDate);
     if (filters.toDate) params.append('toDate', filters.toDate);
     
@@ -38,18 +39,20 @@ export const otherExpenseService = {
   },
 
   // Get report data
-  getReport: async (fromDate, toDate, category = null) => {
+  getReport: async (fromDate, toDate, category = null, expenseType = null) => {
     const params = new URLSearchParams({ fromDate, toDate });
     if (category) params.append('category', category);
+    if (expenseType) params.append('expenseType', expenseType);
     
     const response = await apiClient.get(`/other-expenses/report/data?${params.toString()}`);
     return response.data;
   },
 
   // Export PDF
-  exportPDF: async (fromDate, toDate, category = null) => {
+  exportPDF: async (fromDate, toDate, category = null, expenseType = null) => {
     const params = new URLSearchParams({ fromDate, toDate });
     if (category) params.append('category', category);
+    if (expenseType) params.append('expenseType', expenseType);
     
     const response = await apiClient.get(`/other-expenses/report/export/pdf?${params.toString()}`, {
       responseType: 'blob'
@@ -58,9 +61,10 @@ export const otherExpenseService = {
   },
 
   // Export Excel
-  exportExcel: async (fromDate, toDate, category = null) => {
+  exportExcel: async (fromDate, toDate, category = null, expenseType = null) => {
     const params = new URLSearchParams({ fromDate, toDate });
     if (category) params.append('category', category);
+    if (expenseType) params.append('expenseType', expenseType);
     
     const response = await apiClient.get(`/other-expenses/report/export/excel?${params.toString()}`, {
       responseType: 'blob'

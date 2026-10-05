@@ -219,7 +219,7 @@ function PettyCashGrouped() {
         setShowSettleModal(false);
         setSelectedGroup(null);
         setSettlementItems([]);
-        fetchGroups();
+        await fetchGroups();
         setTimeout(() => setMessage(''), 3000);
       } else {
         const error = await response.json();
