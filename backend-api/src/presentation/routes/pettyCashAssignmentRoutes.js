@@ -6,6 +6,40 @@ module.exports = (container) => {
   const PettyCashAssignmentController = require('../controllers/PettyCashAssignmentController');
   const controller = new PettyCashAssignmentController(container);
 
+  // Request petty cash (Waff Clerk, or Admin/Manager)
+  router.post('/request',
+    auth,
+    (req, res) => controller.request(req, res)
+  );
+
+  // Approve petty cash request (Admin/Super Admin/Manager)
+  router.patch('/:id/approve',
+    auth,
+    checkRole('Admin', 'Super Admin', 'Manager'),
+    (req, res) => controller.approve(req, res)
+  );
+
+  // Reject petty cash request (Admin/Super Admin/Manager)
+  router.patch('/:id/reject',
+    auth,
+    checkRole('Admin', 'Super Admin', 'Manager'),
+    (req, res) => controller.reject(req, res)
+  );
+
+  // Re-request rejected petty cash (Waff Clerk)
+  router.patch('/:id/re-request',
+    auth,
+    checkRole('Waff Clerk'),
+    (req, res) => controller.reRequest(req, res)
+  );
+
+  // Issue petty cash (Finance role ONLY)
+  router.patch('/:id/issue',
+    auth,
+    checkRole('Finance'),
+    (req, res) => controller.issue(req, res)
+  );
+
   // Create assignment (Admin/Super Admin only)
   router.post('/', 
     auth, 
@@ -13,17 +47,17 @@ module.exports = (container) => {
     (req, res) => controller.create(req, res)
   );
 
-  // Get all assignments (Admin/Super Admin only)
+  // Get all assignments (Admin/Super Admin/Manager/Finance)
   router.get('/', 
     auth, 
-    checkRole('Admin', 'Super Admin', 'Manager'), 
+    checkRole('Admin', 'Super Admin', 'Manager', 'Finance'), 
     (req, res) => controller.getAll(req, res)
   );
 
-  // Get grouped assignments (Admin/Super Admin/Manager)
+  // Get grouped assignments (Admin/Super Admin/Manager/Finance)
   router.get('/grouped', 
     auth, 
-    checkRole('Admin', 'Super Admin', 'Manager'), 
+    checkRole('Admin', 'Super Admin', 'Manager', 'Finance'), 
     (req, res) => controller.getGrouped(req, res)
   );
 
@@ -33,10 +67,10 @@ module.exports = (container) => {
     (req, res) => controller.getMyGrouped(req, res)
   );
 
-  // Get aggregated assignments (Admin/Super Admin/Manager) - ONE row per job+user
+  // Get aggregated assignments (Admin/Super Admin/Manager/Finance) - ONE row per job+user
   router.get('/aggregated', 
     auth, 
-    checkRole('Admin', 'Super Admin', 'Manager'), 
+    checkRole('Admin', 'Super Admin', 'Manager', 'Finance'), 
     (req, res) => controller.getAggregated(req, res)
   );
 
@@ -49,7 +83,7 @@ module.exports = (container) => {
   // Get assignments with children (parent-child structure)
   router.get('/with-children', 
     auth, 
-    checkRole('Admin', 'Super Admin', 'Manager'), 
+    checkRole('Admin', 'Super Admin', 'Manager', 'Finance'), 
     (req, res) => controller.getWithChildren(req, res)
   );
 
@@ -72,10 +106,10 @@ module.exports = (container) => {
     (req, res) => controller.getSubAssignments(req, res)
   );
 
-  // Get user balances summary (Admin/Super Admin only)
+  // Get user balances summary (Admin/Super Admin/Finance)
   router.get('/user-balances', 
     auth, 
-    checkRole('Admin', 'Super Admin', 'Manager'), 
+    checkRole('Admin', 'Super Admin', 'Manager', 'Finance'), 
     (req, res) => controller.getUserBalancesSummary(req, res)
   );
 
@@ -94,7 +128,7 @@ module.exports = (container) => {
   // Get ALL assignments for a job (for Invoicing)
   router.get('/job/:jobId/all', 
     auth, 
-    checkRole('Admin', 'Super Admin', 'Manager'), 
+    checkRole('Admin', 'Super Admin', 'Manager', 'Finance'), 
     (req, res) => controller.getAllByJob(req, res)
   );
 

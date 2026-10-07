@@ -207,6 +207,7 @@ function UserManagement() {
                       <span className={`inline-block px-3 py-1 text-xs font-medium rounded-full ${
                         u.role === 'Super Admin' ? 'bg-purple-50 text-purple-700' :
                         u.role === 'Admin' ? 'bg-blue-50 text-blue-700' :
+                        u.role === 'Finance' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' :
                         u.role === 'Manager' ? 'bg-green-50 text-green-700' :
                         u.role === 'Office Executive' ? 'bg-amber-50 text-amber-700' :
                         'bg-gray-50 text-gray-700'
@@ -320,6 +321,7 @@ function UserManagement() {
                       required
                     >
                       <option value="Waff Clerk">Waff Clerk</option>
+                      <option value="Finance">Finance</option>
                       <option value="Office Executive">Office Executive</option>
                       <option value="Manager">Manager</option>
                       <option value="Admin">Admin</option>

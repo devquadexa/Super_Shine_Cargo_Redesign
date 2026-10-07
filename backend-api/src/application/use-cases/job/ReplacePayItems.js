@@ -8,18 +8,12 @@ class ReplacePayItems {
   }
 
   async execute(jobId, payItemsData, userId) {
-    const job = await this.jobRepository.findById(jobId);
-    
-    if (!job) {
-      throw new Error('Job not found');
-    }
-    
-    // Validate pay items with more flexible validation
+    // Validate pay items
     for (const item of payItemsData) {
       const description = item.description || item.name || '';
       const amount = parseFloat(item.amount || item.actualCost || 0);
       const billingAmount = parseFloat(item.billingAmount || item.amount || item.actualCost || 0);
-      
+
       if (!description.trim()) {
         throw new Error(`Invalid pay item: description is required`);
       }
@@ -30,11 +24,11 @@ class ReplacePayItems {
         throw new Error(`Invalid billing amount for pay item: ${description}`);
       }
     }
-    
-    // Replace all pay items through repository
+
+    // Replace all pay items through repository fast
     await this.jobRepository.replacePayItems(jobId, payItemsData, userId);
-    
-    return await this.jobRepository.findById(jobId);
+
+    return { jobId, payItems: payItemsData };
   }
 }
 

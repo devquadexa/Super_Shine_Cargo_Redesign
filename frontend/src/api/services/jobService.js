@@ -36,13 +36,13 @@ export const jobService = {
     return response.data;
   },
 
-  addPayItem: async (jobId, payItemData) => {
-    const response = await apiClient.post(`/jobs/${jobId}/pay-items`, payItemData);
+  addPayItem: async (jobId, payItemData, config = {}) => {
+    const response = await apiClient.post(`/jobs/${jobId}/pay-items`, payItemData, config);
     return response.data;
   },
 
-  replacePayItems: async (jobId, payItems) => {
-    const response = await apiClient.put(`/jobs/${jobId}/pay-items`, { payItems });
+  replacePayItems: async (jobId, payItems, config = {}) => {
+    const response = await apiClient.put(`/jobs/${jobId}/pay-items`, { payItems }, config);
     return response.data;
   },
 };

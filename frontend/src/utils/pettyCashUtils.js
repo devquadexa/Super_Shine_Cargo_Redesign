@@ -169,6 +169,17 @@ export function isClerkRole(user) {
   return user.role === CLERK_ROLE;
 }
 
+/**
+ * Returns true if the user has the Finance role.
+ *
+ * @param {{ role?: string }|null|undefined} user
+ * @returns {boolean}
+ */
+export function isFinanceRole(user) {
+  if (!user) return false;
+  return user.role === 'Finance';
+}
+
 // ─── Permission guards ────────────────────────────────────────────────────────
 
 /**
@@ -214,4 +225,164 @@ export function canEditSettlement(user, assignment, invoiceGenerated) {
 export function canDeleteSettlementItem(user, assignment, invoiceGenerated, itemCount) {
   if (!canEditSettlement(user, assignment, invoiceGenerated)) return false;
   return itemCount > 1;
+}
+
+/**
+ * Returns specific user-approval status and styling for petty cash requests and assignments.
+ * E.g.:
+ * - 'Requested' -> 'Manager Request Pending' (or 'Pending Manager Approval')
+ * - 'Approved'  -> 'Finance Request Pending' (with subtext 'Approved by Super Admin' / 'Approved by Manager')
+ * - 'Assigned' (if issued by finance) -> 'Finance Approved'
+ * - 'Rejected'  -> 'Super Admin Rejected' / 'Manager Rejected' / 'Admin Rejected'
+ *
+ * @param {string} status - Raw or group status
+ * @param {object} item - Assignment or group object containing approval/rejection/issued metadata
+ * @returns {{ label: string, subtext: string|null, badgeClass: string }}
+ */
+export function getSpecificPettyCashStatus(status, item = {}) {
+  const approvedByRole = item.approvedByRole || (item.approvedByName ? 'Manager' : null);
+  const rejectedByRole = item.rejectedByRole || (item.rejectedByName ? 'Manager' : null);
+  const issuedByRole = item.issuedByRole;
+  const isIssuedByFinance = Boolean(item.issuedBy || item.issuedByName || issuedByRole === 'Finance');
+
+  switch (status) {
+    case 'Requested':
+      return {
+        label: 'Manager Request Pending',
+        subtext: item.assignedManagerName ? `Assigned to ${item.assignedManagerName}` : 'Pending Manager Approval',
+        badgeClass: 'bg-amber-100 text-amber-800 border border-amber-200'
+      };
+
+    case 'Approved': {
+      const roleText = approvedByRole || 'Manager';
+      const nameText = item.approvedByName ? ` (${item.approvedByName})` : '';
+      return {
+        label: 'Finance Request Pending',
+        subtext: `Approved by ${roleText}${nameText}`,
+        badgeClass: 'bg-indigo-100 text-indigo-800 border border-indigo-200'
+      };
+    }
+
+    case 'Rejected': {
+      const roleText = rejectedByRole || 'Management';
+      return {
+        label: `${roleText} Rejected`,
+        subtext: item.rejectionReason ? `Reason: ${item.rejectionReason}` : (item.rejectedByName ? `By ${item.rejectedByName}` : null),
+        badgeClass: 'bg-red-100 text-red-800 border border-red-200'
+      };
+    }
+
+    case 'Assigned': {
+      if (isIssuedByFinance) {
+        return {
+          label: 'Finance Approved',
+          subtext: item.issuedByName ? `Issued by ${item.issuedByName}` : 'Issued by Finance',
+          badgeClass: 'bg-blue-100 text-blue-800 border border-blue-200'
+        };
+      }
+      if (item.assignedByRole) {
+        return {
+          label: `${item.assignedByRole} Assigned`,
+          subtext: item.assignedByName ? `By ${item.assignedByName}` : null,
+          badgeClass: 'bg-blue-100 text-blue-800 border border-blue-200'
+        };
+      }
+      return {
+        label: 'Assigned',
+        subtext: null,
+        badgeClass: 'bg-blue-100 text-blue-800 border border-blue-200'
+      };
+    }
+
+    case 'Pending Approval / Balance':
+      return {
+        label: 'Balance Return Pending',
+        subtext: 'Pending Management Approval',
+        badgeClass: 'bg-purple-100 text-purple-800 border border-purple-200'
+      };
+
+    case 'Pending Approval / Over Due':
+      return {
+        label: 'Overdue Collection Pending',
+        subtext: 'Pending Management Approval',
+        badgeClass: 'bg-purple-100 text-purple-800 border border-purple-200'
+      };
+
+    case 'Pending Approval':
+      return {
+        label: 'Pending Approval',
+        subtext: null,
+        badgeClass: 'bg-purple-100 text-purple-800 border border-purple-200'
+      };
+
+    case 'Settled / Balance Returned':
+      return {
+        label: 'Settled / Balance Returned',
+        subtext: 'Balance Returned to Management',
+        badgeClass: 'bg-green-100 text-green-800 border border-green-200'
+      };
+
+    case 'Settled / Over Due Collected':
+      return {
+        label: 'Settled / Over Due Collected',
+        subtext: 'Overdue Collected from Management',
+        badgeClass: 'bg-green-100 text-green-800 border border-green-200'
+      };
+
+    case 'Settled/Approved':
+      return {
+        label: 'Settled / Approved',
+        subtext: null,
+        badgeClass: 'bg-green-100 text-green-800 border border-green-200'
+      };
+
+    case 'Settled':
+      return {
+        label: 'Settled',
+        subtext: null,
+        badgeClass: 'bg-green-100 text-green-800 border border-green-200'
+      };
+
+    case 'Partially Settled':
+      return {
+        label: 'Partially Settled',
+        subtext: null,
+        badgeClass: 'bg-amber-100 text-amber-800 border border-amber-200'
+      };
+
+    case 'Balance To Be Return':
+      return {
+        label: 'Balance To Be Returned',
+        subtext: null,
+        badgeClass: 'bg-amber-100 text-amber-800 border border-amber-200'
+      };
+
+    case 'Over Due':
+      return {
+        label: 'Over Due',
+        subtext: null,
+        badgeClass: 'bg-red-100 text-red-800 border border-red-200'
+      };
+
+    case 'Full Petty Cash Returned':
+      return {
+        label: 'Full Cash Returned',
+        subtext: null,
+        badgeClass: 'bg-gray-100 text-gray-800 border border-gray-200'
+      };
+
+    case 'Closed':
+      return {
+        label: 'Closed',
+        subtext: null,
+        badgeClass: 'bg-gray-100 text-gray-800 border border-gray-200'
+      };
+
+    default:
+      return {
+        label: status || 'Assigned',
+        subtext: null,
+        badgeClass: 'bg-gray-100 text-gray-800 border border-gray-200'
+      };
+  }
 }

@@ -57,11 +57,17 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
       data: { pettyCashStatus: 'Assigned' }
     }).catch(() => null);
 
+    const mysqlDb = require('../../../config/mysqlDatabase');
+    await mysqlDb.query(
+      "UPDATE jobs SET status = 'In Progress' WHERE jobId = ? AND status = 'Open'",
+      [assignmentData.jobId]
+    ).catch(() => null);
+
     const entity = this.mapToEntity({ ...created, groupId, settlementItems: [] });
     if (this._cache) {
       this._cache.unshift(entity);
     }
-    this.clearCache(false);
+    this.clearCache(true);
     return entity;
   }
 
@@ -78,24 +84,73 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
     } catch (e) {}
   }
 
+  async _fetchAssignmentsWithWorkflow(whereClause = '', params = []) {
+    const mysqlDb = require('../../../config/mysqlDatabase');
+    const sql = `
+      SELECT 
+        pca.*,
+        u_to.fullName AS assignedToName,
+        u_to.role AS assignedToRole,
+        u_by.fullName AS assignedByName,
+        u_by.role AS assignedByRole,
+        u_app.fullName AS approvedByName,
+        u_app.role AS approvedByRole,
+        u_rej.fullName AS rejectedByName,
+        u_rej.role AS rejectedByRole,
+        u_iss.fullName AS issuedByName,
+        u_iss.role AS issuedByRole,
+        COALESCE(pca.assignedManagerId, cma.managerId) AS effectiveManagerId,
+        u_mgr.fullName AS assignedManagerName
+      FROM pettycashassignments pca
+      LEFT JOIN users u_to ON pca.assignedTo = u_to.userId
+      LEFT JOIN users u_by ON pca.assignedBy = u_by.userId
+      LEFT JOIN users u_app ON pca.approvedBy = u_app.userId
+      LEFT JOIN users u_rej ON pca.rejectedBy = u_rej.userId
+      LEFT JOIN users u_iss ON pca.issuedBy = u_iss.userId
+      LEFT JOIN clerk_manager_assignments cma ON pca.assignedTo = cma.clerkId
+      LEFT JOIN users u_mgr ON COALESCE(pca.assignedManagerId, cma.managerId) = u_mgr.userId
+      ${whereClause ? `WHERE ${whereClause}` : ''}
+      ORDER BY pca.assignedDate DESC
+    `;
+    const rows = await mysqlDb.query(sql, params);
+    if (!rows || rows.length === 0) return [];
+
+    const assignmentIds = rows.map(r => r.assignmentId);
+    let itemsByAssignmentId = {};
+    if (assignmentIds.length > 0) {
+      const placeholders = assignmentIds.map(() => '?').join(',');
+      const itemsSql = `
+        SELECT * FROM pettycashsettlementitems 
+        WHERE assignmentId IN (${placeholders})
+        ORDER BY createdDate ASC
+      `;
+      const itemRows = await mysqlDb.query(itemsSql, assignmentIds).catch(() => []);
+      for (const item of (itemRows || [])) {
+        if (!itemsByAssignmentId[item.assignmentId]) {
+          itemsByAssignmentId[item.assignmentId] = [];
+        }
+        itemsByAssignmentId[item.assignmentId].push({
+          ...item,
+          actualCost: Number(item.actualCost) || 0,
+          isCustomItem: Boolean(item.isCustomItem),
+          hasBill: Boolean(item.hasBill)
+        });
+      }
+    }
+
+    return rows.map(r => this.mapToEntity({
+      ...r,
+      settlementItems: itemsByAssignmentId[r.assignmentId] || []
+    }));
+  }
+
   async getAll() {
     const now = Date.now();
     if (this._cache && (now - this._cacheTime < 30000)) {
       return this._cache;
     }
 
-    const rows = await this.prisma.pettycashassignments.findMany({
-      include: {
-        users_pettycashassignments_assignedToTousers: true,
-        users_pettycashassignments_assignedByTousers: true,
-        pettycashsettlementitems: {
-          orderBy: { createdDate: 'asc' }
-        }
-      },
-      orderBy: { assignedDate: 'desc' }
-    });
-
-    const result = rows.map(r => this.mapToEntity(r));
+    const result = await this._fetchAssignmentsWithWorkflow();
     this._cache = result;
     this._cacheTime = now;
     return result;
@@ -107,53 +162,28 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
 
   async getByUser(userId) {
     const now = Date.now();
-    // 1. If global cache is hot, filter in memory immediately (0ms)
     if (this._cache && (now - this._cacheTime < 30000)) {
       return this._cache.filter(a => a.assignedTo === userId);
     }
 
-    // 2. Check per-user cache
     if (!this._userCache) this._userCache = new Map();
     const userCached = this._userCache.get(userId);
     if (userCached && (now - userCached.time < 30000)) {
       return userCached.data;
     }
 
-    const rows = await this.prisma.pettycashassignments.findMany({
-      where: { assignedTo: userId },
-      include: {
-        users_pettycashassignments_assignedToTousers: true,
-        users_pettycashassignments_assignedByTousers: true,
-        pettycashsettlementitems: {
-          orderBy: { createdDate: 'asc' }
-        }
-      },
-      orderBy: { assignedDate: 'desc' }
-    });
-
-    const result = rows.map(r => this.mapToEntity(r));
+    const result = await this._fetchAssignmentsWithWorkflow('pca.assignedTo = ?', [userId]);
     this._userCache.set(userId, { data: result, time: now });
     return result;
   }
 
   async getByJob(jobId) {
-    const rows = await this.prisma.pettycashassignments.findMany({
-      where: { jobId },
-      include: {
-        users_pettycashassignments_assignedToTousers: true,
-        users_pettycashassignments_assignedByTousers: true,
-        pettycashsettlementitems: {
-          orderBy: { createdDate: 'asc' }
-        }
-      },
-      orderBy: { assignedDate: 'desc' }
-    });
-
+    const rows = await this._fetchAssignmentsWithWorkflow('pca.jobId = ?', [jobId]);
     if (!rows || rows.length === 0) return null;
 
     let allSettlementItems = [];
     for (const assignment of rows) {
-      const items = (assignment.pettycashsettlementitems || []).map(i => ({
+      const items = (assignment.settlementItems || []).map(i => ({
         ...i,
         actualCost: Number(i.actualCost) || 0,
         isCustomItem: Boolean(i.isCustomItem),
@@ -163,24 +193,14 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
     }
 
     const first = rows[0];
-    return this.mapToEntity({ ...first, settlementItems: allSettlementItems });
+    return { ...first, settlementItems: allSettlementItems };
   }
 
   async getById(assignmentId) {
     const id = parseInt(assignmentId, 10);
-    const row = await this.prisma.pettycashassignments.findUnique({
-      where: { assignmentId: id },
-      include: {
-        users_pettycashassignments_assignedToTousers: true,
-        users_pettycashassignments_assignedByTousers: true,
-        pettycashsettlementitems: {
-          orderBy: { createdDate: 'asc' }
-        }
-      }
-    });
-
-    if (!row) return null;
-    return this.mapToEntity(row);
+    if (isNaN(id)) return null;
+    const rows = await this._fetchAssignmentsWithWorkflow('pca.assignmentId = ?', [id]);
+    return rows && rows.length > 0 ? rows[0] : null;
   }
 
   async findById(assignmentId) {
@@ -234,6 +254,10 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
     const id = parseInt(assignmentId, 10);
     const assignment = await this.getById(id);
     if (!assignment) throw new Error('Assignment not found');
+
+    if (['Requested', 'Approved', 'Rejected'].includes(assignment.status)) {
+      throw new Error(`Cannot settle petty cash with status '${assignment.status}'. Petty cash must be issued by Finance first.`);
+    }
 
     const incomingItems = settlementData.items || [];
 
@@ -344,31 +368,60 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
 
   async _checkAndUpdateJobPettyCashStatus(jobId) {
     if (!jobId) return;
-    const settledStatuses = [
-      'Settled',
-      'Settled / Balance Returned',
-      'Settled / Over Due Collected',
-      'Full Petty Cash Returned',
-      'Returned',
-      'Paid',
-      'Closed'
-    ];
-    const unsettledCount = await this.prisma.pettycashassignments.count({
-      where: {
-        jobId,
-        status: {
-          notIn: settledStatuses
-        }
+    const mysqlDb = require('../../../config/mysqlDatabase');
+    try {
+      const rows = await mysqlDb.query(
+        'SELECT status FROM pettycashassignments WHERE jobId = ?',
+        [jobId]
+      );
+
+      if (!rows || rows.length === 0) {
+        await mysqlDb.query('UPDATE jobs SET pettyCashStatus = NULL WHERE jobId = ?', [jobId]).catch(() => null);
+        this.clearCache(false);
+        return;
       }
-    });
 
-    const newJobStatus = unsettledCount === 0 ? 'Settled' : 'Assigned';
-    await this.prisma.jobs.update({
-      where: { jobId },
-      data: { pettyCashStatus: newJobStatus }
-    }).catch(() => null);
+      const statuses = rows.map(r => r.status);
+      const settledStatuses = [
+        'Settled',
+        'Settled / Balance Returned',
+        'Settled / Over Due Collected',
+        'Full Petty Cash Returned',
+        'Returned',
+        'Paid',
+        'Closed'
+      ];
 
-    this.clearCache(false);
+      let newJobStatus = 'Assigned';
+      if (statuses.every(s => settledStatuses.includes(s))) {
+        newJobStatus = 'Settled';
+      } else if (statuses.some(s => s === 'Requested')) {
+        newJobStatus = 'Requested';
+      } else if (statuses.some(s => s === 'Approved')) {
+        newJobStatus = 'Approved';
+      } else if (statuses.some(s => s === 'Assigned')) {
+        newJobStatus = 'Assigned';
+      } else if (statuses.every(s => s === 'Rejected')) {
+        newJobStatus = 'Rejected';
+      }
+
+      await mysqlDb.query(
+        'UPDATE jobs SET pettyCashStatus = ? WHERE jobId = ?',
+        [newJobStatus, jobId]
+      ).catch(() => null);
+
+      // Auto-update job main status from "Open" to "In Progress" when petty cash is assigned or requested
+      if (statuses.some(s => s === 'Assigned' || s === 'Requested' || s === 'Approved')) {
+        await mysqlDb.query(
+          "UPDATE jobs SET status = 'In Progress' WHERE jobId = ? AND status = 'Open'",
+          [jobId]
+        ).catch(() => null);
+      }
+    } catch (e) {
+      console.warn('Error in _checkAndUpdateJobPettyCashStatus:', e.message);
+    }
+
+    this.clearCache(true);
   }
 
   async updateStatus(assignmentId, status) {
@@ -605,19 +658,7 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
   }
 
   async getAllByJob(jobId) {
-    const rows = await this.prisma.pettycashassignments.findMany({
-      where: { jobId },
-      include: {
-        users_pettycashassignments_assignedToTousers: true,
-        users_pettycashassignments_assignedByTousers: true,
-        pettycashsettlementitems: {
-          orderBy: { createdDate: 'asc' }
-        }
-      },
-      orderBy: { assignedDate: 'desc' }
-    });
-
-    return rows.map(r => this.mapToEntity(r));
+    return await this._fetchAssignmentsWithWorkflow('pca.jobId = ?', [jobId]);
   }
 
   async updateSettlementItem(itemId, itemName, actualCost) {
@@ -704,10 +745,16 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
       }
     });
 
+    const mysqlDb = require('../../../config/mysqlDatabase');
+    await mysqlDb.query(
+      "UPDATE jobs SET status = 'In Progress' WHERE jobId = ? AND status = 'Open'",
+      [assignmentData.jobId]
+    ).catch(() => null);
+
     if (this._cache) {
       this._cache.unshift(this.mapToEntity({ ...created, settlementItems: [] }));
     }
-    this.clearCache(false);
+    this.clearCache(true);
     return {
       ...created,
       assignedAmount: Number(created.assignedAmount) || 0
@@ -830,6 +877,294 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
     return this.findByDateRange(date, date);
   }
 
+  async requestPettyCash({ jobId, assignedTo, requestedAmount, notes }) {
+    const mysqlDb = require('../../../config/mysqlDatabase');
+    const amount = parseFloat(requestedAmount);
+    if (isNaN(amount) || amount <= 0) {
+      throw new Error('Requested amount must be greater than 0');
+    }
+
+    // Check if there is already an active request or pending approval for this job + user
+    const existing = await mysqlDb.query(
+      `SELECT assignmentId, status FROM pettycashassignments WHERE jobId = ? AND assignedTo = ? AND status IN ('Requested', 'Approved') LIMIT 1`,
+      [jobId, assignedTo]
+    );
+    if (existing && existing.length > 0) {
+      throw new Error(`A petty cash request is already ${existing[0].status.toLowerCase()} for this job.`);
+    }
+
+    // Lookup assigned manager & request threshold limit for this clerk from clerk_manager_assignments
+    const ruleRows = await mysqlDb.query(
+      'SELECT managerId, requestThreshold FROM clerk_manager_assignments WHERE clerkId = ? LIMIT 1',
+      [assignedTo]
+    ).catch(() => []);
+    const assignedManagerId = (ruleRows && ruleRows.length > 0 && ruleRows[0].managerId) ? ruleRows[0].managerId : null;
+    const threshold = (ruleRows && ruleRows.length > 0 && ruleRows[0].requestThreshold !== null && ruleRows[0].requestThreshold !== undefined)
+      ? parseFloat(ruleRows[0].requestThreshold)
+      : null;
+
+    if (threshold !== null && threshold > 0 && amount > threshold) {
+      throw new Error(
+        `Requested amount of LKR ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} exceeds your allowed petty cash threshold limit of LKR ${threshold.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`
+      );
+    }
+
+    const tempGroupId = `req_${Date.now()}`;
+    const insertSql = `
+      INSERT INTO pettycashassignments 
+        (jobId, assignedTo, assignedBy, assignedAmount, assignedDate, status, notes, groupId, isMainAssignment, assignedManagerId)
+      VALUES 
+        (?, ?, ?, ?, NOW(), 'Requested', ?, ?, 1, ?)
+    `;
+    const result = await mysqlDb.query(insertSql, [
+      jobId,
+      assignedTo,
+      assignedTo,
+      amount,
+      notes || null,
+      tempGroupId,
+      assignedManagerId
+    ]);
+
+    const newId = result.insertId;
+    await mysqlDb.query('UPDATE pettycashassignments SET groupId = ? WHERE assignmentId = ?', [`req_${newId}`, newId]).catch(() => null);
+    await mysqlDb.query("UPDATE jobs SET status = 'In Progress' WHERE jobId = ? AND status = 'Open'", [jobId]).catch(() => null);
+    await this._checkAndUpdateJobPettyCashStatus(jobId);
+    this.clearCache(true);
+
+    // Send notification to the designated manager (or all managers if unassigned)
+    try {
+      const container = require('../../di/container');
+      const createNotification = container.get('createNotification');
+      if (createNotification) {
+        const clerkRows = await mysqlDb.query('SELECT fullName FROM users WHERE userId = ? LIMIT 1', [assignedTo]).catch(() => []);
+        const clerkName = (clerkRows && clerkRows[0]) ? clerkRows[0].fullName : 'Wharf Clerk';
+
+        if (assignedManagerId) {
+          await createNotification.execute({
+            userId: assignedManagerId,
+            type: 'PETTY_CASH_REQUESTED',
+            title: 'New Petty Cash Request',
+            message: `Wharf clerk ${clerkName} requested LKR ${amount.toLocaleString()} for Job #${jobId}`,
+            relatedId: String(newId),
+            relatedType: 'PETTY_CASH_ASSIGNMENT',
+            metadata: { assignmentId: newId, jobId, clerkId: assignedTo, clerkName, amount },
+            createdBy: assignedTo
+          }).catch(() => null);
+        } else {
+          const allManagers = await mysqlDb.query("SELECT userId FROM users WHERE role = 'Manager' AND isActive = 1").catch(() => []);
+          for (const mgr of (allManagers || [])) {
+            await createNotification.execute({
+              userId: mgr.userId,
+              type: 'PETTY_CASH_REQUESTED',
+              title: 'New Petty Cash Request',
+              message: `Wharf clerk ${clerkName} requested LKR ${amount.toLocaleString()} for Job #${jobId}`,
+              relatedId: String(newId),
+              relatedType: 'PETTY_CASH_ASSIGNMENT',
+              metadata: { assignmentId: newId, jobId, clerkId: assignedTo, clerkName, amount },
+              createdBy: assignedTo
+            }).catch(() => null);
+          }
+        }
+      }
+    } catch (notifErr) {
+      console.warn('Failed to send petty cash notification:', notifErr.message);
+    }
+
+    return await this.getById(newId);
+  }
+
+  async approvePettyCash(assignmentId, { approvedBy, approvedAmount, notes }) {
+    const mysqlDb = require('../../../config/mysqlDatabase');
+    const id = parseInt(assignmentId, 10);
+    const existing = await this.getById(id);
+    if (!existing) throw new Error('Petty cash request not found');
+    if (existing.status !== 'Requested') {
+      throw new Error(`Cannot approve request with status '${existing.status}'. Must be in 'Requested' status.`);
+    }
+
+    // Role check: if approver is a Manager, verify they are the designated manager for this clerk
+    const targetManagerId = existing.assignedManagerId || existing.effectiveManagerId;
+    if (targetManagerId && approvedBy && targetManagerId !== approvedBy) {
+      const approverRows = await mysqlDb.query('SELECT role FROM users WHERE userId = ?', [approvedBy]).catch(() => []);
+      const approverRole = (approverRows && approverRows[0]) ? approverRows[0].role : null;
+      if (approverRole === 'Manager') {
+        throw new Error('Only the assigned manager for this clerk can approve this request.');
+      }
+    }
+
+    const finalAmount = (approvedAmount && !isNaN(parseFloat(approvedAmount)) && parseFloat(approvedAmount) > 0)
+      ? parseFloat(approvedAmount)
+      : parseFloat(existing.assignedAmount);
+
+    const updateSql = `
+      UPDATE pettycashassignments 
+      SET 
+        status = 'Approved',
+        approvedBy = ?,
+        approvedDate = NOW(),
+        assignedAmount = ?,
+        notes = COALESCE(?, notes)
+      WHERE assignmentId = ?
+    `;
+    await mysqlDb.query(updateSql, [
+      approvedBy,
+      finalAmount,
+      notes || null,
+      id
+    ]);
+
+    await mysqlDb.query(
+      "UPDATE jobs SET status = 'In Progress' WHERE jobId = ? AND status = 'Open'",
+      [existing.jobId]
+    ).catch(() => null);
+    await this._checkAndUpdateJobPettyCashStatus(existing.jobId);
+    this.clearCache(true);
+    return await this.getById(id);
+  }
+
+  async rejectPettyCash(assignmentId, { rejectedBy, rejectionReason }) {
+    const mysqlDb = require('../../../config/mysqlDatabase');
+    const id = parseInt(assignmentId, 10);
+    const existing = await this.getById(id);
+    if (!existing) throw new Error('Petty cash request not found');
+    if (existing.status !== 'Requested') {
+      throw new Error(`Cannot reject request with status '${existing.status}'. Must be in 'Requested' status.`);
+    }
+
+    // Role check: if rejecter is a Manager, verify they are the designated manager for this clerk
+    const targetManagerId = existing.assignedManagerId || existing.effectiveManagerId;
+    if (targetManagerId && rejectedBy && targetManagerId !== rejectedBy) {
+      const rejecterRows = await mysqlDb.query('SELECT role FROM users WHERE userId = ?', [rejectedBy]).catch(() => []);
+      const rejecterRole = (rejecterRows && rejecterRows[0]) ? rejecterRows[0].role : null;
+      if (rejecterRole === 'Manager') {
+        throw new Error('Only the assigned manager for this clerk can reject this request.');
+      }
+    }
+    if (!rejectionReason || !rejectionReason.trim()) {
+      throw new Error('Rejection reason is required.');
+    }
+
+    const updateSql = `
+      UPDATE pettycashassignments 
+      SET 
+        status = 'Rejected',
+        rejectedBy = ?,
+        rejectedDate = NOW(),
+        rejectionReason = ?
+      WHERE assignmentId = ?
+    `;
+    await mysqlDb.query(updateSql, [
+      rejectedBy,
+      rejectionReason.trim(),
+      id
+    ]);
+
+    await this._checkAndUpdateJobPettyCashStatus(existing.jobId);
+    this.clearCache(true);
+    return await this.getById(id);
+  }
+
+  async reRequestPettyCash(assignmentId, { requestedAmount, notes, userId }) {
+    const mysqlDb = require('../../../config/mysqlDatabase');
+    const id = parseInt(assignmentId, 10);
+    const existing = await this.getById(id);
+    if (!existing) throw new Error('Petty cash assignment not found');
+    if (existing.status !== 'Rejected') {
+      throw new Error(`Cannot re-request petty cash with status '${existing.status}'. Must be in 'Rejected' status.`);
+    }
+    if (userId && existing.assignedTo !== userId) {
+      throw new Error('You can only re-request petty cash for yourself.');
+    }
+
+    const amount = parseFloat(requestedAmount);
+    if (isNaN(amount) || amount <= 0) {
+      throw new Error('Requested amount must be greater than 0');
+    }
+
+    // Check petty cash request threshold limit
+    const clerkId = userId || existing.assignedTo;
+    const ruleRows = await mysqlDb.query(
+      'SELECT requestThreshold FROM clerk_manager_assignments WHERE clerkId = ? LIMIT 1',
+      [clerkId]
+    ).catch(() => []);
+    const threshold = (ruleRows && ruleRows.length > 0 && ruleRows[0].requestThreshold !== null && ruleRows[0].requestThreshold !== undefined)
+      ? parseFloat(ruleRows[0].requestThreshold)
+      : null;
+
+    if (threshold !== null && threshold > 0 && amount > threshold) {
+      throw new Error(
+        `Requested amount of LKR ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} exceeds your allowed petty cash threshold limit of LKR ${threshold.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`
+      );
+    }
+
+    const updateSql = `
+      UPDATE pettycashassignments 
+      SET 
+        status = 'Requested',
+        assignedAmount = ?,
+        notes = ?,
+        assignedDate = NOW()
+      WHERE assignmentId = ?
+    `;
+    await mysqlDb.query(updateSql, [
+      amount,
+      notes || null,
+      id
+    ]);
+
+    await mysqlDb.query(
+      "UPDATE jobs SET status = 'In Progress' WHERE jobId = ? AND status = 'Open'",
+      [existing.jobId]
+    ).catch(() => null);
+    await this._checkAndUpdateJobPettyCashStatus(existing.jobId);
+    this.clearCache(true);
+    return await this.getById(id);
+  }
+
+  async issuePettyCash(assignmentId, { issuedBy, issuedAmount, paymentMethod, referenceNumber, notes }) {
+    const mysqlDb = require('../../../config/mysqlDatabase');
+    const id = parseInt(assignmentId, 10);
+    const existing = await this.getById(id);
+    if (!existing) throw new Error('Petty cash request not found');
+    if (existing.status !== 'Approved') {
+      throw new Error(`Cannot issue petty cash with status '${existing.status}'. Request must be 'Approved' first.`);
+    }
+
+    const finalAmount = (issuedAmount && !isNaN(parseFloat(issuedAmount)) && parseFloat(issuedAmount) > 0)
+      ? parseFloat(issuedAmount)
+      : parseFloat(existing.assignedAmount);
+
+    const canonicalGroupId = `${existing.jobId}_${existing.assignedTo}`;
+    const updateSql = `
+      UPDATE pettycashassignments 
+      SET 
+        status = 'Assigned',
+        issuedBy = ?,
+        issuedDate = NOW(),
+        assignedAmount = ?,
+        paymentMethod = ?,
+        referenceNumber = ?,
+        notes = COALESCE(?, notes),
+        groupId = ?
+      WHERE assignmentId = ?
+    `;
+    await mysqlDb.query(updateSql, [
+      issuedBy,
+      finalAmount,
+      paymentMethod || 'Cash',
+      referenceNumber || null,
+      notes || null,
+      canonicalGroupId,
+      id
+    ]);
+
+    await mysqlDb.query("UPDATE jobs SET status = 'In Progress' WHERE jobId = ? AND status = 'Open'", [existing.jobId]).catch(() => null);
+    await this._checkAndUpdateJobPettyCashStatus(existing.jobId);
+    this.clearCache(true);
+    return await this.getById(id);
+  }
+
   mapToEntity(row) {
     const assignedToUser = row.users_pettycashassignments_assignedToTousers;
     const assignedByUser = row.users_pettycashassignments_assignedByTousers;
@@ -844,7 +1179,8 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
       }));
     }
 
-    const status = (row.status && row.status.toUpperCase() === 'ASSIGNED') ? 'Assigned' : row.status;
+    const rawStatus = row.status || 'Requested';
+    const status = (rawStatus.toUpperCase() === 'ASSIGNED') ? 'Assigned' : rawStatus;
 
     return new PettyCashAssignment({
       assignmentId: row.assignmentId,
@@ -864,6 +1200,25 @@ class MySQLPettyCashAssignmentRepository extends BaseMySQLRepository {
       isMainAssignment: Boolean(row.isMainAssignment),
       assignedToName: assignedToUser ? assignedToUser.fullName : (row.assignedToName || null),
       assignedByName: assignedByUser ? assignedByUser.fullName : (row.assignedByName || null),
+      approvedBy: row.approvedBy || null,
+      approvedDate: row.approvedDate || null,
+      rejectedBy: row.rejectedBy || null,
+      rejectedDate: row.rejectedDate || null,
+      rejectionReason: row.rejectionReason || null,
+      issuedBy: row.issuedBy || null,
+      issuedDate: row.issuedDate || null,
+      paymentMethod: row.paymentMethod || null,
+      referenceNumber: row.referenceNumber || null,
+      approvedByName: row.approvedByName || null,
+      approvedByRole: row.approvedByRole || null,
+      rejectedByName: row.rejectedByName || null,
+      rejectedByRole: row.rejectedByRole || null,
+      issuedByName: row.issuedByName || null,
+      issuedByRole: row.issuedByRole || null,
+      assignedByRole: row.assignedByRole || null,
+      assignedManagerId: row.assignedManagerId || null,
+      assignedManagerName: row.assignedManagerName || null,
+      effectiveManagerId: row.effectiveManagerId || row.assignedManagerId || null,
       settlementItems
     });
   }

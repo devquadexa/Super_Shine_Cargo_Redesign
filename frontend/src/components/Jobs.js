@@ -5,6 +5,7 @@ import { jobService } from '../api/services/jobService';
 import { customerService } from '../api/services/customerService';
 import { authService } from '../api/services/authService';
 import { transporterService } from '../api/services/transporterService';
+import { pettyCashService } from '../api/services/pettyCashService';
 import apiClient from '../api/client';
 import API_BASE from '../api/config';
 import OfficePayItems from './OfficePayItems';
@@ -12,6 +13,7 @@ import AdvancePayment from './AdvancePayment';
 import JobPettyCash from './JobPettyCash';
 import JobInvoicingModal from './JobInvoicingModal';
 import Pagination from './Pagination';
+import { getSpecificPettyCashStatus } from '../utils/pettyCashUtils';
 
 function Jobs() {
   const { user } = useAuth();
@@ -41,6 +43,17 @@ function Jobs() {
   const [assignPcModal, setAssignPcModal] = useState(false); // Show assign petty cash modal
   const [assignPcForm, setAssignPcForm] = useState({ assignedTo: '', assignedAmount: '', notes: '' });
   const [assignPcLoading, setAssignPcLoading] = useState(false);
+
+  // Request Petty Cash modal state (for Waff Clerk)
+  const [requestPcModal, setRequestPcModal] = useState(null); // job object
+  const [requestPcForm, setRequestPcForm] = useState({ requestedAmount: '', notes: '' });
+  const [requestPcLoading, setRequestPcLoading] = useState(false);
+
+  // Re-request Petty Cash modal state (for Waff Clerk on rejected requests)
+  const [reRequestPcModal, setReRequestPcModal] = useState(null); // assignment object
+  const [reRequestPcForm, setReRequestPcForm] = useState({ requestedAmount: '', notes: '', rejectionReason: '' });
+  const [reRequestPcLoading, setReRequestPcLoading] = useState(false);
+  const [clerkThreshold, setClerkThreshold] = useState(null);
   const [selectedJob, setSelectedJob] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
@@ -79,6 +92,13 @@ function Jobs() {
     }
     if (user?.role === 'Admin' || user?.role === 'Super Admin' || user?.role === 'Manager' || user?.role === 'Office Executive') {
       fetchUsers();
+    }
+    if (user?.role === 'Waff Clerk') {
+      pettyCashService.getMyThreshold().then(thresh => {
+        if (thresh !== null && thresh !== undefined) {
+          setClerkThreshold(parseFloat(thresh));
+        }
+      }).catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
@@ -740,6 +760,7 @@ function Jobs() {
         const prevAssignments = Array.isArray(prev.assignments) ? prev.assignments : [];
         return {
           ...prev,
+          status: prev.status === 'Open' ? 'In Progress' : prev.status,
           pettyCashStatus: 'Assigned',
           assignments: [...prevAssignments, formattedNewAssignment]
         };
@@ -751,6 +772,7 @@ function Jobs() {
           const jAssignments = Array.isArray(j.assignments) ? j.assignments : [];
           return {
             ...j,
+            status: j.status === 'Open' ? 'In Progress' : j.status,
             pettyCashStatus: 'Assigned',
             assignments: [...jAssignments, formattedNewAssignment]
           };
@@ -770,6 +792,167 @@ function Jobs() {
       setTimeout(() => setMessage(''), 5000);
     } finally {
       setAssignPcLoading(false);
+    }
+  };
+
+  const handleRequestPcSubmit = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    const amountVal = parseFloat(requestPcForm.requestedAmount);
+    if (!amountVal || amountVal <= 0) {
+      setMessage('❌ Please enter a valid requested amount greater than zero.');
+      setTimeout(() => setMessage(''), 4000);
+      return;
+    }
+
+    if (clerkThreshold !== null && clerkThreshold > 0 && amountVal > clerkThreshold) {
+      setMessage(`❌ Requested amount of LKR ${amountVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} exceeds your allowed petty cash threshold limit of LKR ${clerkThreshold.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`);
+      setTimeout(() => setMessage(''), 5000);
+      return;
+    }
+
+    setRequestPcLoading(true);
+    try {
+      const targetJobId = requestPcModal?.jobId;
+      const response = await pettyCashService.requestPettyCash({
+        jobId: targetJobId,
+        requestedAmount: amountVal,
+        notes: requestPcForm.notes || null,
+      });
+
+      const newAssignment = response?.assignment || response?.data || response;
+      const clerkName = user?.fullName || 'Waff Clerk';
+
+      const formattedNewAssignment = {
+        pettyAssignmentId: newAssignment?.assignmentId || Date.now(),
+        assignmentId: newAssignment?.assignmentId || Date.now(),
+        jobId: targetJobId,
+        userId: user?.userId,
+        userName: clerkName,
+        waff_clerk_name: clerkName,
+        assignedAmount: amountVal,
+        settledAmount: 0,
+        status: 'Requested',
+        groupId: newAssignment?.groupId || `${targetJobId}_${user?.userId}`,
+        assignedDate: newAssignment?.assignedDate || new Date().toISOString(),
+        notes: requestPcForm.notes || null,
+      };
+
+      // 1. Instantly update viewJobModal assignments if open
+      setViewJobModal(prev => {
+        if (!prev || String(prev.jobId) !== String(targetJobId)) return prev;
+        const prevAssignments = Array.isArray(prev.assignments) ? prev.assignments : [];
+        return {
+          ...prev,
+          status: prev.status === 'Open' ? 'In Progress' : prev.status,
+          pettyCashStatus: 'Requested',
+          assignments: [...prevAssignments, formattedNewAssignment],
+        };
+      });
+
+      // 2. Also update jobs list in-place so table has latest assignments
+      setJobs(prev => prev.map(j => {
+        if (String(j.jobId) === String(targetJobId)) {
+          const jAssignments = Array.isArray(j.assignments) ? j.assignments : [];
+          return {
+            ...j,
+            status: j.status === 'Open' ? 'In Progress' : j.status,
+            pettyCashStatus: 'Requested',
+            assignments: [...jAssignments, formattedNewAssignment],
+          };
+        }
+        return j;
+      }));
+
+      setRequestPcModal(null);
+      setRequestPcForm({ requestedAmount: '', notes: '' });
+      setMessage('✓ Petty cash request submitted successfully!');
+      setTimeout(() => setMessage(''), 4000);
+
+      // Refresh in background to sync from server
+      await fetchJobs();
+    } catch (error) {
+      console.error('Error requesting petty cash:', error);
+      const errorMsg = error.response?.data?.message || error.message || 'Error submitting petty cash request';
+      setMessage(`❌ ${errorMsg}`);
+      setTimeout(() => setMessage(''), 5000);
+    } finally {
+      setRequestPcLoading(false);
+    }
+  };
+
+  const handleReRequestPcSubmit = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    const amountVal = parseFloat(reRequestPcForm.requestedAmount);
+    if (!amountVal || amountVal <= 0) {
+      setMessage('❌ Please enter a valid requested amount greater than zero.');
+      setTimeout(() => setMessage(''), 4000);
+      return;
+    }
+
+    if (clerkThreshold !== null && clerkThreshold > 0 && amountVal > clerkThreshold) {
+      setMessage(`❌ Requested amount of LKR ${amountVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} exceeds your allowed petty cash threshold limit of LKR ${clerkThreshold.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`);
+      setTimeout(() => setMessage(''), 5000);
+      return;
+    }
+
+    setReRequestPcLoading(true);
+    try {
+      const assignmentId = reRequestPcModal?.pettyAssignmentId || reRequestPcModal?.assignmentId;
+      await pettyCashService.reRequestPettyCash(assignmentId, {
+        requestedAmount: amountVal,
+        notes: reRequestPcForm.notes || null,
+      });
+
+      // 1. Update viewJobModal assignments if open
+      setViewJobModal(prev => {
+        if (!prev) return prev;
+        const updatedAssignments = (prev.assignments || []).map(a =>
+          (a.pettyAssignmentId === assignmentId || a.assignmentId === assignmentId)
+            ? { ...a, assignedAmount: amountVal, status: 'Requested', notes: reRequestPcForm.notes || a.notes }
+            : a
+        );
+        return {
+          ...prev,
+          status: prev.status === 'Open' ? 'In Progress' : prev.status,
+          pettyCashStatus: 'Requested',
+          assignments: updatedAssignments,
+        };
+      });
+
+      // 2. Update jobs list in state
+      setJobs(prev => prev.map(j => {
+        const hasAsgn = (j.assignments || []).some(
+          a => a.pettyAssignmentId === assignmentId || a.assignmentId === assignmentId
+        );
+        if (hasAsgn) {
+          const updatedAssignments = (j.assignments || []).map(a =>
+            (a.pettyAssignmentId === assignmentId || a.assignmentId === assignmentId)
+              ? { ...a, assignedAmount: amountVal, status: 'Requested', notes: reRequestPcForm.notes || a.notes }
+              : a
+          );
+          return {
+            ...j,
+            status: j.status === 'Open' ? 'In Progress' : j.status,
+            pettyCashStatus: 'Requested',
+            assignments: updatedAssignments,
+          };
+        }
+        return j;
+      }));
+
+      setReRequestPcModal(null);
+      setReRequestPcForm({ requestedAmount: '', notes: '', rejectionReason: '' });
+      setMessage('✓ Revised petty cash request re-submitted!');
+      setTimeout(() => setMessage(''), 4000);
+
+      await fetchJobs();
+    } catch (error) {
+      console.error('Error re-submitting request:', error);
+      const errorMsg = error.response?.data?.message || error.message || 'Error re-submitting request';
+      setMessage(`❌ ${errorMsg}`);
+      setTimeout(() => setMessage(''), 5000);
+    } finally {
+      setReRequestPcLoading(false);
     }
   };
 
@@ -1212,6 +1395,7 @@ function Jobs() {
                             <circle cx="12" cy="12" r="3"/>
                           </svg>
                         </button>
+
                       </div>
                     </td>
                   </tr>
@@ -1518,6 +1702,210 @@ function Jobs() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Request Petty Cash Modal (Waff Clerk) */}
+      {requestPcModal && ReactDOM.createPortal(
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10002] px-4 py-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-indigo-700">
+              <div>
+                <h2 className="text-lg font-bold text-white">Request Petty Cash</h2>
+                <p className="text-blue-100 text-xs mt-0.5">
+                  Job #{requestPcModal.jobId} {requestPcModal.customerName ? `• ${requestPcModal.customerName}` : ''}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRequestPcModal(null)}
+                className="text-white hover:bg-white/20 rounded-lg p-2 transition font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleRequestPcSubmit}>
+              <div className="p-6 space-y-4">
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-800 leading-relaxed">
+                  Enter the petty cash amount required for this job. Your request will be sent to Super Admin, Admin, or Manager for review. Once approved, the <strong>Finance</strong> team will disburse the cash.
+                </div>
+
+                {clerkThreshold !== null && clerkThreshold > 0 && (
+                  <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl flex items-center justify-between text-xs text-purple-900 shadow-2xs">
+                    <div className="flex items-center gap-2">
+                      <svg className="w-4 h-4 text-purple-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                      </svg>
+                      <span className="font-medium">Your Petty Cash Limit:</span>
+                    </div>
+                    <span className="font-bold text-sm text-purple-700">
+                      LKR {clerkThreshold.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Requested Amount (LKR) <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    value={requestPcForm.requestedAmount}
+                    onChange={(e) => setRequestPcForm(prev => ({ ...prev, requestedAmount: e.target.value }))}
+                    placeholder="0.00"
+                    required
+                    autoFocus
+                    className={`w-full px-3.5 py-2.5 border rounded-xl focus:ring-2 outline-none font-semibold text-gray-900 ${
+                      clerkThreshold !== null && clerkThreshold > 0 && parseFloat(requestPcForm.requestedAmount) > clerkThreshold
+                        ? 'border-red-400 bg-red-50/30 focus:ring-red-500'
+                        : 'border-gray-300 focus:ring-blue-500 focus:border-transparent'
+                    }`}
+                  />
+                  {clerkThreshold !== null && clerkThreshold > 0 && parseFloat(requestPcForm.requestedAmount) > clerkThreshold && (
+                    <p className="text-xs text-red-600 mt-1.5 font-medium flex items-center gap-1">
+                      ⚠️ Amount exceeds your maximum threshold of LKR {clerkThreshold.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Purpose / Notes (Optional)
+                  </label>
+                  <textarea
+                    value={requestPcForm.notes}
+                    onChange={(e) => setRequestPcForm(prev => ({ ...prev, notes: e.target.value }))}
+                    placeholder="Explain what items will be purchased or expenses covered..."
+                    rows="3"
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm text-gray-800"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50">
+                <button
+                  type="button"
+                  onClick={() => setRequestPcModal(null)}
+                  className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-xl transition font-medium text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={requestPcLoading}
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-xl transition font-semibold text-sm shadow-sm"
+                >
+                  {requestPcLoading ? 'Submitting...' : 'Submit Request'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Re-request Petty Cash Modal (Waff Clerk) */}
+      {reRequestPcModal && ReactDOM.createPortal(
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[10002] px-4 py-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-amber-600 to-amber-700">
+              <div>
+                <h2 className="text-lg font-bold text-white">Re-submit Petty Cash Request</h2>
+                <p className="text-amber-100 text-xs mt-0.5">
+                  Job #{reRequestPcModal.jobId}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReRequestPcModal(null)}
+                className="text-white hover:bg-white/20 rounded-lg p-2 transition font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleReRequestPcSubmit}>
+              <div className="p-6 space-y-4">
+                <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-800">
+                  <strong className="block mb-1 font-semibold text-red-900">Previous Rejection Reason:</strong>
+                  {reRequestPcForm.rejectionReason || 'No reason provided'}
+                </div>
+
+                {clerkThreshold !== null && clerkThreshold > 0 && (
+                  <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl flex items-center justify-between text-xs text-purple-900 shadow-2xs">
+                    <div className="flex items-center gap-2">
+                      <svg className="w-4 h-4 text-purple-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                      </svg>
+                      <span className="font-medium">Your Petty Cash Limit:</span>
+                    </div>
+                    <span className="font-bold text-sm text-purple-700">
+                      LKR {clerkThreshold.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    New Requested Amount (LKR) <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    value={reRequestPcForm.requestedAmount}
+                    onChange={(e) => setReRequestPcForm(prev => ({ ...prev, requestedAmount: e.target.value }))}
+                    required
+                    autoFocus
+                    className={`w-full px-3.5 py-2.5 border rounded-xl focus:ring-2 outline-none font-semibold text-gray-900 ${
+                      clerkThreshold !== null && clerkThreshold > 0 && parseFloat(reRequestPcForm.requestedAmount) > clerkThreshold
+                        ? 'border-red-400 bg-red-50/30 focus:ring-red-500'
+                        : 'border-gray-300 focus:ring-amber-500 focus:border-transparent'
+                    }`}
+                  />
+                  {clerkThreshold !== null && clerkThreshold > 0 && parseFloat(reRequestPcForm.requestedAmount) > clerkThreshold && (
+                    <p className="text-xs text-red-600 mt-1.5 font-medium flex items-center gap-1">
+                      ⚠️ Amount exceeds your maximum threshold of LKR {clerkThreshold.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Updated Notes / Explanation
+                  </label>
+                  <textarea
+                    value={reRequestPcForm.notes}
+                    onChange={(e) => setReRequestPcForm(prev => ({ ...prev, notes: e.target.value }))}
+                    placeholder="Explain revisions made based on rejection feedback..."
+                    rows="3"
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none text-sm text-gray-800"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50">
+                <button
+                  type="button"
+                  onClick={() => setReRequestPcModal(null)}
+                  className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-xl transition font-medium text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={reRequestPcLoading}
+                  className="px-5 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-gray-400 text-white rounded-xl transition font-semibold text-sm shadow-sm"
+                >
+                  {reRequestPcLoading ? 'Submitting...' : 'Re-submit Request'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>,
+        document.body
       )}
 
             {/* Header */}
@@ -2000,6 +2388,63 @@ function Jobs() {
                         <span className="text-xs font-bold text-purple-700 uppercase tracking-wider">
                           {user?.role === 'Waff Clerk' ? 'Petty Cash Assignments' : '④ Petty Cash Assignments'}
                         </span>
+                        {user?.role === 'Waff Clerk' && (() => {
+                          const myAsgns = (viewJobModal.assignments || []).filter(
+                            a => String(a.userId || a.assignedTo) === String(user.userId)
+                          );
+                          const settledStatuses = [
+                            'Settled', 'Settled/Approved', 'Balance Returned', 'Overdue Collected',
+                            'Settled / Balance Returned', 'Settled / Over Due Collected', 'Closed',
+                            'Full Petty Cash Returned', 'Pending Approval / Balance', 'Pending Approval / Over Due'
+                          ];
+                          const allSettled = myAsgns.length > 0 && myAsgns.every(a => settledStatuses.includes(a.status));
+                          const pendingRequest = myAsgns.find(a => a.status === 'Requested');
+                          const approvedRequest = myAsgns.find(a => a.status === 'Approved');
+
+                          if (allSettled) {
+                            return (
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800 border border-green-200">
+                                ✓ Settled
+                              </span>
+                            );
+                          }
+
+                          if (pendingRequest) {
+                            return (
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+                                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                                Manager Request Pending
+                              </span>
+                            );
+                          }
+
+                          if (approvedRequest) {
+                            const approverTitle = approvedRequest.approvedByRole || 'Manager';
+                            return (
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800 border border-indigo-200">
+                                <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
+                                Finance Request Pending (${approverTitle} Approved)
+                              </span>
+                            );
+                          }
+
+                          // Until settling the items (even if cash has already been assigned), show Request Petty Cash button
+                          return (
+                            <button
+                              onClick={() => {
+                                setRequestPcModal(viewJobModal);
+                                setRequestPcForm({ requestedAmount: '', notes: '' });
+                              }}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 transition shadow-sm"
+                              title="Request petty cash for this job"
+                            >
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                              </svg>
+                              Request Petty Cash
+                            </button>
+                          );
+                        })()}
                         {['Admin','Super Admin','Manager'].includes(user?.role) && (() => {
                           const assignments = viewJobModal.assignments || [];
                           const settledStatuses = ['Settled', 'Settled/Approved', 'Balance Returned', 'Overdue Collected', 'Settled / Balance Returned', 'Settled / Over Due Collected', 'Closed'];
@@ -2031,7 +2476,7 @@ function Jobs() {
                             <th className="px-5 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase">Settled Amount</th>
                             <th className="px-5 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase">Balance / Return</th>
                             <th className="px-5 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase">Status</th>
-                            {['Manager','Waff Clerk'].includes(user?.role) && (
+                            {['Admin','Super Admin','Manager','Waff Clerk','Finance'].includes(user?.role) && (
                               <th className="px-5 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase">Actions</th>
                             )}
                           </tr>
@@ -2039,11 +2484,13 @@ function Jobs() {
                         <tbody>
                           {viewJobModal.assignments && viewJobModal.assignments.length > 0 ? (
                             (() => {
-                              // Group assignments by groupId (matching PettyCash.js so grouped sub-assignments stay unified)
-                              const filtered = (viewJobModal.assignments || []).filter(a => user?.role === 'Waff Clerk' ? a.userId === user.userId : true);
+                              const filtered = (viewJobModal.assignments || []).filter(a => user?.role === 'Waff Clerk' ? (String(a.userId || a.assignedTo) === String(user.userId)) : true);
                               const groupMap = new Map();
                               filtered.forEach(a => {
-                                const gid = a.groupId || `${a.jobId || viewJobModal.jobId}_${a.userId}`;
+                                const isUnissued = ['Requested', 'Approved', 'Rejected'].includes(a.status);
+                                const gid = isUnissued
+                                  ? `req_${a.assignmentId || a.pettyAssignmentId}`
+                                  : (a.groupId && !a.groupId.startsWith('req_') ? a.groupId : `${a.jobId || viewJobModal.jobId}_${a.userId || a.assignedTo}`);
                                 if (!groupMap.has(gid)) groupMap.set(gid, []);
                                 groupMap.get(gid).push(a);
                               });
@@ -2053,6 +2500,9 @@ function Jobs() {
                                 const settledAmount = group.reduce((sum, a) => sum + parseFloat(a.settledAmount || 0), 0);
                                 const balanceAmount = assignedAmount - settledAmount;
 
+                                const anyRequested = group.some(a => a.status === 'Requested');
+                                const anyApproved = group.some(a => a.status === 'Approved');
+                                const anyRejected = group.some(a => a.status === 'Rejected');
                                 const anyAssigned = group.some(a => a.status === 'Assigned' || a.status?.toUpperCase() === 'ASSIGNED');
                                 const hasClosed = group.some(a => a.status === 'Closed' || a.status?.toUpperCase() === 'CLOSED');
                                 const pendingApprovalSub = group.find(a => 
@@ -2066,7 +2516,13 @@ function Jobs() {
                                 const allFullReturned = group.every(a => a.status === 'Full Petty Cash Returned');
 
                                 // Overall display status matching PettyCash.js
-                                const displayStatus = anyAssigned 
+                                const displayStatus = anyRequested
+                                  ? 'Requested'
+                                  : anyApproved
+                                  ? 'Approved'
+                                  : anyRejected
+                                  ? 'Rejected'
+                                  : anyAssigned 
                                   ? 'Assigned'
                                   : hasClosed
                                   ? 'Closed'
@@ -2086,10 +2542,11 @@ function Jobs() {
                                   ? 'Over Due'
                                   : 'Settled';
 
-                                const isAssigned = anyAssigned;
+                                const isDisbursed = !['Requested', 'Approved', 'Rejected'].includes(displayStatus);
+                                const isAssigned = anyAssigned && isDisbursed;
                                 const assignedSub = group.find(a => a.status === 'Assigned' || a.status?.toUpperCase() === 'ASSIGNED');
-                                const canReturnBalance = !anyAssigned && !pendingApprovalSub && displayStatus === 'Balance To Be Return' && balanceAmount > 0;
-                                const canCollectOverdue = !anyAssigned && !pendingApprovalSub && displayStatus === 'Over Due' && balanceAmount < 0;
+                                const canReturnBalance = isDisbursed && !anyAssigned && !pendingApprovalSub && displayStatus === 'Balance To Be Return' && balanceAmount > 0;
+                                const canCollectOverdue = isDisbursed && !anyAssigned && !pendingApprovalSub && displayStatus === 'Over Due' && balanceAmount < 0;
 
                                 // Use first assignment for display fields
                                 const a = group[0];
@@ -2097,31 +2554,97 @@ function Jobs() {
                                 <tr key={a.pettyAssignmentId||i} className={`border-b border-gray-50 ${i%2===0?'bg-white':'bg-[#f8fafc]'}`}>
                                   <td className="px-5 py-3 text-gray-900 font-medium">{a.userName || a.waff_clerk_name || getUserFullName(a.userId)}</td>
                                   <td className="px-5 py-3 text-right text-[#1E3F63] font-bold">{assignedAmount.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
-                                  <td className="px-5 py-3 text-right text-gray-600 font-medium">{settledAmount.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
-                                  <td className={`px-5 py-3 text-right font-bold ${balanceAmount > 0 ? 'text-orange-600' : balanceAmount < 0 ? 'text-red-600' : 'text-gray-600'}`}>
-                                    {balanceAmount.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+                                  <td className="px-5 py-3 text-right text-gray-600 font-medium">{!isDisbursed ? '-' : settledAmount.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+                                  <td className={`px-5 py-3 text-right font-bold ${!isDisbursed ? 'text-gray-400' : balanceAmount > 0 ? 'text-orange-600' : balanceAmount < 0 ? 'text-red-600' : 'text-gray-600'}`}>
+                                    {!isDisbursed ? '-' : balanceAmount.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
                                   </td>
                                   <td className="px-5 py-3 text-center">
-                                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
-                                      displayStatus === 'Assigned' ? 'bg-blue-100 text-blue-800' :
-                                      displayStatus === 'Partially Settled' ? 'bg-amber-100 text-amber-800' :
-                                      displayStatus === 'Settled' ? 'bg-green-100 text-green-800' :
-                                      displayStatus === 'Settled / Balance Returned' ? 'bg-green-100 text-green-800' :
-                                      displayStatus === 'Settled / Over Due Collected' ? 'bg-green-100 text-green-800' :
-                                      displayStatus === 'Full Petty Cash Returned' ? 'bg-gray-100 text-gray-800' :
-                                      displayStatus === 'Closed' ? 'bg-gray-100 text-gray-800' :
-                                      displayStatus === 'Pending Approval / Balance' ? 'bg-purple-100 text-purple-800' :
-                                      displayStatus === 'Pending Approval / Over Due' ? 'bg-purple-100 text-purple-800' :
-                                      displayStatus === 'Pending Approval' ? 'bg-purple-100 text-purple-800' :
-                                      displayStatus === 'Over Due' ? 'bg-red-100 text-red-800' :
-                                      'bg-yellow-100 text-yellow-800'
-                                    }`}>
-                                      {displayStatus || 'Assigned'}
-                                    </span>
+                                    {(() => {
+                                      const workflowAsgn = group.find(x => x.status === displayStatus) || a;
+                                      const statusObj = getSpecificPettyCashStatus(displayStatus, workflowAsgn);
+                                      return (
+                                        <div className="inline-flex flex-col items-center justify-center">
+                                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${statusObj.badgeClass}`}>
+                                            {statusObj.label}
+                                          </span>
+                                          {statusObj.subtext && (
+                                            <span className="text-[10px] text-gray-500 mt-0.5 max-w-[170px] truncate" title={statusObj.subtext}>
+                                              {statusObj.subtext}
+                                            </span>
+                                          )}
+                                        </div>
+                                      );
+                                    })()}
                                   </td>
-                                  {['Manager','Waff Clerk'].includes(user?.role) && (
+                                  {['Admin','Super Admin','Manager','Waff Clerk','Finance'].includes(user?.role) && (
                                     <td className="px-5 py-3 text-center">
                                       <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                                        {displayStatus === 'Requested' && ['Admin','Super Admin','Manager'].includes(user?.role) && (() => {
+                                          const isAssignedToOtherManager = user?.role === 'Manager' && a.assignedManagerId && String(a.assignedManagerId) !== String(user?.userId);
+                                          if (isAssignedToOtherManager) {
+                                            return (
+                                              <span className="text-xs text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200 font-semibold" title={`Assigned to ${a.assignedManagerName || 'another manager'} for approval`}>
+                                                Assigned to {a.assignedManagerName || 'Manager'}
+                                              </span>
+                                            );
+                                          }
+                                          return (
+                                            <>
+                                              <button
+                                                onClick={async () => {
+                                                  if (!window.confirm(`Approve petty cash request of LKR ${assignedAmount.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}?`)) return;
+                                                  try {
+                                                    const targetId = a.pettyAssignmentId || a.assignmentId;
+                                                    await pettyCashService.approvePettyCash(targetId);
+                                                    setMessage('✓ Petty cash request approved!');
+                                                    await fetchJobs();
+                                                    setTimeout(() => setMessage(''), 3000);
+                                                  } catch (err) {
+                                                    setMessage(`❌ ${err.response?.data?.message || err.message}`);
+                                                    setTimeout(() => setMessage(''), 5000);
+                                                  }
+                                                }}
+                                                className="px-2.5 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold rounded-lg transition"
+                                                title="Approve request"
+                                              >
+                                                Approve
+                                              </button>
+                                              <button
+                                                onClick={async () => {
+                                                  const reason = window.prompt('Enter rejection reason:');
+                                                  if (!reason) return;
+                                                  try {
+                                                    const targetId = a.pettyAssignmentId || a.assignmentId;
+                                                    await pettyCashService.rejectPettyCash(targetId, { rejectionReason: reason });
+                                                    setMessage('✓ Petty cash request rejected.');
+                                                    await fetchJobs();
+                                                    setTimeout(() => setMessage(''), 3000);
+                                                  } catch (err) {
+                                                    setMessage(`❌ ${err.response?.data?.message || err.message}`);
+                                                    setTimeout(() => setMessage(''), 5000);
+                                                  }
+                                                }}
+                                                className="px-2.5 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg transition"
+                                                title="Reject request"
+                                              >
+                                                Reject
+                                              </button>
+                                            </>
+                                          );
+                                        })()}
+                                        {displayStatus === 'Requested' && user?.role === 'Waff Clerk' && (
+                                          <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 font-semibold" title={a.assignedManagerName ? `Assigned to ${a.assignedManagerName}` : 'Pending Manager Approval'}>
+                                            Manager Request Pending
+                                          </span>
+                                        )}
+                                        {displayStatus === 'Approved' && user?.role !== 'Finance' && (() => {
+                                          const approverTitle = a.approvedByRole || 'Manager';
+                                          return (
+                                            <span className="text-xs text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200 font-semibold" title={`Approved by ${approverTitle}${a.approvedByName ? ` (${a.approvedByName})` : ''}`}>
+                                              Finance Request Pending
+                                            </span>
+                                          );
+                                        })()}
                                         {isAssigned && (
                                           <button
                                             onClick={() => {
@@ -2231,19 +2754,43 @@ function Jobs() {
                                             Collect Overdue
                                           </button>
                                         )}
-                                        <button
-                                          onClick={() => {
-                                            const activeId = group.find(g => parseFloat(g.settledAmount || 0) > 0)?.pettyAssignmentId || a.pettyAssignmentId || a.assignmentId;
-                                            setSettlementItemsModal({
-                                              pettyAssignmentId: activeId,
-                                              userName: a.userName || a.waff_clerk_name || getUserFullName(a.userId)
-                                            });
-                                          }}
-                                          className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition"
-                                          title="View settlement items"
-                                        >
-                                          Items
-                                        </button>
+                                        {displayStatus === 'Rejected' && ['Manager','Waff Clerk'].includes(user?.role) && (
+                                          <button
+                                            onClick={() => {
+                                              const rejectedAsgn = group.find(x => x.status === 'Rejected') || a;
+                                              const targetJobId = rejectedAsgn.jobId || viewJobModal?.jobId;
+                                              setReRequestPcModal({
+                                                ...rejectedAsgn,
+                                                jobId: targetJobId,
+                                                pettyAssignmentId: rejectedAsgn.pettyAssignmentId || rejectedAsgn.assignmentId
+                                              });
+                                              setReRequestPcForm({
+                                                requestedAmount: rejectedAsgn.assignedAmount || '',
+                                                rejectionReason: rejectedAsgn.rejectionReason || 'No reason provided',
+                                                notes: rejectedAsgn.notes || ''
+                                              });
+                                            }}
+                                            className="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-lg transition"
+                                            title="Re-submit request with revised amount"
+                                          >
+                                            Re-request
+                                          </button>
+                                        )}
+                                        {isDisbursed && (
+                                          <button
+                                            onClick={() => {
+                                              const activeId = group.find(g => parseFloat(g.settledAmount || 0) > 0)?.pettyAssignmentId || a.pettyAssignmentId || a.assignmentId;
+                                              setSettlementItemsModal({
+                                                pettyAssignmentId: activeId,
+                                                userName: a.userName || a.waff_clerk_name || getUserFullName(a.userId)
+                                              });
+                                            }}
+                                            className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition"
+                                            title="View settlement items"
+                                          >
+                                            Items
+                                          </button>
+                                        )}
                                       </div>
                                     </td>
                                   )}
@@ -2252,20 +2799,38 @@ function Jobs() {
                             });
                             })()
                           ) : (
-                            <tr><td colSpan={['Manager','Waff Clerk'].includes(user?.role) ? 6 : 5} className="px-5 py-3 text-gray-400 text-xs italic text-center">No petty cash assignments yet</td></tr>
+                            <tr>
+                              <td colSpan={['Manager','Waff Clerk'].includes(user?.role) ? 6 : 5} className="px-5 py-6 text-center">
+                                <p className="text-gray-400 text-xs italic mb-2">No petty cash requested or assigned yet</p>
+                                {user?.role === 'Waff Clerk' && (
+                                  <button
+                                    onClick={() => {
+                                      setRequestPcModal(viewJobModal);
+                                      setRequestPcForm({ requestedAmount: '', notes: '' });
+                                    }}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 transition shadow-sm"
+                                  >
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                                      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                                    </svg>
+                                    Request Petty Cash
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
                           )}
                         </tbody>
                         <tfoot>
                           <tr className="bg-purple-50 border-t-2 border-purple-200">
                             <td className="px-5 py-2.5 text-right text-xs font-bold text-purple-700 uppercase tracking-wide">Total</td>
                             <td className="px-5 py-2.5 text-right text-[#1E3F63] font-bold text-sm">
-                              {(viewJobModal.assignments || []).filter(a => user?.role === 'Waff Clerk' ? a.userId === user.userId : true).reduce((sum,a)=>sum+parseFloat(a.assignedAmount||0),0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+                              {(viewJobModal.assignments || []).filter(a => !['Requested', 'Approved', 'Rejected'].includes(a.status) && (user?.role === 'Waff Clerk' ? a.userId === user.userId : true)).reduce((sum,a)=>sum+parseFloat(a.assignedAmount||0),0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
                             </td>
                             <td className="px-5 py-2.5 text-right text-gray-600 font-bold text-sm">
-                              {(viewJobModal.assignments || []).filter(a => user?.role === 'Waff Clerk' ? a.userId === user.userId : true).reduce((sum,a)=>sum+parseFloat(a.settledAmount||0),0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+                              {(viewJobModal.assignments || []).filter(a => !['Requested', 'Approved', 'Rejected'].includes(a.status) && (user?.role === 'Waff Clerk' ? a.userId === user.userId : true)).reduce((sum,a)=>sum+parseFloat(a.settledAmount||0),0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
                             </td>
                             <td className="px-5 py-2.5 text-right text-orange-600 font-bold text-sm">
-                              {((viewJobModal.assignments || []).filter(a => user?.role === 'Waff Clerk' ? a.userId === user.userId : true).reduce((sum,a)=>sum+parseFloat(a.assignedAmount||0),0) - (viewJobModal.assignments || []).filter(a => user?.role === 'Waff Clerk' ? a.userId === user.userId : true).reduce((sum,a)=>sum+parseFloat(a.settledAmount||0),0)).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+                              {((viewJobModal.assignments || []).filter(a => !['Requested', 'Approved', 'Rejected'].includes(a.status) && (user?.role === 'Waff Clerk' ? a.userId === user.userId : true)).reduce((sum,a)=>sum+parseFloat(a.assignedAmount||0),0) - (viewJobModal.assignments || []).filter(a => !['Requested', 'Approved', 'Rejected'].includes(a.status) && (user?.role === 'Waff Clerk' ? a.userId === user.userId : true)).reduce((sum,a)=>sum+parseFloat(a.settledAmount||0),0)).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
                             </td>
                             <td></td>
                             {['Manager','Waff Clerk'].includes(user?.role) && <td></td>}

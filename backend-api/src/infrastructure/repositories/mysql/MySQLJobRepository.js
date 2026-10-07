@@ -102,6 +102,7 @@ class MySQLJobRepository extends BaseMySQLRepository {
           (
             SELECT JSON_ARRAYAGG(JSON_OBJECT(
               'pettyAssignmentId', pa.assignmentId,
+              'jobId', pa.jobId,
               'userId', pa.assignedTo,
               'userName', u.fullName,
               'waff_clerk_name', u.fullName,
@@ -110,10 +111,31 @@ class MySQLJobRepository extends BaseMySQLRepository {
               'status', pa.status,
               'groupId', pa.groupId,
               'assignedDate', pa.assignedDate,
-              'notes', pa.notes
+              'notes', pa.notes,
+              'rejectionReason', pa.rejectionReason,
+              'approvedBy', pa.approvedBy,
+              'approvedByName', u_app.fullName,
+              'approvedByRole', u_app.role,
+              'rejectedBy', pa.rejectedBy,
+              'rejectedByName', u_rej.fullName,
+              'rejectedByRole', u_rej.role,
+              'issuedBy', pa.issuedBy,
+              'issuedByName', u_iss.fullName,
+              'issuedByRole', u_iss.role,
+              'assignedBy', pa.assignedBy,
+              'assignedByName', u_by.fullName,
+              'assignedByRole', u_by.role,
+              'assignedManagerId', COALESCE(pa.assignedManagerId, cma.managerId),
+              'assignedManagerName', u_mgr.fullName
             ))
             FROM pettycashassignments pa
             LEFT JOIN users u ON pa.assignedTo = u.userId
+            LEFT JOIN users u_app ON pa.approvedBy = u_app.userId
+            LEFT JOIN users u_rej ON pa.rejectedBy = u_rej.userId
+            LEFT JOIN users u_iss ON pa.issuedBy = u_iss.userId
+            LEFT JOIN users u_by ON pa.assignedBy = u_by.userId
+            LEFT JOIN clerk_manager_assignments cma ON pa.assignedTo = cma.clerkId
+            LEFT JOIN users u_mgr ON COALESCE(pa.assignedManagerId, cma.managerId) = u_mgr.userId
             WHERE pa.jobId = j.jobId
           ) AS assignmentsJson,
           (
@@ -176,7 +198,22 @@ class MySQLJobRepository extends BaseMySQLRepository {
           status: (pa.status && String(pa.status).toUpperCase() === 'ASSIGNED') ? 'Assigned' : pa.status,
           groupId: pa.groupId,
           assignedDate: pa.assignedDate,
-          notes: pa.notes
+          rejectionReason: pa.rejectionReason,
+          notes: pa.notes,
+          approvedBy: pa.approvedBy,
+          approvedByName: pa.approvedByName,
+          approvedByRole: pa.approvedByRole,
+          rejectedBy: pa.rejectedBy,
+          rejectedByName: pa.rejectedByName,
+          rejectedByRole: pa.rejectedByRole,
+          issuedBy: pa.issuedBy,
+          issuedByName: pa.issuedByName,
+          issuedByRole: pa.issuedByRole,
+          assignedBy: pa.assignedBy,
+          assignedByName: pa.assignedByName,
+          assignedByRole: pa.assignedByRole,
+          assignedManagerId: pa.assignedManagerId,
+          assignedManagerName: pa.assignedManagerName
         }));
       }
     }
@@ -321,6 +358,7 @@ class MySQLJobRepository extends BaseMySQLRepository {
           (
             SELECT JSON_ARRAYAGG(JSON_OBJECT(
               'pettyAssignmentId', pa.assignmentId,
+              'jobId', pa.jobId,
               'userId', pa.assignedTo,
               'userName', u.fullName,
               'waff_clerk_name', u.fullName,
@@ -329,10 +367,31 @@ class MySQLJobRepository extends BaseMySQLRepository {
               'status', pa.status,
               'groupId', pa.groupId,
               'assignedDate', pa.assignedDate,
-              'notes', pa.notes
+              'notes', pa.notes,
+              'rejectionReason', pa.rejectionReason,
+              'approvedBy', pa.approvedBy,
+              'approvedByName', u_app.fullName,
+              'approvedByRole', u_app.role,
+              'rejectedBy', pa.rejectedBy,
+              'rejectedByName', u_rej.fullName,
+              'rejectedByRole', u_rej.role,
+              'issuedBy', pa.issuedBy,
+              'issuedByName', u_iss.fullName,
+              'issuedByRole', u_iss.role,
+              'assignedBy', pa.assignedBy,
+              'assignedByName', u_by.fullName,
+              'assignedByRole', u_by.role,
+              'assignedManagerId', COALESCE(pa.assignedManagerId, cma.managerId),
+              'assignedManagerName', u_mgr.fullName
             ))
             FROM pettycashassignments pa
             LEFT JOIN users u ON pa.assignedTo = u.userId
+            LEFT JOIN users u_app ON pa.approvedBy = u_app.userId
+            LEFT JOIN users u_rej ON pa.rejectedBy = u_rej.userId
+            LEFT JOIN users u_iss ON pa.issuedBy = u_iss.userId
+            LEFT JOIN users u_by ON pa.assignedBy = u_by.userId
+            LEFT JOIN clerk_manager_assignments cma ON pa.assignedTo = cma.clerkId
+            LEFT JOIN users u_mgr ON COALESCE(pa.assignedManagerId, cma.managerId) = u_mgr.userId
             WHERE pa.jobId = j.jobId
           ) AS assignmentsJson,
           (
@@ -852,6 +911,7 @@ class MySQLJobRepository extends BaseMySQLRepository {
     if (row.pettycashassignments && row.pettycashassignments.length > 0) {
       assignments = row.pettycashassignments.map(pa => ({
         pettyAssignmentId: pa.assignmentId,
+        jobId: pa.jobId,
         userId: pa.assignedTo,
         userName: pa.users_pettycashassignments_assignedToTousers?.fullName || null,
         waff_clerk_name: pa.users_pettycashassignments_assignedToTousers?.fullName || null,
@@ -860,6 +920,7 @@ class MySQLJobRepository extends BaseMySQLRepository {
         status: (pa.status && pa.status.toUpperCase() === 'ASSIGNED') ? 'Assigned' : pa.status,
         groupId: pa.groupId,
         assignedDate: pa.assignedDate,
+        rejectionReason: pa.rejectionReason || null,
         notes: pa.notes
       }));
     }

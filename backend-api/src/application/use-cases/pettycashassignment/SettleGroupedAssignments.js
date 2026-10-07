@@ -14,6 +14,11 @@ class SettleGroupedAssignments {
       throw new Error('No assignments found for this group');
     }
 
+    const unissued = groupAssignments.some(a => ['Requested', 'Approved', 'Rejected'].includes(a.status));
+    if (unissued) {
+      throw new Error('Cannot settle group: some petty cash requests have not been issued by Finance yet.');
+    }
+
     // Calculate group totals
     const totalAssigned = groupAssignments.reduce((sum, a) => sum + parseFloat(a.assignedAmount || 0), 0);
     const totalSpent = (settlementData.items || []).reduce((sum, item) => sum + parseFloat(item.actualCost || 0), 0);

@@ -21,7 +21,19 @@ class PettyCashAssignmentController {
   async getAll(req, res) {
     try {
       const getAllPettyCashAssignments = this.container.resolve('getAllPettyCashAssignments');
-      const assignments = await getAllPettyCashAssignments.execute();
+      let assignments = await getAllPettyCashAssignments.execute();
+
+      // If user is Manager, only show 'Requested' assignments that are assigned to this manager (or unassigned)
+      if (req.user && req.user.role === 'Manager') {
+        assignments = assignments.filter(a => {
+          if (a.status === 'Requested') {
+            const assignedMgr = a.effectiveManagerId || a.assignedManagerId;
+            return !assignedMgr || String(assignedMgr) === String(req.user.userId);
+          }
+          return true;
+        });
+      }
+
       res.json(assignments);
     } catch (error) {
       console.error('Error in getAll:', error);
@@ -278,7 +290,19 @@ class PettyCashAssignmentController {
   async getAggregated(req, res) {
     try {
       const getAggregatedAssignments = this.container.resolve('getAggregatedAssignments');
-      const aggregated = await getAggregatedAssignments.execute();
+      let aggregated = await getAggregatedAssignments.execute();
+
+      // If user is Manager, only show 'Requested' assignments that are assigned to this manager (or unassigned)
+      if (req.user && req.user.role === 'Manager') {
+        aggregated = aggregated.filter(a => {
+          if (a.status === 'Requested') {
+            const assignedMgr = a.effectiveManagerId || a.assignedManagerId;
+            return !assignedMgr || String(assignedMgr) === String(req.user.userId);
+          }
+          return true;
+        });
+      }
+
       res.json(aggregated);
     } catch (error) {
       console.error('Error in getAggregated:', error);
@@ -356,6 +380,93 @@ class PettyCashAssignmentController {
     } catch (error) {
       console.error('Error in recalculateStatus:', error);
       res.status(500).json({ message: error.message || 'Error recalculating status' });
+    }
+  }
+
+  async request(req, res) {
+    try {
+      const { jobId, requestedAmount, notes } = req.body;
+      const assignedTo = req.body.assignedTo || req.user.userId;
+      const pettyCashAssignmentRepository = this.container.resolve('pettyCashAssignmentRepository');
+      const result = await pettyCashAssignmentRepository.requestPettyCash({
+        jobId,
+        assignedTo,
+        requestedAmount,
+        notes
+      });
+      res.status(201).json({ message: 'Petty cash requested successfully', assignment: result });
+    } catch (error) {
+      console.error('Error in request petty cash:', error);
+      res.status(400).json({ message: error.message || 'Error requesting petty cash' });
+    }
+  }
+
+  async approve(req, res) {
+    try {
+      const { id } = req.params;
+      const { approvedAmount, notes } = req.body;
+      const pettyCashAssignmentRepository = this.container.resolve('pettyCashAssignmentRepository');
+      const result = await pettyCashAssignmentRepository.approvePettyCash(parseInt(id), {
+        approvedBy: req.user.userId,
+        approvedAmount,
+        notes
+      });
+      res.json({ message: 'Petty cash request approved successfully and forwarded to Finance', assignment: result });
+    } catch (error) {
+      console.error('Error in approve petty cash:', error);
+      res.status(400).json({ message: error.message || 'Error approving petty cash' });
+    }
+  }
+
+  async reject(req, res) {
+    try {
+      const { id } = req.params;
+      const { rejectionReason } = req.body;
+      const pettyCashAssignmentRepository = this.container.resolve('pettyCashAssignmentRepository');
+      const result = await pettyCashAssignmentRepository.rejectPettyCash(parseInt(id), {
+        rejectedBy: req.user.userId,
+        rejectionReason
+      });
+      res.json({ message: 'Petty cash request rejected', assignment: result });
+    } catch (error) {
+      console.error('Error in reject petty cash:', error);
+      res.status(400).json({ message: error.message || 'Error rejecting petty cash' });
+    }
+  }
+
+  async reRequest(req, res) {
+    try {
+      const { id } = req.params;
+      const { requestedAmount, notes } = req.body;
+      const pettyCashAssignmentRepository = this.container.resolve('pettyCashAssignmentRepository');
+      const result = await pettyCashAssignmentRepository.reRequestPettyCash(parseInt(id), {
+        requestedAmount,
+        notes,
+        userId: req.user.userId
+      });
+      res.json({ message: 'Petty cash request re-submitted', assignment: result });
+    } catch (error) {
+      console.error('Error in reRequest petty cash:', error);
+      res.status(400).json({ message: error.message || 'Error re-requesting petty cash' });
+    }
+  }
+
+  async issue(req, res) {
+    try {
+      const { id } = req.params;
+      const { issuedAmount, paymentMethod, referenceNumber, notes } = req.body;
+      const pettyCashAssignmentRepository = this.container.resolve('pettyCashAssignmentRepository');
+      const result = await pettyCashAssignmentRepository.issuePettyCash(parseInt(id), {
+        issuedBy: req.user.userId,
+        issuedAmount,
+        paymentMethod,
+        referenceNumber,
+        notes
+      });
+      res.json({ message: 'Petty cash issued successfully', assignment: result });
+    } catch (error) {
+      console.error('Error in issue petty cash:', error);
+      res.status(400).json({ message: error.message || 'Error issuing petty cash' });
     }
   }
 }

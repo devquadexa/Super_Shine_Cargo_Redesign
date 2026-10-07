@@ -57,7 +57,7 @@ class User {
   }
 
   isValidRole(role) {
-    const validRoles = ['Super Admin', 'Admin', 'Manager', 'Office Executive', 'Waff Clerk'];
+    const validRoles = ['Super Admin', 'Admin', 'Manager', 'Office Executive', 'Waff Clerk', 'Finance'];
     return validRoles.includes(role);
   }
 
@@ -72,7 +72,8 @@ class User {
       'Admin': ['manage_customers', 'manage_jobs', 'manage_billing', 'manage_petty_cash'],
       'Manager': ['manage_customers', 'manage_jobs', 'manage_billing', 'manage_petty_cash'],
       'Office Executive': ['manage_customers', 'manage_jobs', 'manage_office_pay_items'], // No billing access
-      'Waff Clerk': ['view_assigned_jobs', 'manage_own_petty_cash']
+      'Waff Clerk': ['view_assigned_jobs', 'manage_own_petty_cash'],
+      'Finance': ['issue_petty_cash', 'view_petty_cash', 'manage_petty_cash']
     };
     
     const userPermissions = permissions[this.role] || [];

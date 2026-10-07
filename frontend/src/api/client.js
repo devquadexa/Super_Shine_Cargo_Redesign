@@ -19,9 +19,28 @@ const loadingListeners = new Set();
  * Check if the request is an authentication/login action that should
  * suppress floating mutation toasts/messages.
  */
+/**
+ * Extract header value case-insensitively from plain object, Headers, or AxiosHeaders.
+ */
+const getHeaderValue = (headers, key) => {
+  if (!headers) return undefined;
+  if (typeof headers.get === 'function') {
+    return headers.get(key) || headers.get(key.toLowerCase());
+  }
+  const target = key.toLowerCase();
+  for (const k of Object.keys(headers)) {
+    if (k.toLowerCase() === target) return headers[k];
+  }
+  return undefined;
+};
+
+/**
+ * Check if the request is an authentication/login action that should
+ * suppress floating mutation toasts/messages.
+ */
 export const isAuthActionEndpoint = (url, headers = {}, extraConfig = {}) => {
   const u = String(url || '').toLowerCase();
-  const skip = headers?.['x-skip-mutation'] || headers?.['X-Skip-Mutation'] || extraConfig?.skipMutation;
+  const skip = getHeaderValue(headers, 'x-skip-mutation') || extraConfig?.skipMutation;
   if (skip) return true;
   return (
     u.includes('/auth/login') ||
@@ -40,15 +59,15 @@ export const parseActionInfo = (url, method, data, headers = {}, extraConfig = {
   const normalizedUrl = String(url || '').toLowerCase();
 
   // 1. Explicit overrides via headers or config
-  const explicitLoading = headers?.['x-action-loading-message'] || headers?.['X-Action-Loading-Message'] || extraConfig?.loadingMessage;
-  const explicitSuccess = headers?.['x-action-success-message'] || headers?.['X-Action-Success-Message'] || extraConfig?.successMessage;
-  const explicitType = headers?.['x-action-type'] || headers?.['X-Action-Type'] || extraConfig?.actionType;
+  const explicitLoading = getHeaderValue(headers, 'x-action-loading-message') || extraConfig?.loadingMessage;
+  const explicitSuccess = getHeaderValue(headers, 'x-action-success-message') || extraConfig?.successMessage;
+  const explicitType = getHeaderValue(headers, 'x-action-type') || extraConfig?.actionType;
 
   if (explicitLoading || explicitSuccess) {
     return {
-      actionType: explicitType || 'custom',
-      loadingText: explicitLoading || 'Processing...',
-      successText: explicitSuccess || 'Completed successfully',
+      actionType: explicitType || 'save',
+      loadingText: explicitLoading || 'Updating changes...',
+      successText: explicitSuccess || 'Updated successfully',
     };
   }
 
@@ -60,16 +79,7 @@ export const parseActionInfo = (url, method, data, headers = {}, extraConfig = {
     };
   }
 
-  // 2. DELETE
-  if (m === 'delete') {
-    return {
-      actionType: 'delete',
-      loadingText: 'Deleting...',
-      successText: 'Deleted successfully',
-    };
-  }
-
-  // 3. Approvals / Rejections / Completions
+  // 2. Approvals / Rejections / Completions
   if (normalizedUrl.includes('/approve')) {
     return {
       actionType: 'approve',
@@ -92,21 +102,100 @@ export const parseActionInfo = (url, method, data, headers = {}, extraConfig = {
     };
   }
 
-  // Parse data if available
+  // 3. Domain-specific data changes:
+  // Pay items
+  if (normalizedUrl.includes('pay-item') || normalizedUrl.includes('payitem')) {
+    if (m === 'delete') {
+      return { actionType: 'delete', loadingText: 'Deleting pay item...', successText: 'Pay item deleted successfully' };
+    }
+    if (m === 'post') {
+      return { actionType: 'save', loadingText: 'Adding pay item...', successText: 'Pay item added successfully' };
+    }
+    return { actionType: 'save', loadingText: 'Updating pay items...', successText: 'Pay items updated successfully' };
+  }
+
+  // Payments / settlements
+  if (normalizedUrl.includes('/pay') || normalizedUrl.includes('payment')) {
+    if (m === 'delete') {
+      return { actionType: 'delete', loadingText: 'Deleting payment...', successText: 'Payment deleted successfully' };
+    }
+    return { actionType: 'save', loadingText: 'Recording payment...', successText: 'Payment recorded successfully' };
+  }
+
+  // Invoices & Billing
+  if (normalizedUrl.includes('/billing') || normalizedUrl.includes('/invoice') || normalizedUrl.includes('/old-invoice')) {
+    if (m === 'delete') {
+      return { actionType: 'delete', loadingText: 'Deleting invoice...', successText: 'Invoice deleted successfully' };
+    }
+    if (m === 'post') {
+      return { actionType: 'save', loadingText: 'Saving invoice...', successText: 'Invoice saved successfully' };
+    }
+    return { actionType: 'save', loadingText: 'Updating invoice...', successText: 'Invoice updated successfully' };
+  }
+
+  // Jobs
+  if (normalizedUrl.includes('/jobs') || normalizedUrl.includes('/job')) {
+    if (normalizedUrl.includes('/status')) {
+      return { actionType: 'save', loadingText: 'Updating job status...', successText: 'Status updated successfully' };
+    }
+    if (normalizedUrl.includes('/assign')) {
+      return { actionType: 'save', loadingText: 'Assigning job...', successText: 'Job assigned successfully' };
+    }
+    if (m === 'delete') {
+      return { actionType: 'delete', loadingText: 'Deleting job...', successText: 'Job deleted successfully' };
+    }
+    if (m === 'post') {
+      return { actionType: 'save', loadingText: 'Creating job...', successText: 'Job created successfully' };
+    }
+    return { actionType: 'save', loadingText: 'Updating job...', successText: 'Job updated successfully' };
+  }
+
+  // Customers
+  if (normalizedUrl.includes('/customers') || normalizedUrl.includes('/customer')) {
+    if (m === 'delete') {
+      return { actionType: 'delete', loadingText: 'Deleting customer...', successText: 'Customer deleted successfully' };
+    }
+    if (m === 'post') {
+      return { actionType: 'save', loadingText: 'Saving customer...', successText: 'Customer saved successfully' };
+    }
+    return { actionType: 'save', loadingText: 'Updating customer...', successText: 'Customer updated successfully' };
+  }
+
+  // Transporters
+  if (normalizedUrl.includes('/transporter')) {
+    if (m === 'delete') {
+      return { actionType: 'delete', loadingText: 'Deleting transporter...', successText: 'Transporter deleted successfully' };
+    }
+    if (m === 'post') {
+      return { actionType: 'save', loadingText: 'Saving transporter...', successText: 'Transporter saved successfully' };
+    }
+    return { actionType: 'save', loadingText: 'Updating transporter...', successText: 'Transporter updated successfully' };
+  }
+
+  // Petty Cash
+  if (normalizedUrl.includes('petty-cash')) {
+    if (m === 'delete') {
+      return { actionType: 'delete', loadingText: 'Deleting petty cash item...', successText: 'Petty cash item deleted successfully' };
+    }
+    if (m === 'post') {
+      return { actionType: 'save', loadingText: 'Saving petty cash...', successText: 'Petty cash saved successfully' };
+    }
+    return { actionType: 'save', loadingText: 'Updating petty cash...', successText: 'Petty cash updated successfully' };
+  }
+
+  // Parse data if available for request detection
   let parsedData = null;
   if (data) {
     if (typeof data === 'string') {
       try {
         parsedData = JSON.parse(data);
-      } catch (e) {
-        // Not JSON string
-      }
+      } catch (e) {}
     } else if (typeof data === 'object') {
       parsedData = data;
     }
   }
 
-  // 4. Requests (Cash balance settlements, overdue collections, balance returns, reset requests, advance requests, etc.)
+  // 4. Requests (Cash balance settlements, overdue collections, balance returns, reset requests, etc.)
   const isRequestUrl =
     normalizedUrl.includes('cash-balance-settlement') ||
     normalizedUrl.includes('request') ||
@@ -133,7 +222,23 @@ export const parseActionInfo = (url, method, data, headers = {}, extraConfig = {
     };
   }
 
-  // 5. Default CRUD save / create / update
+  // 5. General Fallbacks by HTTP method
+  if (m === 'delete') {
+    return {
+      actionType: 'delete',
+      loadingText: 'Deleting...',
+      successText: 'Deleted successfully',
+    };
+  }
+
+  if (m === 'put' || m === 'patch') {
+    return {
+      actionType: 'save',
+      loadingText: 'Updating changes...',
+      successText: 'Changes updated successfully',
+    };
+  }
+
   return {
     actionType: 'save',
     loadingText: 'Saving changes...',
@@ -156,8 +261,8 @@ const getCurrentState = () => {
     isMutating: isMutating,
     count: activeRequests,
     actionType: currentMutation?.actionType || 'save',
-    loadingText: currentMutation?.loadingText || 'Saving changes...',
-    successText: currentMutation?.successText || 'Saved successfully',
+    loadingText: currentMutation?.loadingText || 'Updating changes...',
+    successText: currentMutation?.successText || 'Updated successfully',
   };
 };
 
@@ -189,6 +294,14 @@ apiClient.interceptors.request.use(
       config.__mutId = mutId;
       const actionInfo = parseActionInfo(config.url, method, config.data, config.headers, config);
       activeMutationMap.set(mutId, actionInfo);
+
+      // Auto-cleanup failsafe after 8 seconds so indicator never gets stuck
+      setTimeout(() => {
+        if (activeMutationMap.has(mutId)) {
+          activeMutationMap.delete(mutId);
+          notify();
+        }
+      }, 8000);
     }
     notify();
     return config;
@@ -244,6 +357,14 @@ if (typeof window !== 'undefined' && window.fetch && !window.__fetchIntercepted)
       mutId = ++mutationSeq;
       const actionInfo = parseActionInfo(url, method, options.body, options.headers, options);
       activeMutationMap.set(mutId, actionInfo);
+
+      // Auto-cleanup failsafe after 8 seconds
+      setTimeout(() => {
+        if (mutId && activeMutationMap.has(mutId)) {
+          activeMutationMap.delete(mutId);
+          notify();
+        }
+      }, 8000);
     }
     notify();
 

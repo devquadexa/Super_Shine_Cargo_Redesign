@@ -8,10 +8,11 @@ class GetGroupedAssignments {
       ? await this.pettyCashAssignmentRepository.getByUser(userId)
       : await this.pettyCashAssignmentRepository.findAll();
 
-    // Group assignments by groupId
+    // Group assignments by groupId, keeping unissued requests (Requested, Approved, Rejected) separate
     const grouped = {};
     assignments.forEach(assignment => {
-      const gid = assignment.groupId || `${assignment.jobId}_${assignment.assignedTo}`;
+      const isUnissued = ['Requested', 'Approved', 'Rejected'].includes(assignment.status);
+      const gid = isUnissued ? `req_${assignment.assignmentId}` : (assignment.groupId && !assignment.groupId.startsWith('req_') ? assignment.groupId : `${assignment.jobId}_${assignment.assignedTo}`);
       if (!grouped[gid]) {
         grouped[gid] = {
           groupId: gid,
@@ -27,7 +28,7 @@ class GetGroupedAssignments {
           totalOver: 0,
           allSettled: true,
           hasUnsettled: false,
-          groupStatus: 'Assigned'
+          groupStatus: assignment.status || 'Assigned'
         };
       }
 
@@ -92,7 +93,17 @@ class GetGroupedAssignments {
       } else if (allApproved) {
         group.groupStatus = 'Settled/Approved';
       } else if (group.hasUnsettled) {
-        group.groupStatus = 'Assigned';
+        if (group.assignments.some(a => a.status === 'Assigned')) {
+          group.groupStatus = 'Assigned';
+        } else if (group.assignments.some(a => a.status === 'Approved')) {
+          group.groupStatus = 'Approved';
+        } else if (group.assignments.some(a => a.status === 'Requested')) {
+          group.groupStatus = 'Requested';
+        } else if (group.assignments.every(a => a.status === 'Rejected')) {
+          group.groupStatus = 'Rejected';
+        } else {
+          group.groupStatus = 'Assigned';
+        }
       } else if (group.totalBalance > 0) {
         group.groupStatus = 'Balance To Be Return';
       } else if (group.totalOver > 0) {

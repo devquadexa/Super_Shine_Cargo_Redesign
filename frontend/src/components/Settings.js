@@ -20,6 +20,14 @@ function Settings() {
   const [editingExpenseType, setEditingExpenseType] = useState(null);
   const [newExpenseType, setNewExpenseType] = useState({ typeName: '', description: '' });
 
+  // Clerk Manager Routing state
+  const [clerkMappings, setClerkMappings] = useState([]);
+  const [availableManagers, setAvailableManagers] = useState([]);
+  const [loadingClerkMappings, setLoadingClerkMappings] = useState(false);
+  const [savingClerkId, setSavingClerkId] = useState(null);
+  const [clerkSearchText, setClerkSearchText] = useState('');
+  const [batchSaving, setBatchSaving] = useState(false);
+
   const defaultCategories = React.useMemo(() =>
     ['LCL', 'FCL', 'Air Freight', 'BOI', 'Vehicle - Personal', 'Vehicle - Company', 'TIEP'],
     []
@@ -34,9 +42,17 @@ function Settings() {
     if (user?.role === 'Admin' || user?.role === 'Super Admin') {
       fetchTemplates();
       fetchExpenseTypes();
+      fetchClerkMappings();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  useEffect(() => {
+    if (activeTab === 'clerkrouting' && (user?.role === 'Admin' || user?.role === 'Super Admin')) {
+      fetchClerkMappings();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
 
   useEffect(() => {
     if (categories.length > 0 && !categories.includes(selectedCategory)) {
@@ -69,6 +85,144 @@ function Settings() {
       console.error('Error fetching expense types:', error);
       setMessage('Error loading expense types');
       setMessageType('error');
+    }
+  };
+
+  const fetchClerkMappings = async () => {
+    setLoadingClerkMappings(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/settings/clerk-managers`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setClerkMappings(data.clerks || []);
+        setAvailableManagers(data.managers || []);
+      } else {
+        console.error('Failed to load clerk manager mappings');
+      }
+    } catch (error) {
+      console.error('Error fetching clerk manager mappings:', error);
+    } finally {
+      setLoadingClerkMappings(false);
+    }
+  };
+
+  const handleThresholdChange = (clerkId, value) => {
+    setClerkMappings(prev => prev.map(c => {
+      if (c.userId === clerkId) {
+        return { ...c, requestThreshold: value };
+      }
+      return c;
+    }));
+  };
+
+  const handleManagerChange = (clerkId, managerId) => {
+    const foundMgr = availableManagers.find(m => m.userId === managerId);
+    setClerkMappings(prev => prev.map(c => {
+      if (c.userId === clerkId) {
+        return {
+          ...c,
+          assignedManagerId: managerId || null,
+          assignedManagerName: foundMgr ? foundMgr.fullName : null,
+          assignedManagerRole: foundMgr ? foundMgr.role : null
+        };
+      }
+      return c;
+    }));
+  };
+
+  const handleSaveClerkRule = async (clerkId, managerId, requestThreshold) => {
+    setSavingClerkId(clerkId);
+    try {
+      const numThreshold = (requestThreshold !== '' && requestThreshold !== null && requestThreshold !== undefined && !isNaN(Number(requestThreshold)))
+        ? Number(requestThreshold)
+        : null;
+
+      const response = await fetch(`${API_BASE}/api/settings/clerk-managers/${clerkId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ 
+          managerId: managerId || null,
+          requestThreshold: numThreshold
+        })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        const foundMgr = availableManagers.find(m => m.userId === managerId);
+        setClerkMappings(prev => prev.map(c => {
+          if (c.userId === clerkId) {
+            return {
+              ...c,
+              assignedManagerId: managerId || null,
+              assignedManagerName: foundMgr ? foundMgr.fullName : null,
+              assignedManagerRole: foundMgr ? foundMgr.role : null,
+              requestThreshold: numThreshold,
+              assignedDate: (managerId || numThreshold) ? new Date().toISOString() : null
+            };
+          }
+          return c;
+        }));
+        setMessage(data.message || 'Rules updated successfully!');
+        setMessageType('success');
+        setTimeout(() => setMessage(''), 3500);
+      } else {
+        setMessage(data.message || 'Error updating assignment');
+        setMessageType('error');
+        setTimeout(() => setMessage(''), 4000);
+      }
+    } catch (error) {
+      console.error('Error updating clerk manager assignment:', error);
+      setMessage('Error updating clerk rules');
+      setMessageType('error');
+      setTimeout(() => setMessage(''), 4000);
+    } finally {
+      setSavingClerkId(null);
+    }
+  };
+
+  const handleSaveAllMappings = async () => {
+    setBatchSaving(true);
+    try {
+      const assignments = clerkMappings.map(c => {
+        const numThreshold = (c.requestThreshold !== '' && c.requestThreshold !== null && c.requestThreshold !== undefined && !isNaN(Number(c.requestThreshold)))
+          ? Number(c.requestThreshold)
+          : null;
+        return {
+          clerkId: c.userId,
+          managerId: c.assignedManagerId || null,
+          requestThreshold: numThreshold
+        };
+      });
+      const response = await fetch(`${API_BASE}/api/settings/clerk-managers/batch`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ assignments })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setMessage('✓ All clerk routing & threshold rules saved successfully!');
+        setMessageType('success');
+        fetchClerkMappings();
+        setTimeout(() => setMessage(''), 4000);
+      } else {
+        setMessage(data.message || 'Error saving all rules');
+        setMessageType('error');
+        setTimeout(() => setMessage(''), 4000);
+      }
+    } catch (error) {
+      console.error('Error batch saving rules:', error);
+      setMessage('Error saving clerk rules');
+      setMessageType('error');
+      setTimeout(() => setMessage(''), 4000);
+    } finally {
+      setBatchSaving(false);
     }
   };
 
@@ -329,6 +483,22 @@ function Settings() {
                 <line x1="2" y1="10" x2="22" y2="10"></line>
               </svg>
               Expense Types
+            </button>
+            <button
+              className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium transition ${
+                activeTab === 'clerkrouting'
+                  ? 'bg-blue-50 text-blue-700 border-l-4 border-blue-600'
+                  : 'text-gray-700 hover:bg-gray-50 border-l-4 border-transparent'
+              }`}
+              onClick={() => setActiveTab('clerkrouting')}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                <circle cx="9" cy="7" r="4"></circle>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+              </svg>
+              Petty Cash Routing & Limits
             </button>
           </div>
         </div>
@@ -653,6 +823,337 @@ function Settings() {
                     </button>
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'clerkrouting' && (
+            <div className="space-y-6">
+              {/* Header with Title and Actions */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                    <span>Wharf Clerk Routing & Threshold Limits</span>
+                    <span className="px-2.5 py-0.5 text-xs font-semibold bg-indigo-100 text-indigo-800 rounded-full">
+                      Customization
+                    </span>
+                  </h2>
+                  <p className="text-gray-600 mt-1 text-sm">
+                    Assign dedicated Managers and enforce Petty Cash Request Limits for each Wharf Clerk. Clerks cannot exceed their threshold, and requests route exclusively to their assigned manager.
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={fetchClerkMappings}
+                    disabled={loadingClerkMappings}
+                    className="px-3.5 py-2 border border-gray-300 hover:bg-gray-50 text-gray-700 font-medium rounded-lg transition text-sm flex items-center gap-1.5 shadow-sm"
+                    title="Refresh mappings"
+                  >
+                    <svg className={`w-4 h-4 ${loadingClerkMappings ? 'animate-spin text-blue-600' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="23 4 23 10 17 10"></polyline>
+                      <polyline points="1 20 1 14 7 14"></polyline>
+                      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                    </svg>
+                    Refresh
+                  </button>
+                  <button
+                    onClick={handleSaveAllMappings}
+                    disabled={batchSaving || loadingClerkMappings}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition text-sm flex items-center gap-2 shadow-sm disabled:opacity-50"
+                  >
+                    {batchSaving ? (
+                      <>
+                        <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
+                          <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" className="opacity-75" />
+                        </svg>
+                        Saving All...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                          <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                          <polyline points="7 3 7 8 15 8"></polyline>
+                        </svg>
+                        Save All Rules
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Stats Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center gap-3.5">
+                  <div className="w-11 h-11 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-xl shrink-0">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                      <circle cx="9" cy="7" r="4"></circle>
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-gray-900">{clerkMappings.length}</div>
+                    <div className="text-xs font-medium text-gray-500 uppercase tracking-wider">Total Wharf Clerks</div>
+                  </div>
+                </div>
+
+                <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center gap-3.5">
+                  <div className="w-11 h-11 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-xl shrink-0">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                      <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-emerald-700">
+                      {clerkMappings.filter(c => Boolean(c.assignedManagerId)).length}
+                    </div>
+                    <div className="text-xs font-medium text-gray-500 uppercase tracking-wider">Directly Routed</div>
+                  </div>
+                </div>
+
+                <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center gap-3.5">
+                  <div className="w-11 h-11 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center font-bold text-xl shrink-0">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-purple-700">
+                      {clerkMappings.filter(c => c.requestThreshold !== null && c.requestThreshold !== undefined && Number(c.requestThreshold) > 0).length}
+                    </div>
+                    <div className="text-xs font-medium text-gray-500 uppercase tracking-wider">With Request Limit</div>
+                  </div>
+                </div>
+
+                <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center gap-3.5">
+                  <div className="w-11 h-11 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-xl shrink-0">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="12 2 2 22 22 22 12 2"></polygon>
+                      <line x1="12" y1="9" x2="12" y2="13"></line>
+                      <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-amber-700">
+                      {clerkMappings.filter(c => !c.assignedManagerId).length}
+                    </div>
+                    <div className="text-xs font-medium text-gray-500 uppercase tracking-wider">Unassigned (Broadcast)</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Main Table Card */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                {/* Search & Filter Header */}
+                <div className="p-4 border-b border-gray-100 bg-gray-50 flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <div className="relative w-full sm:w-80">
+                    <svg className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="11" cy="11" r="8"></circle>
+                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input
+                      type="text"
+                      placeholder="Search clerk name, username or ID..."
+                      value={clerkSearchText}
+                      onChange={(e) => setClerkSearchText(e.target.value)}
+                      className="w-full pl-9 pr-3 py-1.5 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    />
+                  </div>
+                  <div className="text-xs text-gray-500 flex items-center gap-1.5">
+                    <span>💡 Tip:</span>
+                    <span>Set a request limit in LKR to restrict maximum petty cash that can be requested at once. Leave empty for unlimited.</span>
+                  </div>
+                </div>
+
+                {/* Table */}
+                {loadingClerkMappings ? (
+                  <div className="p-12 text-center text-gray-500">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mb-3"></div>
+                    <p className="text-sm font-medium">Loading Wharf Clerk rules...</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left border-collapse">
+                      <thead>
+                        <tr className="bg-gray-100 text-gray-600 uppercase text-xs font-semibold tracking-wider border-b border-gray-200">
+                          <th className="px-6 py-3.5">Wharf Clerk</th>
+                          <th className="px-6 py-3.5">Assigned Manager (Approver)</th>
+                          <th className="px-6 py-3.5">Request Limit (LKR)</th>
+                          <th className="px-6 py-3.5 text-center">Status & Rule Summary</th>
+                          <th className="px-6 py-3.5 text-right">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {(() => {
+                          const filteredClerks = clerkMappings.filter(c => {
+                            if (!clerkSearchText.trim()) return true;
+                            const query = clerkSearchText.toLowerCase();
+                            return (
+                              (c.fullName && c.fullName.toLowerCase().includes(query)) ||
+                              (c.username && c.username.toLowerCase().includes(query)) ||
+                              (c.userId && c.userId.toLowerCase().includes(query)) ||
+                              (c.assignedManagerName && c.assignedManagerName.toLowerCase().includes(query))
+                            );
+                          });
+
+                          if (filteredClerks.length === 0) {
+                            return (
+                              <tr>
+                                <td colSpan="5" className="px-6 py-12 text-center text-gray-500">
+                                  {clerkSearchText ? 'No wharf clerks match your search query.' : 'No active wharf clerks found in the system.'}
+                                </td>
+                              </tr>
+                            );
+                          }
+
+                          return filteredClerks.map((clerk) => {
+                            const isSaving = savingClerkId === clerk.userId;
+                            const hasManager = Boolean(clerk.assignedManagerId);
+                            const hasLimit = clerk.requestThreshold !== null && clerk.requestThreshold !== undefined && clerk.requestThreshold !== '' && Number(clerk.requestThreshold) > 0;
+
+                            return (
+                              <tr key={clerk.userId} className="hover:bg-indigo-50/30 transition group">
+                                <td className="px-6 py-4">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-600 text-white flex items-center justify-center font-bold text-xs shadow-sm shrink-0">
+                                      {clerk.fullName ? clerk.fullName.substring(0, 2).toUpperCase() : 'WC'}
+                                    </div>
+                                    <div>
+                                      <div className="font-semibold text-gray-900 group-hover:text-indigo-900">
+                                        {clerk.fullName || clerk.username}
+                                      </div>
+                                      <div className="text-xs text-gray-500 flex items-center gap-2 mt-0.5">
+                                        <span className="font-mono bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-[11px]">
+                                          {clerk.userId}
+                                        </span>
+                                        <span>@{clerk.username}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </td>
+
+                                <td className="px-6 py-4">
+                                  <div className="max-w-xs">
+                                    <select
+                                      value={clerk.assignedManagerId || ''}
+                                      onChange={(e) => handleManagerChange(clerk.userId, e.target.value)}
+                                      disabled={isSaving}
+                                      className={`w-full px-3 py-2 text-sm rounded-lg border focus:outline-none focus:ring-2 focus:ring-indigo-500 transition font-medium ${
+                                        hasManager 
+                                          ? 'border-indigo-300 bg-indigo-50/50 text-indigo-950 font-semibold' 
+                                          : 'border-gray-300 bg-white text-gray-700'
+                                      }`}
+                                    >
+                                      <option value="">-- Broadcast to All Managers --</option>
+                                      {availableManagers.map(mgr => (
+                                        <option key={mgr.userId} value={mgr.userId}>
+                                          {mgr.fullName} ({mgr.role})
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                </td>
+
+                                <td className="px-6 py-4">
+                                  <div className="relative max-w-xs">
+                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-xs font-semibold text-gray-400">
+                                      LKR
+                                    </div>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="500"
+                                      value={clerk.requestThreshold !== null && clerk.requestThreshold !== undefined ? clerk.requestThreshold : ''}
+                                      onChange={(e) => handleThresholdChange(clerk.userId, e.target.value)}
+                                      placeholder="Unlimited (No Limit)"
+                                      disabled={isSaving}
+                                      className={`w-full pl-11 pr-3 py-2 text-sm rounded-lg border focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium transition ${
+                                        hasLimit
+                                          ? 'border-purple-300 bg-purple-50/40 text-purple-950 font-semibold'
+                                          : 'border-gray-300 bg-white text-gray-700'
+                                      }`}
+                                    />
+                                  </div>
+                                </td>
+
+                                <td className="px-6 py-4 text-center">
+                                  <div className="flex flex-col items-center gap-1.5">
+                                    {hasManager ? (
+                                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200 shadow-2xs">
+                                        <svg className="w-3 h-3 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                          <polyline points="20 6 9 17 4 12" />
+                                        </svg>
+                                        Routed to {clerk.assignedManagerName ? clerk.assignedManagerName.split(' ')[0] : clerk.assignedManagerId}
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                        Broadcast (Any Manager)
+                                      </span>
+                                    )}
+
+                                    {hasLimit ? (
+                                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-800 border border-purple-200 shadow-2xs">
+                                        <svg className="w-3 h-3 text-purple-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                                        </svg>
+                                        Max: LKR {Number(clerk.requestThreshold).toLocaleString()}
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] text-gray-400 bg-gray-50 border border-gray-100">
+                                        No Limit (Unlimited)
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+
+                                <td className="px-6 py-4 text-right">
+                                  <button
+                                    onClick={() => handleSaveClerkRule(clerk.userId, clerk.assignedManagerId, clerk.requestThreshold)}
+                                    disabled={isSaving}
+                                    className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg shadow-2xs transition disabled:opacity-50"
+                                  >
+                                    {isSaving ? 'Saving...' : 'Save'}
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          });
+                        })()}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Informational Guidance Callout */}
+              <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-5 flex items-start gap-4">
+                <div className="w-10 h-10 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0 mt-0.5">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="16" x2="12" y2="12"></line>
+                    <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                  </svg>
+                </div>
+                <div className="space-y-1.5 text-sm text-indigo-900">
+                  <h4 className="font-bold text-indigo-950">How Wharf Clerk Rules & Thresholds Work:</h4>
+                  <ul className="list-disc list-inside space-y-1 text-indigo-800 text-xs">
+                    <li>
+                      <strong>Request Threshold Limit:</strong> Sets the maximum petty cash amount (LKR) that this clerk can request in a single request (or re-request). Requests exceeding this limit will be blocked. Leave empty for no limit.
+                    </li>
+                    <li>
+                      <strong>Targeted Manager Routing:</strong> When configured, petty cash requests submitted by this clerk route directly and exclusively to the assigned manager's inbox and pending list.
+                    </li>
+                    <li>
+                      <strong>Broadcast Fallback:</strong> If no manager is selected, requests are broadcast to all active Managers.
+                    </li>
+                    <li>
+                      <strong>Supervisory Override:</strong> Admins and Super Admins can always view, audit, and approve requests at any time.
+                    </li>
+                  </ul>
+                </div>
               </div>
             </div>
           )}

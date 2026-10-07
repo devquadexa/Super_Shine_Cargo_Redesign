@@ -4,9 +4,11 @@ import { jobService } from '../api/services/jobService';
 import { authService } from '../api/services/authService';
 import { customerService } from '../api/services/customerService';
 import { cashWithdrawalService } from '../api/services/cashWithdrawalService';
+import { pettyCashService } from '../api/services/pettyCashService';
 import CashWithdrawalModal from './CashWithdrawalModal';
 import Pagination from './Pagination';
 import API_BASE from '../api/config';
+import { getSpecificPettyCashStatus } from '../utils/pettyCashUtils';
 
 function PettyCash() {
   const { user } = useAuth();
@@ -41,12 +43,57 @@ function PettyCash() {
     };
   });
   
-  // Assignment Modal
+  // Assignment Modal (Legacy / Admin fallback)
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [assignFormData, setAssignFormData] = useState({
     jobId: '',
     assignedTo: '',
     assignedAmount: '',
+    notes: ''
+  });
+
+  // Workflow Modals: Request, Approve, Reject, Re-request, Issue
+  const [showRequestModal, setShowRequestModal] = useState(false);
+  const [requestFormData, setRequestFormData] = useState({
+    jobId: '',
+    requestedAmount: '',
+    notes: ''
+  });
+
+  const [showApproveModal, setShowApproveModal] = useState(false);
+  const [approveFormData, setApproveFormData] = useState({
+    assignmentId: null,
+    jobId: '',
+    clerkName: '',
+    approvedAmount: '',
+    notes: ''
+  });
+
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectFormData, setRejectFormData] = useState({
+    assignmentId: null,
+    jobId: '',
+    clerkName: '',
+    rejectionReason: ''
+  });
+
+  const [showReRequestModal, setShowReRequestModal] = useState(false);
+  const [reRequestFormData, setReRequestFormData] = useState({
+    assignmentId: null,
+    jobId: '',
+    requestedAmount: '',
+    rejectionReason: '',
+    notes: ''
+  });
+
+  const [showIssueModal, setShowIssueModal] = useState(false);
+  const [issueFormData, setIssueFormData] = useState({
+    assignmentId: null,
+    jobId: '',
+    clerkName: '',
+    issuedAmount: '',
+    paymentMethod: 'Cash',
+    referenceNumber: '',
     notes: ''
   });
 
@@ -94,6 +141,7 @@ function PettyCash() {
     amount: '',
     notes: ''
   });
+  const [clerkThreshold, setClerkThreshold] = useState(null);
 
   // Cash Withdrawal states
   const [showWithdrawalModal, setShowWithdrawalModal] = useState(false);
@@ -115,6 +163,13 @@ function PettyCash() {
     ];
     if (user?.role === 'Admin' || user?.role === 'Super Admin' || user?.role === 'Manager') {
       promises.push(fetchUsers(), fetchOverallBalance(), fetchCashWithdrawals());
+    }
+    if (user?.role === 'Waff Clerk') {
+      pettyCashService.getMyThreshold().then(thresh => {
+        if (thresh !== null && thresh !== undefined) {
+          setClerkThreshold(parseFloat(thresh));
+        }
+      }).catch(() => {});
     }
     Promise.all(promises);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -275,18 +330,16 @@ function PettyCash() {
       setJobs(data);
       
       // Build job assignments map from the assignedUsers in each job
-      if (user?.role === 'Admin' || user?.role === 'Super Admin' || user?.role === 'Manager') {
-        const assignmentsMap = {};
-        data.forEach(job => {
-          if (job.assignedUsers && job.assignedUsers.length > 0) {
-            assignmentsMap[job.jobId] = job.assignedUsers;
-          } else {
-            assignmentsMap[job.jobId] = [];
-          }
-        });
-        console.log('Job assignments map:', assignmentsMap);
-        setJobAssignments(assignmentsMap);
-      }
+      const assignmentsMap = {};
+      data.forEach(job => {
+        if (job.assignedUsers && job.assignedUsers.length > 0) {
+          assignmentsMap[job.jobId] = job.assignedUsers;
+        } else {
+          assignmentsMap[job.jobId] = [];
+        }
+      });
+      console.log('Job assignments map:', assignmentsMap);
+      setJobAssignments(assignmentsMap);
     } catch (error) {
       console.error('Error fetching jobs:', error);
     }
@@ -395,6 +448,21 @@ function PettyCash() {
 
     console.log('Available jobs:', available.length);
     return available;
+  };
+
+  const getClerkAvailableJobs = () => {
+    return jobs.filter(job => {
+      if (invoicedJobIds.has(job.jobId)) return false;
+      const assignedUsers = jobAssignments[job.jobId] || [];
+      const isClerkAssigned = assignedUsers.some(u => u.userId === user?.userId);
+      if (!isClerkAssigned) return false;
+      const hasActive = assignments.some(a => 
+        a.jobId === job.jobId && 
+        a.assignedTo === user?.userId && 
+        ['Requested', 'Approved'].includes(a.status)
+      );
+      return !hasActive;
+    });
   };
 
   const getAvailableUsersForJob = (jobId) => {
@@ -534,6 +602,142 @@ function PettyCash() {
       setTimeout(() => setMessage(''), 3000);
     }
     console.log('=== handleAssignSubmit END ===');
+  };
+
+  const handleRequestSubmit = async (e) => {
+    if (e) e.preventDefault();
+    const amount = parseFloat(requestFormData.requestedAmount);
+    if (isNaN(amount) || amount <= 0) {
+      setMessage('Requested amount must be greater than 0');
+      setTimeout(() => setMessage(''), 3000);
+      return;
+    }
+    if (clerkThreshold !== null && clerkThreshold > 0 && amount > clerkThreshold) {
+      setMessage(`❌ Requested amount of LKR ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} exceeds your allowed petty cash threshold limit of LKR ${clerkThreshold.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`);
+      setTimeout(() => setMessage(''), 5000);
+      return;
+    }
+    if (!requestFormData.jobId) {
+      setMessage('Please select a job');
+      setTimeout(() => setMessage(''), 3000);
+      return;
+    }
+    try {
+      await pettyCashService.requestPettyCash({
+        jobId: requestFormData.jobId,
+        requestedAmount: amount,
+        notes: requestFormData.notes
+      });
+      setMessage('✓ Petty cash requested successfully! Awaiting Admin/Manager approval.');
+      setShowRequestModal(false);
+      setRequestFormData({ jobId: '', requestedAmount: '', notes: '' });
+      fetchAssignments();
+      fetchJobs();
+      setTimeout(() => setMessage(''), 4000);
+    } catch (err) {
+      const errMsg = err.response?.data?.message || err.message || 'Error requesting petty cash';
+      setMessage(`❌ ${errMsg}`);
+      setTimeout(() => setMessage(''), 4000);
+    }
+  };
+
+  const handleApproveSubmit = async (e) => {
+    if (e) e.preventDefault();
+    try {
+      await pettyCashService.approvePettyCash(approveFormData.assignmentId, {
+        approvedAmount: parseFloat(approveFormData.approvedAmount),
+        notes: approveFormData.notes
+      });
+      setMessage('✓ Petty cash approved and forwarded to Finance!');
+      setShowApproveModal(false);
+      fetchAssignments();
+      fetchJobs();
+      setTimeout(() => setMessage(''), 4000);
+    } catch (err) {
+      const errMsg = err.response?.data?.message || err.message || 'Error approving petty cash';
+      setMessage(`❌ ${errMsg}`);
+      setTimeout(() => setMessage(''), 4000);
+    }
+  };
+
+  const handleRejectSubmit = async (e) => {
+    if (e) e.preventDefault();
+    if (!rejectFormData.rejectionReason?.trim()) {
+      setMessage('Rejection reason is required');
+      setTimeout(() => setMessage(''), 3000);
+      return;
+    }
+    try {
+      await pettyCashService.rejectPettyCash(rejectFormData.assignmentId, {
+        rejectionReason: rejectFormData.rejectionReason.trim()
+      });
+      setMessage('✓ Petty cash request rejected.');
+      setShowRejectModal(false);
+      fetchAssignments();
+      fetchJobs();
+      setTimeout(() => setMessage(''), 4000);
+    } catch (err) {
+      const errMsg = err.response?.data?.message || err.message || 'Error rejecting petty cash';
+      setMessage(`❌ ${errMsg}`);
+      setTimeout(() => setMessage(''), 4000);
+    }
+  };
+
+  const handleReRequestSubmit = async (e) => {
+    if (e) e.preventDefault();
+    const amount = parseFloat(reRequestFormData.requestedAmount);
+    if (isNaN(amount) || amount <= 0) {
+      setMessage('Requested amount must be greater than 0');
+      setTimeout(() => setMessage(''), 3000);
+      return;
+    }
+    if (clerkThreshold !== null && clerkThreshold > 0 && amount > clerkThreshold) {
+      setMessage(`❌ Requested amount of LKR ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} exceeds your allowed petty cash threshold limit of LKR ${clerkThreshold.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`);
+      setTimeout(() => setMessage(''), 5000);
+      return;
+    }
+    try {
+      await pettyCashService.reRequestPettyCash(reRequestFormData.assignmentId, {
+        requestedAmount: amount,
+        notes: reRequestFormData.notes
+      });
+      setMessage('✓ Petty cash request re-submitted! Awaiting approval.');
+      setShowReRequestModal(false);
+      fetchAssignments();
+      fetchJobs();
+      setTimeout(() => setMessage(''), 4000);
+    } catch (err) {
+      const errMsg = err.response?.data?.message || err.message || 'Error re-requesting petty cash';
+      setMessage(`❌ ${errMsg}`);
+      setTimeout(() => setMessage(''), 4000);
+    }
+  };
+
+  const handleIssueSubmit = async (e) => {
+    if (e) e.preventDefault();
+    const amount = parseFloat(issueFormData.issuedAmount);
+    if (isNaN(amount) || amount <= 0) {
+      setMessage('Issued amount must be greater than 0');
+      setTimeout(() => setMessage(''), 3000);
+      return;
+    }
+    try {
+      await pettyCashService.issuePettyCash(issueFormData.assignmentId, {
+        issuedAmount: amount,
+        paymentMethod: issueFormData.paymentMethod,
+        referenceNumber: issueFormData.referenceNumber,
+        notes: issueFormData.notes
+      });
+      setMessage('✓ Petty cash issued successfully! Waff clerk can now settle.');
+      setShowIssueModal(false);
+      fetchAssignments();
+      fetchJobs();
+      setTimeout(() => setMessage(''), 4000);
+    } catch (err) {
+      const errMsg = err.response?.data?.message || err.message || 'Error issuing petty cash';
+      setMessage(`❌ ${errMsg}`);
+      setTimeout(() => setMessage(''), 4000);
+    }
   };
 
   const openSettleModal = async (assignment) => {
@@ -1218,6 +1422,9 @@ function PettyCash() {
 
   const getStatusBadgeClass = (status) => {
     switch (status) {
+      case 'Requested': return 'status-pending-approval';
+      case 'Approved': return 'status-approved';
+      case 'Rejected': return 'status-rejected';
       case 'Assigned': return 'status-assigned';
       case 'Settled': return 'status-settled';
       case 'Balance To Be Return': return 'status-balance-to-return';
@@ -1240,12 +1447,9 @@ function PettyCash() {
     }
   };
 
-  const getStatusDisplay = (status) => {
-    switch (status) {
-      case 'Settled / Balance Returned': return 'Settled / BR';
-      case 'Settled / Over Due Collected': return 'Settled / OC';
-      default: return status;
-    }
+  const getStatusDisplay = (status, item = {}) => {
+    const statusObj = getSpecificPettyCashStatus(status, item);
+    return statusObj.label;
   };
 
   // Get filtered assignments count
@@ -1613,9 +1817,15 @@ function PettyCash() {
           <h1 className="text-3xl font-bold text-gray-900">Petty Cash Management</h1>
           <p className="text-gray-600 mt-1">{user?.role === 'Waff Clerk' ? 'Your assigned petty cash' : 'Manage petty cash assignments'}</p>
         </div>
-        {(user?.role === 'Admin' || user?.role === 'Super Admin' || user?.role === 'Manager') && (
-          <button onClick={() => setShowAssignModal(true)} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition">
-            + Assign Petty Cash
+        {user?.role === 'Waff Clerk' && (
+          <button 
+            onClick={() => {
+              setRequestFormData({ jobId: '', requestedAmount: '', notes: '' });
+              setShowRequestModal(true);
+            }} 
+            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition shadow-sm flex items-center gap-2"
+          >
+            <span>+</span> Request Petty Cash
           </button>
         )}
       </div>
@@ -2025,8 +2235,11 @@ function PettyCash() {
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
           >
             <option value="all">All Statuses</option>
-            <option value="Assigned">Assigned</option>
+            <option value="Requested">Requested (Awaiting Approval)</option>
+            <option value="Approved">Approved (Awaiting Finance)</option>
+            <option value="Assigned">Assigned (Issued)</option>
             <option value="Settled">Settled</option>
+            <option value="Rejected">Rejected</option>
             <option value="Balance To Be Return">Balance To Be Return</option>
             <option value="Over Due">Over Due</option>
             <option value="Pending Approval">Pending Approval</option>
@@ -2105,8 +2318,9 @@ function PettyCash() {
                   
                   const groupMap = new Map();
                   filteredAssignments.forEach(a => {
-                    const gid = a.groupId || `${a.jobId}_${a.assignedTo}`;
-                    console.log(`Assignment ${a.assignmentId}: jobId=${a.jobId}, assignedTo=${a.assignedTo}, groupId=${a.groupId}, calculated=${gid}`);
+                    const isUnissued = ['Requested', 'Approved', 'Rejected'].includes(a.status);
+                    const gid = isUnissued ? `req_${a.assignmentId}` : (a.groupId && !a.groupId.startsWith('req_') ? a.groupId : `${a.jobId}_${a.assignedTo}`);
+                    console.log(`Assignment ${a.assignmentId}: jobId=${a.jobId}, assignedTo=${a.assignedTo}, status=${a.status}, calculatedGid=${gid}`);
                     if (!groupMap.has(gid)) groupMap.set(gid, []);
                     groupMap.get(gid).push(a);
                   });
@@ -2223,6 +2437,12 @@ function PettyCash() {
                           // Check if any assignment is Closed (invoice generated - bill created)
                           const hasClosed = groupAssignments.some(a => a.status === 'Closed');
                           if (hasClosed) return 'Closed';
+                          const hasApproved = groupAssignments.some(a => a.status === 'Approved');
+                          if (hasApproved) return 'Approved';
+                          const hasRequested = groupAssignments.some(a => a.status === 'Requested');
+                          if (hasRequested) return 'Requested';
+                          const allRejected = groupAssignments.every(a => a.status === 'Rejected');
+                          if (allRejected) return 'Rejected';
                           // Check if any assignment has a pending approval status
                           const hasPendingApproval = groupAssignments.some(a => 
                             a.status === 'Pending Approval / Balance' || 
@@ -2303,17 +2523,28 @@ function PettyCash() {
                             <span className="text-gray-900">{first.assignedToName || first.assignedTo || '-'}</span>
                           </td>
                           <td className="px-4 py-3" data-label="Status">
-                            <span className={`status-badge ${getStatusBadgeClass(groupStatus)}`}>
-                              {getStatusDisplay(groupStatus)}
-                            </span>
+                            {(() => {
+                              const statusObj = getSpecificPettyCashStatus(groupStatus, first);
+                              return (
+                                <div className="flex flex-col items-start">
+                                  <span className={`status-badge ${getStatusBadgeClass(groupStatus)}`}>
+                                    {statusObj.label}
+                                  </span>
+                                  {statusObj.subtext && (
+                                    <span className="text-[10px] text-gray-500 mt-0.5 max-w-[160px] truncate" title={statusObj.subtext}>
+                                      {statusObj.subtext}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </td>
                           <td className="px-4 py-3" data-label="Total Assigned"><strong className="text-gray-900">LKR {formatAmount(totalAssigned)}</strong></td>
                           <td className="px-4 py-3" data-label="Total Settled"><strong className="text-gray-900">LKR {formatAmount(totalSpent)}</strong></td>
                           <td className="px-4 py-3" data-label="Assigned Date"><span className="text-gray-900">{new Date(first.assignedDate).toLocaleDateString()}</span></td>
                           <td className="px-4 py-3" data-label="Actions">
                             <div className="flex items-center gap-2">
-                              {/* Unified action logic for both single and grouped assignments */}
-                              {/* Show settle button if user is assigned to this petty cash (Waff Clerk or Manager) */}
+                              {/* Settle button: only when status is Assigned/Issued */}
                               {anyAssigned && (user?.role === 'Waff Clerk' || user?.role === 'Manager') && first.assignedTo === user?.userId && (
                                 <button onClick={() => {
                                   const settlementAssignment = {
@@ -2323,9 +2554,102 @@ function PettyCash() {
                                     groupAssignments: groupAssignments
                                   };
                                   openSettleModal(settlementAssignment);
-                                }} title="Settle petty cash" className="inline-flex items-center gap-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition">
+                                }} title="Settle petty cash" className="inline-flex items-center gap-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition shadow-sm">
                                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                                   Settle
+                                </button>
+                              )}
+
+                              {/* APPROVE & REJECT: When Requested, for Admin/Super Admin/Manager */}
+                              {groupStatus === 'Requested' && ['Admin', 'Super Admin', 'Manager'].includes(user?.role) && (() => {
+                                const isAssignedToOtherManager = user?.role === 'Manager' && (first.assignedManagerId || first.effectiveManagerId) && String(first.assignedManagerId || first.effectiveManagerId) !== String(user?.userId);
+                                if (isAssignedToOtherManager) {
+                                  return (
+                                    <span className="text-xs text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-full border border-indigo-200 font-semibold" title={`Assigned to ${first.assignedManagerName || 'another manager'} for approval`}>
+                                      Assigned to {first.assignedManagerName || 'Manager'}
+                                    </span>
+                                  );
+                                }
+                                return (
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      onClick={() => {
+                                        setApproveFormData({
+                                          assignmentId: first.assignmentId,
+                                          jobId: first.jobId,
+                                          clerkName: first.assignedToName || first.assignedTo,
+                                          approvedAmount: first.assignedAmount,
+                                          notes: first.notes || ''
+                                        });
+                                        setShowApproveModal(true);
+                                      }}
+                                      title="Approve request"
+                                      className="inline-flex items-center gap-1 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold rounded-lg transition shadow-sm"
+                                    >
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                                      Approve
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setRejectFormData({
+                                          assignmentId: first.assignmentId,
+                                          jobId: first.jobId,
+                                          clerkName: first.assignedToName || first.assignedTo,
+                                          rejectionReason: ''
+                                        });
+                                        setShowRejectModal(true);
+                                      }}
+                                      title="Reject request"
+                                      className="inline-flex items-center gap-1 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg transition shadow-sm"
+                                    >
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                      Reject
+                                    </button>
+                                  </div>
+                                );
+                              })()}
+
+                              {/* ISSUE: When Approved, for Finance ONLY */}
+                              {groupStatus === 'Approved' && user?.role === 'Finance' && (
+                                <button
+                                  onClick={() => {
+                                    setIssueFormData({
+                                      assignmentId: first.assignmentId,
+                                      jobId: first.jobId,
+                                      clerkName: first.assignedToName || first.assignedTo,
+                                      issuedAmount: first.assignedAmount,
+                                      paymentMethod: 'Cash',
+                                      referenceNumber: '',
+                                      notes: first.notes || ''
+                                    });
+                                    setShowIssueModal(true);
+                                  }}
+                                  title="Issue petty cash to clerk"
+                                  className="inline-flex items-center gap-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition shadow-sm"
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                                  Issue Cash
+                                </button>
+                              )}
+
+                              {/* RE-REQUEST: When Rejected, for Waff Clerk */}
+                              {groupStatus === 'Rejected' && user?.role === 'Waff Clerk' && first.assignedTo === user?.userId && (
+                                <button
+                                  onClick={() => {
+                                    setReRequestFormData({
+                                      assignmentId: first.assignmentId,
+                                      jobId: first.jobId,
+                                      requestedAmount: first.assignedAmount,
+                                      rejectionReason: first.rejectionReason || 'No reason provided',
+                                      notes: first.notes || ''
+                                    });
+                                    setShowReRequestModal(true);
+                                  }}
+                                  title="Edit and re-request petty cash"
+                                  className="inline-flex items-center gap-1 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-lg transition shadow-sm"
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                                  Re-request
                                 </button>
                               )}
                               {canReturnBalance && (
@@ -2632,7 +2956,8 @@ function PettyCash() {
           
           const groupMap = new Map();
           filteredAssignments.forEach(a => {
-            const gid = a.groupId || `${a.jobId}_${a.assignedTo}`;
+            const isUnissued = ['Requested', 'Approved', 'Rejected'].includes(a.status);
+            const gid = isUnissued ? `req_${a.assignmentId}` : (a.groupId && !a.groupId.startsWith('req_') ? a.groupId : `${a.jobId}_${a.assignedTo}`);
             if (!groupMap.has(gid)) groupMap.set(gid, []);
             groupMap.get(gid).push(a);
           });
@@ -2660,97 +2985,363 @@ function PettyCash() {
       </div>
       )}
 
-      {/* Assign Petty Cash Modal */}
-      {showAssignModal && (
+      {/* Request Petty Cash Modal (Waff Clerk) */}
+      {showRequestModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-xl max-w-2xl w-full my-8">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200 sticky top-0 bg-white">
-              <h2 className="text-2xl font-bold text-gray-900">Assign Petty Cash</h2>
-              <button onClick={() => setShowAssignModal(false)} className="text-gray-500 hover:text-gray-700 text-2xl font-bold">×</button>
+          <div className="bg-white rounded-xl max-w-xl w-full my-8 shadow-2xl">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Request Petty Cash</h2>
+                <p className="text-sm text-gray-500 mt-0.5">Submit request to Admin/Manager for approval</p>
+              </div>
+              <button onClick={() => setShowRequestModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl font-bold">×</button>
             </div>
 
-            <form onSubmit={handleAssignSubmit} className="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Select Job <span className="text-red-600">*</span></label>
-                <select
-                  value={assignFormData.jobId}
-                  onChange={(e) => setAssignFormData({ 
-                    ...assignFormData, 
-                    jobId: e.target.value,
-                    assignedTo: '' // Reset user selection when job changes
-                  })}
-                  required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                >
-                  <option value="">-- Select Job --</option>
-                  {getAvailableJobs().map(job => (
-                    <option key={job.jobId} value={job.jobId}>
-                      {job.jobId} - {getCustomerName(job.customerId)} - {job.shipmentCategory}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <form onSubmit={handleRequestSubmit} className="p-6 space-y-5">
+              {clerkThreshold !== null && clerkThreshold > 0 && (
+                <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg flex items-center justify-between text-xs text-purple-900 shadow-2xs">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-4 h-4 text-purple-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    </svg>
+                    <span className="font-medium">Your Request Limit:</span>
+                  </div>
+                  <span className="font-bold text-sm text-purple-700">
+                    LKR {clerkThreshold.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              )}
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Assign To <span className="text-red-600">*</span></label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Select Assigned Job <span className="text-red-500">*</span></label>
                 <select
-                  value={assignFormData.assignedTo}
-                  onChange={(e) => setAssignFormData({ ...assignFormData, assignedTo: e.target.value })}
+                  value={requestFormData.jobId}
+                  onChange={(e) => setRequestFormData({ ...requestFormData, jobId: e.target.value })}
                   required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
                 >
-                  <option value="">-- Select User --</option>
-                  {getAvailableUsersForJob(assignFormData.jobId).map(u => (
-                    <option key={u.userId} value={u.userId}>
-                      {u.fullName}
+                  <option value="">-- Select Job --</option>
+                  {getClerkAvailableJobs().map(job => (
+                    <option key={job.jobId} value={job.jobId}>
+                      {job.jobId} - {getCustomerName(job.customerId)} ({job.shipmentCategory || 'General'})
                     </option>
                   ))}
                 </select>
-                {assignFormData.jobId && getAvailableUsersForJob(assignFormData.jobId).length === 0 && (
-                  <p className="text-yellow-600 text-sm mt-1">No users are assigned to this job.</p>
+                {getClerkAvailableJobs().length === 0 && (
+                  <p className="text-amber-600 text-xs mt-1.5">No eligible jobs assigned to you that need petty cash.</p>
                 )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Amount (LKR) <span className="text-red-600">*</span></label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Requested Amount (LKR) <span className="text-red-500">*</span></label>
                 <input
-                  type="text"
-                  inputMode="decimal"
-                  value={assignFormData.assignedAmount}
-                  onChange={handleAssignedAmountChange}
-                  onKeyDown={handleAssignedAmountKeyDown}
-                  onPaste={(e) => {
-                    const pastedText = e.clipboardData.getData('text');
-                    if (!/^\d+(\.\d{1,2})?$/.test(pastedText.trim())) {
-                      e.preventDefault();
-                    }
-                  }}
-                  placeholder="0.00"
+                  type="number"
+                  step="0.01"
+                  min="1"
+                  value={requestFormData.requestedAmount}
+                  onChange={(e) => setRequestFormData({ ...requestFormData, requestedAmount: e.target.value })}
+                  placeholder="e.g. 5000.00"
                   required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 outline-none text-sm font-semibold ${
+                    clerkThreshold !== null && clerkThreshold > 0 && parseFloat(requestFormData.requestedAmount) > clerkThreshold
+                      ? 'border-red-400 bg-red-50/30 focus:ring-red-500'
+                      : 'border-gray-300 focus:ring-blue-500 focus:border-transparent'
+                  }`}
                 />
+                {clerkThreshold !== null && clerkThreshold > 0 && parseFloat(requestFormData.requestedAmount) > clerkThreshold && (
+                  <p className="text-xs text-red-600 mt-1.5 font-medium flex items-center gap-1">
+                    ⚠️ Exceeds your allowed threshold limit of LKR {clerkThreshold.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Purpose / Notes</label>
                 <textarea
-                  value={assignFormData.notes}
-                  onChange={(e) => setAssignFormData({ ...assignFormData, notes: e.target.value })}
-                  placeholder="Optional notes..."
+                  value={requestFormData.notes}
+                  onChange={(e) => setRequestFormData({ ...requestFormData, notes: e.target.value })}
+                  placeholder="Explain why this petty cash is required..."
                   rows="3"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-6 border-t border-gray-200">
-                <button type="button" onClick={() => setShowAssignModal(false)} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition font-medium">
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
+                <button type="button" onClick={() => setShowRequestModal(false)} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition text-sm font-medium">
                   Cancel
                 </button>
                 <button 
                   type="submit" 
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium"
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition text-sm font-semibold shadow-sm"
                 >
-                  Assign Petty Cash
+                  Submit Request
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Approve Modal (Admin / Super Admin / Manager) */}
+      {showApproveModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-xl max-w-lg w-full my-8 shadow-2xl">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-green-50/50 rounded-t-xl">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Approve Petty Cash Request</h2>
+                <p className="text-xs text-gray-600 mt-0.5">Job #{approveFormData.jobId} &bull; Clerk: {approveFormData.clerkName}</p>
+              </div>
+              <button onClick={() => setShowApproveModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl font-bold">×</button>
+            </div>
+
+            <form onSubmit={handleApproveSubmit} className="p-6 space-y-4">
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
+                Approving this request will update its status to <strong>Approved</strong> and forward it to the <strong>Finance</strong> department for cash disbursement.
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Approved Amount (LKR) <span className="text-red-500">*</span></label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="1"
+                  value={approveFormData.approvedAmount}
+                  onChange={(e) => setApproveFormData({ ...approveFormData, approvedAmount: e.target.value })}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm font-semibold text-gray-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Approval Notes / Instructions</label>
+                <textarea
+                  value={approveFormData.notes}
+                  onChange={(e) => setApproveFormData({ ...approveFormData, notes: e.target.value })}
+                  placeholder="Optional approval notes..."
+                  rows="3"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none text-sm"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
+                <button type="button" onClick={() => setShowApproveModal(false)} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition text-sm font-medium">
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  className="px-5 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition text-sm font-semibold shadow-sm"
+                >
+                  Approve & Forward to Finance
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Reject Modal (Admin / Super Admin / Manager) */}
+      {showRejectModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-xl max-w-lg w-full my-8 shadow-2xl">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-red-50/50 rounded-t-xl">
+              <div>
+                <h2 className="text-xl font-bold text-red-900">Reject Petty Cash Request</h2>
+                <p className="text-xs text-gray-600 mt-0.5">Job #{rejectFormData.jobId} &bull; Clerk: {rejectFormData.clerkName}</p>
+              </div>
+              <button onClick={() => setShowRejectModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl font-bold">×</button>
+            </div>
+
+            <form onSubmit={handleRejectSubmit} className="p-6 space-y-4">
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+                Please provide a clear reason for rejection so the Waff Clerk can review and re-submit the request if appropriate.
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Rejection Reason <span className="text-red-500">*</span></label>
+                <textarea
+                  value={rejectFormData.rejectionReason}
+                  onChange={(e) => setRejectFormData({ ...rejectFormData, rejectionReason: e.target.value })}
+                  placeholder="Enter reason for rejecting this request..."
+                  required
+                  rows="4"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none text-sm"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
+                <button type="button" onClick={() => setShowRejectModal(false)} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition text-sm font-medium">
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition text-sm font-semibold shadow-sm"
+                >
+                  Reject Request
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Re-request Modal (Waff Clerk) */}
+      {showReRequestModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-xl max-w-lg w-full my-8 shadow-2xl">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-amber-50/50 rounded-t-xl">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Re-request Petty Cash</h2>
+                <p className="text-xs text-gray-600 mt-0.5">Job #{reRequestFormData.jobId}</p>
+              </div>
+              <button onClick={() => setShowReRequestModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl font-bold">×</button>
+            </div>
+
+            <form onSubmit={handleReRequestSubmit} className="p-6 space-y-4">
+              <div className="p-3.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-800">
+                <strong className="block mb-1 font-semibold text-red-900">Previous Rejection Reason:</strong>
+                {reRequestFormData.rejectionReason}
+              </div>
+
+              {clerkThreshold !== null && clerkThreshold > 0 && (
+                <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg flex items-center justify-between text-xs text-purple-900 shadow-2xs">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-4 h-4 text-purple-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    </svg>
+                    <span className="font-medium">Your Request Limit:</span>
+                  </div>
+                  <span className="font-bold text-sm text-purple-700">
+                    LKR {clerkThreshold.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">New Requested Amount (LKR) <span className="text-red-500">*</span></label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="1"
+                  value={reRequestFormData.requestedAmount}
+                  onChange={(e) => setReRequestFormData({ ...reRequestFormData, requestedAmount: e.target.value })}
+                  required
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 outline-none text-sm font-semibold ${
+                    clerkThreshold !== null && clerkThreshold > 0 && parseFloat(reRequestFormData.requestedAmount) > clerkThreshold
+                      ? 'border-red-400 bg-red-50/30 focus:ring-red-500'
+                      : 'border-gray-300 focus:ring-amber-500 focus:border-transparent'
+                  }`}
+                />
+                {clerkThreshold !== null && clerkThreshold > 0 && parseFloat(reRequestFormData.requestedAmount) > clerkThreshold && (
+                  <p className="text-xs text-red-600 mt-1.5 font-medium flex items-center gap-1">
+                    ⚠️ Exceeds your allowed threshold limit of LKR {clerkThreshold.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Updated Notes / Explanation</label>
+                <textarea
+                  value={reRequestFormData.notes}
+                  onChange={(e) => setReRequestFormData({ ...reRequestFormData, notes: e.target.value })}
+                  placeholder="Explain revisions made..."
+                  rows="3"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none text-sm"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
+                <button type="button" onClick={() => setShowReRequestModal(false)} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition text-sm font-medium">
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition text-sm font-semibold shadow-sm"
+                >
+                  Re-submit Request
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Issue Petty Cash Modal (Finance Role ONLY) */}
+      {showIssueModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-xl max-w-lg w-full my-8 shadow-2xl">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-indigo-50/50 rounded-t-xl">
+              <div>
+                <h2 className="text-xl font-bold text-indigo-900">Issue Petty Cash</h2>
+                <p className="text-xs text-gray-600 mt-0.5">Job #{issueFormData.jobId} &bull; Clerk: {issueFormData.clerkName}</p>
+              </div>
+              <button onClick={() => setShowIssueModal(false)} className="text-gray-400 hover:text-gray-600 text-2xl font-bold">×</button>
+            </div>
+
+            <form onSubmit={handleIssueSubmit} className="p-6 space-y-4">
+              <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg text-xs text-indigo-800">
+                Issuing this petty cash enables the clerk to record expenditures and settle the job items.
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Issued Amount (LKR) <span className="text-red-500">*</span></label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="1"
+                    value={issueFormData.issuedAmount}
+                    onChange={(e) => setIssueFormData({ ...issueFormData, issuedAmount: e.target.value })}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none text-sm font-semibold text-gray-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Payment Method <span className="text-red-500">*</span></label>
+                  <select
+                    value={issueFormData.paymentMethod}
+                    onChange={(e) => setIssueFormData({ ...issueFormData, paymentMethod: e.target.value })}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none text-sm"
+                  >
+                    <option value="Cash">Cash</option>
+                    <option value="Bank Transfer">Bank Transfer</option>
+                    <option value="Cheque">Cheque</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Reference / Cheque Number</label>
+                <input
+                  type="text"
+                  value={issueFormData.referenceNumber}
+                  onChange={(e) => setIssueFormData({ ...issueFormData, referenceNumber: e.target.value })}
+                  placeholder="Optional reference / voucher / cheque #"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Finance Notes</label>
+                <textarea
+                  value={issueFormData.notes}
+                  onChange={(e) => setIssueFormData({ ...issueFormData, notes: e.target.value })}
+                  placeholder="Optional finance notes..."
+                  rows="2"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none text-sm"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
+                <button type="button" onClick={() => setShowIssueModal(false)} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition text-sm font-medium">
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition text-sm font-semibold shadow-sm"
+                >
+                  Issue Petty Cash
                 </button>
               </div>
             </form>

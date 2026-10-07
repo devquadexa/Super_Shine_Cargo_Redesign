@@ -293,10 +293,10 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
 
   const loadJobBills = async () => {
     try {
-      const data = await billingService.getBills();
+      const data = await billingService.getBills({ jobId: job.jobId });
       
       // Filter bills for this job
-      const jobBills = data.filter(bill => bill.jobId === job.jobId);
+      const jobBills = Array.isArray(data) ? data.filter(bill => bill.jobId === job.jobId) : [];
       
       // Calculate total from job's pay items for fallback
       let jobPayItemsTotal = 0;
@@ -519,16 +519,31 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
       return;
     }
 
+    const previousBackup = editingBackup ? { ...editingBackup } : null;
+    const backupPayItems = [...payItems];
+
+    // Lock in edit mode immediately
+    setEditingItemIndex(null);
+    setEditingBackup(null);
     setUpdatingItemIndex(index);
+
+    const actionHeaders = {
+      'X-Action-Loading-Message': `Updating "${item.name}"...`,
+      'X-Action-Success-Message': `"${item.name}" updated successfully!`
+    };
+
     try {
-      // 1. If it's an office pay item, update its backend record
+      const promises = [];
+
+      // 1. If it's an office pay item, update its backend record in parallel
       if (item.isOfficePayItem && item.officePayItemId) {
-        try {
-          await fetch(`${API_BASE}/api/office-pay-items/${item.officePayItemId}`, {
+        promises.push(
+          fetch(`${API_BASE}/api/office-pay-items/${item.officePayItemId}`, {
             method: 'PUT',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('token')}`
+              'Authorization': `Bearer ${localStorage.getItem('token')}`,
+              ...actionHeaders
             },
             body: JSON.stringify({
               description: item.name,
@@ -536,10 +551,8 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
               billingAmount: parseFloat(item.billingAmount) || 0,
               hasBill: item.hasBill || false
             })
-          });
-        } catch (err) {
-          console.error('Error updating office pay item:', err);
-        }
+          }).catch(err => console.error('Error updating office pay item:', err))
+        );
       }
 
       // 2. Prepare all pay items to persist in job.payItems
@@ -556,39 +569,51 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
           paidByName: p.paidByName || p.paidBy || 'Office',
           hasBill: p.hasBill !== undefined ? p.hasBill : true,
           source: p.isOfficePayItem ? 'Office Payment' : p.isPettyCashItem ? 'Petty Cash' : 'Custom',
-          isCustomItem: p.isCustomItem || p.source === 'Custom' || (!p.isOfficePayItem && !p.isPettyCashItem)
+          isCustomItem: p.isCustomItem || p.source === 'Custom' || (!p.isOfficePayItem && !p.isPettyCashItem),
+          officePayItemId: p.officePayItemId
         }));
 
-      await jobService.replacePayItems(job.jobId, updatedPayItemsData);
+      promises.push(jobService.replacePayItems(job.jobId, updatedPayItemsData, { headers: actionHeaders }));
 
       // 3. If a bill exists and is unpaid, update the bill totals too
       const { totalActualCost, totalBillingAmount } = calculateTotals();
       if (bills && bills.length > 0) {
         const unpaidBill = bills.find(b => b.paymentStatus === 'Unpaid' || !(parseFloat(b.paidAmount) > 0));
         if (unpaidBill) {
-          try {
-            await billingService.createBill({
+          promises.push(
+            billingService.createBill({
               jobId: job.jobId,
               customerId: job.customerId,
               actualCost: totalActualCost,
               billingAmount: totalBillingAmount,
               grossTotal: totalBillingAmount,
               netTotal: totalBillingAmount
-            });
-            await loadJobBills();
-          } catch (billErr) {
-            console.error('Error updating bill totals after item update:', billErr);
-          }
+            }, { headers: actionHeaders }).catch(billErr => console.error('Error updating bill totals after item update:', billErr))
+          );
+
+          // Update local bills state optimistically
+          setBills(prev => prev.map(b => (b.paymentStatus === 'Unpaid' || !(parseFloat(b.paidAmount) > 0)) ? {
+            ...b,
+            actualCost: totalActualCost,
+            billingAmount: totalBillingAmount,
+            grossTotal: totalBillingAmount,
+            netTotal: totalBillingAmount
+          } : b));
         }
       }
 
+      await Promise.all(promises);
+
+      // Synchronized success banner on completion
       setPayItemsSaved(true);
-      setEditingItemIndex(null);
-      setEditingBackup(null);
       setMessage(`✅ "${item.name}" updated successfully!`);
-      setTimeout(() => setMessage(''), 4000);
+      setTimeout(() => setMessage(''), 3500);
     } catch (error) {
       console.error('Error updating cost item:', error);
+      // Rollback on error
+      setPayItems(backupPayItems);
+      setEditingItemIndex(index);
+      setEditingBackup(previousBackup);
       const errMsg = error.response?.data?.message || error.message || 'Error updating cost item';
       setMessage(`❌ ${errMsg}`);
       setTimeout(() => setMessage(''), 5000);
@@ -669,11 +694,11 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
 
     setSavingPayItems(true);
     try {
-      // Update office pay items billing amounts
-      const officePayItems = validPayItems.filter(item => item.isOfficePayItem);
-      for (const item of officePayItems) {
-        if (item.officePayItemId) {
-          await fetch(`${API_BASE}/api/office-pay-items/${item.officePayItemId}`, {
+      // Update office pay items billing amounts in parallel
+      const officePayItems = validPayItems.filter(item => item.isOfficePayItem && item.officePayItemId);
+      await Promise.all(
+        officePayItems.map(item =>
+          fetch(`${API_BASE}/api/office-pay-items/${item.officePayItemId}`, {
             method: 'PUT',
             headers: {
               'Content-Type': 'application/json',
@@ -683,9 +708,9 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
               billingAmount: parseFloat(item.billingAmount),
               hasBill: item.hasBill || false
             })
-          });
-        }
-      }
+          }).catch(err => console.error('Error updating office pay item:', err))
+        )
+      );
       
       // Save pay items to job
       const newPayItemsData = validPayItems.map(item => ({
@@ -699,10 +724,16 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
         paidByName: item.paidByName || item.paidBy || 'Office',
         hasBill: item.hasBill !== undefined ? item.hasBill : true,
         source: item.isOfficePayItem ? 'Office Payment' : item.isPettyCashItem ? 'Petty Cash' : 'Custom',
-        isCustomItem: item.isCustomItem || item.source === 'Custom' || (!item.isOfficePayItem && !item.isPettyCashItem)
+        isCustomItem: item.isCustomItem || item.source === 'Custom' || (!item.isOfficePayItem && !item.isPettyCashItem),
+        officePayItemId: item.officePayItemId
       }));
       
-      await jobService.replacePayItems(job.jobId, newPayItemsData);
+      await jobService.replacePayItems(job.jobId, newPayItemsData, {
+        headers: {
+          'X-Action-Loading-Message': 'Saving pay items...',
+          'X-Action-Success-Message': `${validPayItems.length} pay item(s) saved successfully!`
+        }
+      });
       
       setPayItemsSaved(true); // Mark as saved after successful save
       setEditingItemIndex(null);
@@ -1602,32 +1633,42 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
       }
     }
 
+    const previousItems = [...payItems];
+    const updatedItems = payItems.filter((_, i) => i !== index);
+
+    // Optimistically update list in UI
+    setPayItems(updatedItems);
+    if (updatedItems.length === 0) {
+      setPayItemsSaved(false);
+      setShowPayItemsRow(false);
+    }
+
+    const actionHeaders = {
+      'X-Action-Loading-Message': itemName ? `Deleting "${itemName}"...` : 'Deleting pay item...',
+      'X-Action-Success-Message': itemName ? `"${itemName}" deleted successfully!` : 'Pay item deleted successfully!'
+    };
+
     try {
-      const updatedItems = payItems.filter((_, i) => i !== index);
-      
+      const promises = [];
+
       // If item was an office pay item, also delete it from office pay items backend
       if (itemToDelete.isOfficePayItem && itemToDelete.officePayItemId) {
-        try {
-          await fetch(`${API_BASE}/api/office-pay-items/${itemToDelete.officePayItemId}`, {
+        promises.push(
+          fetch(`${API_BASE}/api/office-pay-items/${itemToDelete.officePayItemId}`, {
             method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-          });
-        } catch (delErr) {
-          console.warn('Could not delete office pay item backend record:', delErr);
-        }
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('token')}`,
+              ...actionHeaders
+            }
+          }).catch(delErr => console.warn('Could not delete office pay item backend record:', delErr))
+        );
       }
 
       if (updatedItems.length === 0) {
-        // If no items left, save empty array if pay items were previously persisted
         if (payItemsSaved || (job?.payItems && (Array.isArray(job.payItems) ? job.payItems.length > 0 : true))) {
-          await jobService.replacePayItems(job.jobId, []);
+          promises.push(jobService.replacePayItems(job.jobId, [], { headers: actionHeaders }));
         }
-        setPayItems([]);
-        setPayItemsSaved(false);
-        setShowPayItemsRow(false);
-        setMessage('✅ Item deleted!');
       } else {
-        // Sanitize remaining valid items before saving to backend
         const validItemsToSave = updatedItems
           .filter(item => item.name && item.name.trim())
           .map(item => ({
@@ -1641,12 +1682,12 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
             paidByName: item.paidByName || item.paidBy || 'Office',
             hasBill: item.hasBill !== undefined ? item.hasBill : true,
             source: item.isOfficePayItem ? 'Office Payment' : item.isPettyCashItem ? 'Petty Cash' : 'Custom',
-            isCustomItem: item.isCustomItem || item.source === 'Custom' || (!item.isOfficePayItem && !item.isPettyCashItem)
+            isCustomItem: item.isCustomItem || item.source === 'Custom' || (!item.isOfficePayItem && !item.isPettyCashItem),
+            officePayItemId: item.officePayItemId
           }));
-        
-        // If items were previously saved, update the backend and unpaid bills
+
         if (payItemsSaved || (job?.payItems && (Array.isArray(job.payItems) ? job.payItems.length > 0 : true))) {
-          await jobService.replacePayItems(job.jobId, validItemsToSave);
+          promises.push(jobService.replacePayItems(job.jobId, validItemsToSave, { headers: actionHeaders }));
 
           // Update unpaid bill totals if one exists
           const totalActualCost = validItemsToSave.reduce((sum, it) => sum + (it.actualCost || 0), 0);
@@ -1654,34 +1695,42 @@ function JobInvoicingModal({ job, isOpen, onClose, onInvoiceCreated }) {
           if (bills && bills.length > 0) {
             const unpaidBill = bills.find(b => b.paymentStatus === 'Unpaid' || !(parseFloat(b.paidAmount) > 0));
             if (unpaidBill) {
-              try {
-                await billingService.createBill({
+              promises.push(
+                billingService.createBill({
                   jobId: job.jobId,
                   customerId: job.customerId,
                   actualCost: totalActualCost,
                   billingAmount: totalBillingAmount,
                   grossTotal: totalBillingAmount,
                   netTotal: totalBillingAmount
-                });
-                await loadJobBills();
-              } catch (billErr) {
-                console.error('Error updating bill totals after item delete:', billErr);
-              }
+                }, { headers: actionHeaders }).catch(billErr => console.error('Error updating bill totals after item delete:', billErr))
+              );
+
+              // Update local bills state optimistically
+              setBills(prev => prev.map(b => (b.paymentStatus === 'Unpaid' || !(parseFloat(b.paidAmount) > 0)) ? {
+                ...b,
+                actualCost: totalActualCost,
+                billingAmount: totalBillingAmount,
+                grossTotal: totalBillingAmount,
+                netTotal: totalBillingAmount
+              } : b));
             }
           }
         }
-
-        setPayItems(updatedItems);
-        setMessage(itemName ? `✅ "${itemName}" deleted successfully!` : '✅ Pay item deleted successfully!');
       }
-      
+
+      await Promise.all(promises);
+
+      // Synchronized success banner on completion
+      setMessage(itemName ? `✅ "${itemName}" deleted successfully!` : '✅ Item deleted!');
       setTimeout(() => setMessage(''), 3000);
-      await loadJobBills();
-      
+
       // Check if all remaining items have billing amounts
       setTimeout(() => checkAllItemsHaveBillingAmounts(), 100);
     } catch (error) {
       console.error('Error deleting item:', error);
+      // Rollback on error
+      setPayItems(previousItems);
       const errMsg = error.response?.data?.message || error.message || 'Error deleting item';
       setMessage(`❌ ${errMsg}`);
       setTimeout(() => setMessage(''), 5000);

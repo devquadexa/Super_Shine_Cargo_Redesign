@@ -21,14 +21,14 @@ export const billingService = {
     return response.data;
   },
 
-  getBills: async () => {
-    const response = await apiClient.get('/billing');
+  getBills: async (params = {}) => {
+    const response = await apiClient.get('/billing', { params });
     return response.data;
   },
 
-  createBill: async (billData) => {
+  createBill: async (billData, config = {}) => {
     console.log('billingService.createBill - sending to backend:', billData);
-    const response = await apiClient.post('/billing', billData);
+    const response = await apiClient.post('/billing', billData, config);
     console.log('billingService.createBill - response:', response.data);
     return response.data;
   },
@@ -38,8 +38,8 @@ export const billingService = {
     return response.data;
   },
 
-  updateBill: async (billId, billData) => {
-    const response = await apiClient.put(`/billing/${billId}`, billData);
+  updateBill: async (billId, billData, config = {}) => {
+    const response = await apiClient.put(`/billing/${billId}`, billData, config);
     return response.data;
   },
 

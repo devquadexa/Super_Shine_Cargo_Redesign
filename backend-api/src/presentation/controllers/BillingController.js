@@ -43,6 +43,9 @@ class BillingController {
       if (req.query.paymentStatus) {
         filters.paymentStatus = req.query.paymentStatus;
       }
+      if (req.query.jobId) {
+        filters.jobId = req.query.jobId;
+      }
       
       const bills = await this.getAllBills.execute(filters);
       res.json(bills);

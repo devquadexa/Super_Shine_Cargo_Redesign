@@ -29,6 +29,7 @@ const otherExpenseRoutes = require('./presentation/routes/otherExpense');
 const invoiceReviewRoutes = require('./presentation/routes/invoiceReviewRoutes');
 const notificationRoutes = require('./presentation/routes/notifications');
 const testNotificationRoutes = require('./presentation/routes/testNotification');
+const clerkManagerRoutes = require('./presentation/routes/clerkManagerRoutes');
 const container = require('./infrastructure/di/container');
 const { startOverdueChecker } = require('./infrastructure/scheduler/overdueChecker');
 
@@ -93,6 +94,8 @@ app.use('/api/other-expenses', otherExpenseRoutes(container));
 app.use('/api/invoice-reviews', invoiceReviewRoutes);
 app.use('/api/notifications', notificationRoutes(container));
 app.use('/api/test-notification', testNotificationRoutes(container));
+app.use('/api/settings/clerk-managers', clerkManagerRoutes(container));
+app.use('/api/clerk-managers', clerkManagerRoutes(container));
 
 // Serve static files from the React app
 app.use(express.static(path.join(__dirname, '../../frontend/build')));
